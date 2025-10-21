@@ -24,7 +24,7 @@ curl -Ls https://raw.githubusercontent.com/contriboss/ore-light/main/scripts/ins
 # Warm the cache and unpack gems into vendor/ore
 ore install --lockfile=Gemfile.lock --vendor=vendor/ore
 
-# Run Ruby code with Ore Light's load paths (no Bundler needed)
+# Run Ruby code with ore-managed environment
 ore exec --vendor=vendor/ore -- ruby -Iconfig -e "puts 'hello'"
 ```
 
@@ -64,7 +64,7 @@ Ore Light provides complete Bundler command parity with 17 commands:
 - `ore clean` - Remove unused gems from vendor directory
 
 **Execution:**
-- `ore exec` - Run commands with ore-managed load paths (no Bundler required)
+- `ore exec` - Run commands via `bundle exec` with ore-managed environment
 
 **Utilities:**
 - `ore cache` - Inspect or prune the gem cache

@@ -160,7 +160,7 @@ Commands:
   download     Prefetch gems defined in Gemfile.lock (no Ruby required)
   install      Download (if needed) and unpack gems into a vendor directory
   cache        Inspect or prune the ore gem cache
-  exec         Run commands with ore-managed load paths (no Bundler required)
+  exec         Run commands via bundle exec with ore-managed environment
   version      Show version information
 
 Use "ore <command> --help" for command-specific options.
