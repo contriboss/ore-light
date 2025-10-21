@@ -1,0 +1,87 @@
+name: Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        path: ore-light
+
+    - uses: actions/checkout@v5
+      with:
+        repository: contriboss/gemfile-go
+        path: gemfile-go
+
+    - uses: actions/checkout@v5
+      with:
+        repository: contriboss/ruby-extension-go
+        path: ruby-extension-go
+
+    - uses: actions/checkout@v5
+      with:
+        repository: contriboss/rubygems-client-go
+        path: rubygems-client-go
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.4'
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.1'
+
+    - name: Download dependencies
+      working-directory: ore-light
+      run: go mod download
+
+    - name: Run tests
+      working-directory: ore-light
+      run: go test -v ./...
+
+    - name: Build binary
+      working-directory: ore-light
+      run: go build -o orelight .
+
+    - name: Test add command help
+      working-directory: ore-light
+      run: ./orelight add --help || true
+
+    - name: Test remove command help
+      working-directory: ore-light
+      run: ./orelight remove --help || true
+
+    - name: Test add and remove commands
+      working-directory: ore-light
+      run: |
+        cd testdata/resolver_test
+        # Create a simple Gemfile
+        echo 'source "https://rubygems.org"' > Gemfile
+        echo 'gem "rake"' >> Gemfile
+
+        # Generate initial lockfile with bundler
+        bundle lock
+
+        # Test adding a gem with --lock
+        ../../orelight add --lock --version "~> 3.12" rspec
+
+        # Verify rspec was added to Gemfile
+        grep -q "rspec" Gemfile || (echo "rspec not found in Gemfile" && exit 1)
+
+        # Verify lockfile was updated
+        grep -q "rspec" Gemfile.lock || (echo "rspec not found in Gemfile.lock" && exit 1)
+
+        # Test removing a gem
+        ../../orelight remove rspec
+
+        # Verify rspec was removed from Gemfile
+        ! grep -q "rspec" Gemfile || (echo "rspec still in Gemfile" && exit 1)

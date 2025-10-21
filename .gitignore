@@ -1,0 +1,21 @@
+# Binaries
+/ore
+/orelight
+/bin/
+
+# Test artifacts
+*.test
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# Editor
+.DS_Store
+.vscode/
+.idea/
+
+# Temporary files
+/tmp/
+*.tmp

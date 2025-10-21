@@ -1,0 +1,8 @@
+source "https://rubygems.org"
+
+gem "rake"
+gem "rack", "~> 3.0"
+
+source "https://gem.coop" do
+  gem "minitest"
+end

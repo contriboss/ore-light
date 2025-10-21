@@ -1,0 +1,27 @@
+GEM
+  remote: https://gem.coop/
+  specs:
+    minitest (5.26.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    rack (3.2.3)
+    rake (13.3.0)
+
+
+
+PLATFORMS
+  arm64-darwin24
+  ruby
+
+
+DEPENDENCIES
+  minitest
+  rack (~> 3.0)
+  rake
+
+
+BUNDLED WITH
+   2.7.2
+
