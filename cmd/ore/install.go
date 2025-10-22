@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -45,12 +46,12 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 	extBuilder := extensions.NewBuilder(extConfig)
 
 	for _, gem := range gems {
-		gemPath := filepath.Join(cacheDir, gemFileName(gem))
-		destDir := filepath.Join(vendorDir, "gems", gem.FullName())
-
-		if _, err := os.Stat(gemPath); err != nil {
+		gemPath := findGemInCaches(cacheDir, gem)
+		if gemPath == "" {
 			return report, fmt.Errorf("gem %s is not cached; run `ore download` first", gem.FullName())
 		}
+
+		destDir := filepath.Join(vendorDir, "gems", gem.FullName())
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			report.Skipped++
@@ -101,6 +102,78 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 	}
 
 	return report, nil
+}
+
+// findGemInCaches searches for a gem in cache directories (ore cache + system cache)
+func findGemInCaches(primaryCache string, gem lockfile.GemSpec) string {
+	fileName := gemFileName(gem)
+
+	// Check primary ore cache first
+	path := filepath.Join(primaryCache, fileName)
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+
+	// Try system RubyGems caches (only if Ruby available)
+	if gemPaths := tryGetGemPathsForInstall(); len(gemPaths) > 0 {
+		for _, gemPath := range gemPaths {
+			systemCache := filepath.Join(gemPath, "cache", fileName)
+			if _, err := os.Stat(systemCache); err == nil {
+				return systemCache
+			}
+		}
+	}
+
+	return ""
+}
+
+// tryGetGemPathsForInstall uses same logic as download.go
+func tryGetGemPathsForInstall() []string {
+	cmd := exec.Command("gem", "environment", "gempath")
+	output, err := cmd.Output()
+	if err == nil {
+		pathsStr := strings.TrimSpace(string(output))
+		if pathsStr != "" {
+			return strings.Split(pathsStr, string(filepath.ListSeparator))
+		}
+	}
+
+	// Fallback to common locations
+	var defaultPaths []string
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return defaultPaths
+	}
+
+	rubyVer := detectRubyVersionForVendor()
+	if rubyVer == "" {
+		return defaultPaths
+	}
+
+	commonLocations := []string{
+		filepath.Join(home, ".gem", "ruby", rubyVer),
+		filepath.Join(home, ".local", "share", "gem", "ruby", rubyVer),
+	}
+
+	globPatterns := []string{
+		filepath.Join(home, ".rbenv", "versions", "*", "lib", "ruby", "gems", rubyVer),
+		filepath.Join(home, ".asdf", "installs", "ruby", "*", "lib", "ruby", "gems", rubyVer),
+		filepath.Join(home, ".local", "share", "mise", "installs", "ruby", "*", "lib", "ruby", "gems", rubyVer),
+	}
+
+	for _, pattern := range globPatterns {
+		if matches, err := filepath.Glob(pattern); err == nil {
+			defaultPaths = append(defaultPaths, matches...)
+		}
+	}
+
+	for _, location := range commonLocations {
+		if _, err := os.Stat(location); err == nil {
+			defaultPaths = append(defaultPaths, location)
+		}
+	}
+
+	return defaultPaths
 }
 
 func extractGemContents(gemPath, destDir string) ([]byte, error) {
