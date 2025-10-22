@@ -226,6 +226,8 @@ func runDownloadCommand(args []string) error {
 }
 
 func runInstallCommand(args []string) error {
+	startTime := time.Now()
+
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
 	workers := fs.Int("workers", runtime.NumCPU(), "Number of concurrent downloads")
@@ -349,7 +351,20 @@ func runInstallCommand(args []string) error {
 		totalExtFailed += pathReport.ExtensionsFailed
 	}
 
-	fmt.Printf("Installed %d gems (%d skipped) into %s.\n", totalInstalled, totalSkipped, *vendorDir)
+	elapsed := time.Since(startTime)
+
+	// Simplify vendor dir display for common paths
+	vendorDisplay := *vendorDir
+	if home, err := os.UserHomeDir(); err == nil {
+		vendorDisplay = strings.Replace(vendorDisplay, home, "~", 1)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(cwd, *vendorDir); err == nil && !strings.HasPrefix(rel, "..") {
+			vendorDisplay = rel
+		}
+	}
+
+	fmt.Printf("Installed %d gems (%d skipped) into %s in %s.\n", totalInstalled, totalSkipped, vendorDisplay, elapsed.Round(time.Millisecond))
 
 	if totalExtBuilt > 0 {
 		fmt.Printf("Built %d native extension(s).\n", totalExtBuilt)
@@ -358,7 +373,31 @@ func runInstallCommand(args []string) error {
 		fmt.Fprintf(os.Stderr, "Warning: %d extension(s) failed to build.\n", totalExtFailed)
 	}
 
-	fmt.Printf("Use `ore exec --lockfile=%s --vendor=%s <command>` to run Ruby code with this environment.\n", *lockfilePath, *vendorDir)
+	// Build simplified exec command suggestion
+	execCmd := "ore exec"
+
+	// Only include --lockfile if non-default
+	defaultLock := defaultLockfilePath()
+	if *lockfilePath != defaultLock {
+		// Simplify lockfile path
+		lockDisplay := *lockfilePath
+		if cwd, err := os.Getwd(); err == nil {
+			if rel, err := filepath.Rel(cwd, *lockfilePath); err == nil && !strings.HasPrefix(rel, "..") {
+				lockDisplay = rel
+			}
+		}
+		execCmd += fmt.Sprintf(" --lockfile=%s", lockDisplay)
+	}
+
+	// Only include --vendor if non-default
+	defaultVendor := defaultVendorDir()
+	if *vendorDir != defaultVendor {
+		execCmd += fmt.Sprintf(" --vendor=%s", vendorDisplay)
+	}
+
+	execCmd += " <command>"
+
+	fmt.Printf("Use `%s` to run commands with this environment.\n", execCmd)
 	return nil
 }
 
