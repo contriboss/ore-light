@@ -108,6 +108,10 @@ func main() {
 		if err := runExecCommand(args); err != nil {
 			exitWithError(err)
 		}
+	case "tree":
+		if err := runTreeCommand(args); err != nil {
+			exitWithError(err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %q\n\n", cmd)
 		printHelp()
@@ -1066,6 +1070,37 @@ func enrichGemsWithGroups(gemfilePath string, parsed *lockfile.Lockfile) error {
 		if groups, found := gemGroups[parsed.PathSpecs[i].Name]; found {
 			parsed.PathSpecs[i].Groups = groups
 		}
+	}
+
+	return nil
+}
+
+func runTreeCommand(args []string) error {
+	fs := flag.NewFlagSet("tree", flag.ContinueOnError)
+	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	parsed, err := loadLockfile(*lockfilePath)
+	if err != nil {
+		return err
+	}
+
+	// Enrich with group information from Gemfile
+	gemfilePath := detectGemfileFromLock(*lockfilePath)
+	if gemfilePath != "" {
+		if err := enrichGemsWithGroups(gemfilePath, parsed); err != nil {
+			// Non-fatal: continue without group info
+			fmt.Fprintf(os.Stderr, "Warning: could not read Gemfile groups: %v\n", err)
+		}
+	}
+
+	// Print tree with colors if TTY, plain if not
+	if isTTY() {
+		printDependencyTree(parsed.GemSpecs)
+	} else {
+		printDependencyTreePlain(parsed.GemSpecs)
 	}
 
 	return nil
