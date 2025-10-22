@@ -50,7 +50,7 @@ jobs:
 
     - name: Build binary
       working-directory: ore-light
-      run: go build -o orelight .
+      run: go build -o orelight ./cmd/ore
 
     - name: Test add command help
       working-directory: ore-light
