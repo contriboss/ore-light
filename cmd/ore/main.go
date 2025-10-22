@@ -283,6 +283,9 @@ func runInstallCommand(args []string) error {
 		gems = filterGemsByGroupsAndDependencies(gems, parsed.GemSpecs, excludeGroups)
 	}
 
+	// Filter by current platform
+	gems = filterGemsByPlatform(gems)
+
 	// Download regular gems from rubygems.org
 	if len(gems) > 0 {
 		downloadReport, err := dm.DownloadAll(ctx, gems, *force)
@@ -883,6 +886,89 @@ func filterGemsByGroupsAndDependencies(gems []lockfile.GemSpec, allGems []lockfi
 	}
 
 	return result
+}
+
+// filterGemsByPlatform filters gems to only include compatible platforms
+func filterGemsByPlatform(gems []lockfile.GemSpec) []lockfile.GemSpec {
+	currentPlatform := detectCurrentPlatform()
+
+	var filtered []lockfile.GemSpec
+	for _, gem := range gems {
+		// Keep pure Ruby gems (no platform constraint)
+		if gem.Platform == "" {
+			filtered = append(filtered, gem)
+			continue
+		}
+
+		// Keep gems matching current platform
+		if platformMatches(gem.Platform, currentPlatform) {
+			filtered = append(filtered, gem)
+		}
+	}
+	return filtered
+}
+
+// detectCurrentPlatform returns the current platform string compatible with RubyGems
+func detectCurrentPlatform() string {
+	// Try using Ruby to get the exact platform if available
+	cmd := exec.Command("ruby", "-e", "require 'rbconfig'; puts RbConfig::CONFIG['arch']")
+	if output, err := cmd.Output(); err == nil {
+		platform := strings.TrimSpace(string(output))
+		if platform != "" {
+			return platform
+		}
+	}
+
+	// Fallback to Go's runtime detection
+	// Map Go's GOOS/GOARCH to RubyGems platform strings
+	arch := runtime.GOARCH
+	os := runtime.GOOS
+
+	// Map Go arch to Ruby arch
+	rubyArch := arch
+	switch arch {
+	case "amd64":
+		rubyArch = "x86_64"
+	case "arm64":
+		rubyArch = "arm64"
+	case "386":
+		rubyArch = "x86"
+	}
+
+	// Map Go OS to Ruby OS
+	rubyOS := os
+	switch os {
+	case "darwin":
+		rubyOS = "darwin"
+	case "linux":
+		rubyOS = "linux"
+	case "windows":
+		rubyOS = "mingw32"
+	}
+
+	return fmt.Sprintf("%s-%s", rubyArch, rubyOS)
+}
+
+// platformMatches checks if a gem platform matches the current platform
+func platformMatches(gemPlatform, currentPlatform string) bool {
+	// Exact match
+	if gemPlatform == currentPlatform {
+		return true
+	}
+
+	// Platform variants - extract base platform components
+	// Examples: arm64-darwin-24 matches arm64-darwin
+	//           x86_64-linux-gnu matches x86_64-linux
+	gemParts := strings.Split(gemPlatform, "-")
+	currentParts := strings.Split(currentPlatform, "-")
+
+	// Need at least arch-os
+	if len(gemParts) < 2 || len(currentParts) < 2 {
+		return false
+	}
+
+	// Match arch and os (first two components)
+	return gemParts[0] == currentParts[0] && gemParts[1] == currentParts[1]
 }
 
 // filterGitGemsByGroups filters git gems by excluding specified groups

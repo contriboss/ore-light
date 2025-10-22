@@ -3,7 +3,7 @@ GEM
   specs:
     diff-lcs (1.6.2)
     rake (13.3.0)
-    rspec (3.12.0)
+    rspec (3.13.2)
       rspec-core
       rspec-expectations
       rspec-mocks
@@ -20,6 +20,7 @@ GEM
 
 
 PLATFORMS
+  arm64-darwin24
   ruby
 
 
