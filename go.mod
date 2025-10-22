@@ -48,3 +48,9 @@ require (
 	mvdan.cc/sh/v3 v3.10.0 // indirect
 )
 
+replace (
+	github.com/contriboss/gemfile-go => ../gemfile-go
+	github.com/contriboss/ruby-extension-go => ../ruby-extension-go
+	github.com/contriboss/rubygems-client-go => ../rubygems-client-go
+)
+

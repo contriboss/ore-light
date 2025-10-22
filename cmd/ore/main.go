@@ -17,6 +17,7 @@ import (
 	"github.com/contriboss/ore-light/cmd/ore/commands"
 	"github.com/contriboss/ore-light/internal/extensions"
 	"github.com/contriboss/ore-light/internal/resolver"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -81,6 +82,10 @@ func main() {
 		}
 	case "clean":
 		if err := commands.RunClean(args); err != nil {
+			exitWithError(err)
+		}
+	case "config":
+		if err := commands.RunConfig(args); err != nil {
 			exitWithError(err)
 		}
 	case "lock":
@@ -156,6 +161,7 @@ Commands:
   show         Show the source location of a gem in the bundle
   platform     Display platform compatibility information
   clean        Remove unused gems from vendor directory
+  config       Get and set Bundler configuration options
   lock         Regenerate Gemfile.lock from Gemfile
   download     Prefetch gems defined in Gemfile.lock (no Ruby required)
   install      Download (if needed) and unpack gems into a vendor directory
@@ -486,16 +492,129 @@ func defaultLockfilePath() string {
 }
 
 func defaultVendorDir() string {
+	// Priority 1: Environment variables
 	if env := os.Getenv("ORE_VENDOR_DIR"); env != "" {
 		return env
 	}
 	if env := os.Getenv("ORE_LIGHT_VENDOR_DIR"); env != "" {
 		return env
 	}
+
+	// Priority 2: Ore config file
 	if appConfig != nil && appConfig.VendorDir != "" {
 		return appConfig.VendorDir
 	}
-	return filepath.Join("vendor", "ore")
+
+	// Priority 3: Bundler .bundle/config
+	if bundlePath := readBundleConfigPath(); bundlePath != "" {
+		rubyVersion := detectRubyVersionForVendor()
+		if rubyVersion != "" {
+			return filepath.Join(bundlePath, "ruby", rubyVersion)
+		}
+		return bundlePath
+	}
+
+	// Priority 4: System GEM_HOME (Bundler default)
+	if gemDir := getSystemGemDir(); gemDir != "" {
+		return gemDir
+	}
+
+	// Fallback: vendor/bundle
+	return filepath.Join("vendor", "bundle")
+}
+
+func detectRubyVersionForVendor() string {
+	// Try .ruby-version file first
+	if data, err := os.ReadFile(".ruby-version"); err == nil {
+		version := string(data)
+		// Trim whitespace
+		for i := len(version) - 1; i >= 0; i-- {
+			if version[i] == '\n' || version[i] == '\r' || version[i] == ' ' {
+				version = version[:i]
+			} else {
+				break
+			}
+		}
+		if len(version) > 0 {
+			return toMajorMinor(version)
+		}
+	}
+
+	// Try ruby -v command
+	cmd := exec.Command("ruby", "-v")
+	output, err := cmd.Output()
+	if err == nil {
+		// Parse "ruby 3.4.7 (2025-10-08 revision ...) [platform]"
+		str := string(output)
+		if len(str) > 5 && str[:4] == "ruby" {
+			// Find version between "ruby " and " ("
+			start := 5
+			end := start
+			for end < len(str) && str[end] != ' ' && str[end] != '(' {
+				end++
+			}
+			if end > start {
+				return toMajorMinor(str[start:end])
+			}
+		}
+	}
+
+	return ""
+}
+
+// toMajorMinor converts "3.4.7" to "3.4.0" (Bundler convention)
+func toMajorMinor(version string) string {
+	// Split by dots and keep only major.minor
+	parts := []string{}
+	current := ""
+	for i := 0; i < len(version); i++ {
+		if version[i] == '.' {
+			parts = append(parts, current)
+			current = ""
+		} else {
+			current += string(version[i])
+		}
+	}
+	if current != "" {
+		parts = append(parts, current)
+	}
+
+	// Return major.minor.0
+	if len(parts) >= 2 {
+		return parts[0] + "." + parts[1] + ".0"
+	}
+	return version
+}
+
+// readBundleConfigPath reads BUNDLE_PATH from .bundle/config
+func readBundleConfigPath() string {
+	data, err := os.ReadFile(".bundle/config")
+	if err != nil {
+		return ""
+	}
+
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return ""
+	}
+
+	if path, ok := config["BUNDLE_PATH"].(string); ok {
+		return path
+	}
+
+	return ""
+}
+
+// getSystemGemDir returns the system gem directory from `gem environment gemdir`
+func getSystemGemDir() string {
+	cmd := exec.Command("gem", "environment", "gemdir")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	gemDir := strings.TrimSpace(string(output))
+	return gemDir
 }
 
 func defaultGemfilePath() string {

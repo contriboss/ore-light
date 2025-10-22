@@ -21,23 +21,25 @@ Ore Light is the streamlined distribution of Ore – focused on fast gem install
 # Install Ore Light (no Ruby required for download)
 curl -Ls https://raw.githubusercontent.com/contriboss/ore-light/main/scripts/install.sh | bash
 
-# Warm the cache and unpack gems into vendor/ore
-ore install --lockfile=Gemfile.lock --vendor=vendor/ore
+# Install gems (automatically uses vendor/bundle/ruby/<version>)
+ore install
 
 # Run Ruby code with ore-managed environment
-ore exec --vendor=vendor/ore -- ruby -Iconfig -e "puts 'hello'"
+ore exec -- ruby -Iconfig -e "puts 'hello'"
 ```
 
 ### Typical Workflow
 
-1. Use `ore download` or `ore install` to fetch gems in parallel and warm the cache.
-2. Ore Light unpacks gems into a vendor directory that can be mounted in CI/CD or Docker without requiring Ruby tooling.
-3. Run `ore exec` (or your own Ruby entrypoint) with the vendor directory on the load path.
-4. Rinse and repeat across CI/CD pipelines that previously required Ruby just to pull dependencies.
+1. Use `ore download` or `ore install` to fetch gems in parallel.
+2. Ore Light respects Bundler configuration:
+   - If `.bundle/config` has a path configured (via `ore config --local path vendor/bundle`), gems install there
+   - Otherwise, gems install to your system gem directory (same as regular `bundle install`)
+3. Run `ore exec` (or use `bundle exec`) to execute commands with the correct gem paths.
+4. For CI/CD isolation, configure a local vendor path: `ore config --local path vendor/bundle`
 
 ## Commands
 
-Ore Light provides complete Bundler command parity with 17 commands:
+Ore Light provides complete Bundler command parity with 18 commands:
 
 **Project Setup:**
 - `ore init` - Generate a new Gemfile
@@ -65,6 +67,9 @@ Ore Light provides complete Bundler command parity with 17 commands:
 
 **Execution:**
 - `ore exec` - Run commands via `bundle exec` with ore-managed environment
+
+**Configuration:**
+- `ore config` - Get and set Bundler configuration options (works without Ruby/Bundler installed)
 
 **Utilities:**
 - `ore cache` - Inspect or prune the gem cache
@@ -99,21 +104,50 @@ If Ruby is not available, Ore Light will automatically skip extension building w
 
 ### Configuration
 
-Ore loads optional TOML configuration files with project settings overriding user settings:
+#### Installation Path Priority
+
+Ore Light determines where to install gems using this priority order:
+
+1. **Environment variables**: `ORE_VENDOR_DIR` or `ORE_LIGHT_VENDOR_DIR`
+2. **Ore config file**: `vendor_dir` in `.ore.toml` or `~/.config/ore/config.toml`
+3. **Bundler config**: `BUNDLE_PATH` from `.bundle/config`
+4. **System default**: Output of `gem environment gemdir`
+
+**Configuration Examples:**
+
+```bash
+# Set install path without needing Ruby/Bundler installed
+ore config --local path vendor/bundle
+ore install
+
+# Or use Bundler if you have it
+bundle config set --local path vendor/bundle
+ore install
+
+# List current configuration
+ore config --list
+
+# Override with environment variable
+ORE_VENDOR_DIR=/tmp/gems ore install
+```
+
+#### Configuration Files
+
+Ore loads optional TOML configuration files:
 
 - User config: `~/.config/ore/config.toml` (or `$XDG_CONFIG_HOME/ore/config.toml`)
 - Project config: `./.ore.toml`
 
-Command-line flags and environment variables still take precedence. Supported keys today:
+Supported keys:
 
 ```toml
-vendor_dir = "vendor/ore"
+vendor_dir = "/custom/path"
 cache_dir = "/path/to/cache"
 gem_mirror = "https://mirror.example.com"
 gemfile = "Gemfile.custom"
 ```
 
-Environment variables:
+#### Environment Variables
 - `ORE_SKIP_EXTENSIONS` / `ORE_LIGHT_SKIP_EXTENSIONS` - Set to `1`, `true`, or `yes` to skip native extension compilation
 - `ORE_VENDOR_DIR` / `ORE_LIGHT_VENDOR_DIR` - Override default vendor directory
 - `ORE_CACHE_DIR` / `ORE_LIGHT_CACHE_DIR` - Override default cache directory
