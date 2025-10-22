@@ -63,7 +63,7 @@ func RunConfig(args []string) error {
 }
 
 func showConfigUsage() error {
-	fmt.Println(`Usage: ore config [options] <key> [<value>]
+	fmt.Print(`Usage: ore config [options] <key> [<value>]
 
 Options:
   --local     Use local config (.bundle/config)

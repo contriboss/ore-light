@@ -248,11 +248,11 @@ STDOUT.binmode
 		t.Fatalf("expected lib file to exist: %v", err)
 	}
 
-	binLink := filepath.Join(vendorDir, "bin", "fake")
-	if info, err := os.Lstat(binLink); err != nil {
-		t.Fatalf("expected bin symlink to exist: %v", err)
-	} else if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("expected bin/fake to be a symlink")
+	binWrapper := filepath.Join(vendorDir, "bin", "fake")
+	if data, err := os.ReadFile(binWrapper); err != nil {
+		t.Fatalf("expected bin wrapper to exist: %v", err)
+	} else if !strings.Contains(string(data), "#!/usr/bin/env ruby") {
+		t.Fatalf("expected bin/fake to be a Ruby wrapper script, got: %s", data)
 	}
 
 	marshalPath := filepath.Join(vendorDir, "specifications", "cache", fmt.Sprintf("%s.gemspec.marshal", spec.FullName()))
