@@ -6,11 +6,14 @@ Ore Light is the streamlined distribution of Ore – focused on fast gem install
 
 ## Why Ore Light?
 
-- **Complete Bundler parity**: 17 commands covering all essential Bundler workflows
+- **Complete Bundler parity**: 21 commands covering all essential Bundler workflows
 - **Multi-source support**: Install gems from rubygems.org, gem.coop, private servers, git repos, and local paths
 - **Bundler-aware, not Bundler-bound**: Understands the Bundler ecosystem but performs downloads, caching, and installs without invoking `bundle install`
 - **Fast by default**: Go's concurrency gives parallel downloads, connection pooling, and intelligent caching with zero Ruby requirement
 - **Native extension support**: Automatically builds C/C++/Rust extensions supporting gems like nokogiri, pg, sqlite3
+- **Security auditing**: Scan for vulnerabilities using bundler-audit's database (no Ruby required)
+- **Dependency visualization**: Beautiful colored tree view of gem dependencies
+- **Platform filtering**: Only downloads gems for your current platform (arm64-darwin, x86_64-linux, etc.)
 - **Proper binstubs**: Generates Ruby wrapper scripts (not symlinks) that work without `bundle exec`
 - **Group filtering**: Install production gems only with `--without development,test`
 - **Modular foundation**: Built on extracted libraries (`gemfile-go`, `rubygems-client-go`) with PubGrub dependency resolution
@@ -39,7 +42,7 @@ ore exec -- ruby -Iconfig -e "puts 'hello'"
 
 ## Commands
 
-Ore Light provides complete Bundler command parity with 18 commands:
+Ore Light provides complete Bundler command parity with 21 commands:
 
 **Project Setup:**
 - `ore init` - Generate a new Gemfile
@@ -56,9 +59,12 @@ Ore Light provides complete Bundler command parity with 18 commands:
 - `ore outdated` - Show gems with newer versions available
 - `ore show` - Show the source location of a gem
 - `ore platform` - Display platform compatibility information
+- `ore tree` - Display colorful dependency tree visualization
 
 **Validation:**
 - `ore check` - Verify all gems are installed
+- `ore audit` - Scan for security vulnerabilities (bundler-audit compatible)
+- `ore audit update` - Update vulnerability database
 
 **Installation & Cleanup:**
 - `ore download` - Prefetch gems (no Ruby required) and warm the cache
@@ -101,6 +107,43 @@ ore install
 ```
 
 If Ruby is not available, Ore Light will automatically skip extension building with a warning.
+
+### Dependency Visualization
+
+View your gem dependencies as a colorful hierarchical tree:
+
+```bash
+ore tree
+```
+
+Features:
+- Unicode box-drawing characters for clear hierarchy
+- Color-coded gem names, versions, and platforms
+- Shows groups (default, test, development)
+- Platform indicators (e.g., `[arm64-darwin]`)
+- Circular dependency detection
+- Works with any TTY, falls back to plain text in pipes
+
+### Security Auditing
+
+Scan your gems for known security vulnerabilities using the same database as bundler-audit:
+
+```bash
+# Update the vulnerability database
+ore audit update
+
+# Scan Gemfile.lock for vulnerabilities
+ore audit
+```
+
+Features:
+- Compatible with bundler-audit's ruby-advisory-db
+- No Ruby required for scanning
+- Colorful output with severity levels (Critical/High/Medium/Low)
+- Shows CVE numbers, affected versions, and solutions
+- Database stored at `~/.local/share/ruby-advisory-db`
+
+**Note:** This is a Go implementation extracted from ore_reference, providing the same workflow as bundler-audit without requiring Ruby.
 
 ### Configuration
 
