@@ -200,6 +200,52 @@ gemfile = "Gemfile.custom"
 
 The legacy repository now lives as `ore_reference`. It contains the full experimental feature surface, alternative providers, and advanced orchestration layers. Ore Light copies only the essentials needed for adoption, so the README, CLI surface, and docs will stay focused on the first run experience.
 
+## Docker
+
+Run ore-light in a container without installing Go or Rust:
+
+```bash
+# Basic usage (installs gems using Gemfile.lock)
+docker run --rm -v $(pwd):/workspace ghcr.io/contriboss/ore-light:latest install
+
+# With persistent cache
+docker run --rm \
+  -v $(pwd):/workspace \
+  -v ore-cache:/cache \
+  -e ORE_CACHE_DIR=/cache \
+  ghcr.io/contriboss/ore-light:latest install
+
+# Skip native extensions (no Ruby in image)
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/contriboss/ore-light:latest install --skip-extensions
+
+# Check version
+docker run --rm ghcr.io/contriboss/ore-light:latest version
+```
+
+**Local Development:**
+
+```bash
+# Build image locally
+docker build -t ore-light:local .
+
+# Test it
+docker run --rm -v $(pwd):/workspace ore-light:local version
+
+# Use docker-compose
+docker-compose run --rm ore install
+```
+
+**Multi-architecture Build (for manual publishing):**
+
+```bash
+# Requires Docker Buildx
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/contriboss/ore-light:latest --push .
+```
+
+**Note:** The Docker image uses distroless base (~2MB) and doesn't include Ruby. For gems with native extensions, either use `--skip-extensions` flag or mount Ruby from the host system.
+
 ## Development
 
 ```bash

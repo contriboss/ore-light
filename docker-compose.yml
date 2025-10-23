@@ -1,0 +1,24 @@
+services:
+  ore:
+    # Use published image (change to build: . for local testing)
+    image: ghcr.io/contriboss/ore-light:latest
+    # For local development, uncomment:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    container_name: ore-light
+    volumes:
+      # Mount your project directory
+      - .:/workspace
+      # Persist cache between runs
+      - ore-cache:/cache
+    working_dir: /workspace
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - ORE_CACHE_DIR=/cache
+    # Note: Distroless has no shell, override entrypoint carefully
+    # For interactive use, switch to alpine-based image or use ore commands directly
+
+volumes:
+  ore-cache:
+    driver: local

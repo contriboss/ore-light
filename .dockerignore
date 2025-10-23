@@ -1,0 +1,43 @@
+# Git
+.git/
+.github/
+.gitignore
+
+# Build artifacts
+bin/
+ore
+orelight
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Vendor
+vendor/
+
+# Documentation (except README)
+*.md
+!README.md
+STORY.md
+
+# Test files
+*_test.go
+testdata/
+
+# Reference repos
+bundler-audit-reference/
+ruby-advisory-db-reference/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Temporary files
+tmp/
+*.tmp
