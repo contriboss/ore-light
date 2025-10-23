@@ -15,6 +15,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// Ruby developers: This is like a Ruby class with instance variables
+// Go uses structs instead of classes - no inheritance, just composition
 type downloadManager struct {
 	cacheDir string
 	baseURL  string
@@ -22,6 +24,8 @@ type downloadManager struct {
 	workers  int
 }
 
+// This is like a thread-safe Ruby object with attr_accessor methods
+// mu (mutex) protects concurrent writes - Ruby's Thread::Mutex equivalent
 type downloadReport struct {
 	Total      int
 	Downloaded int
@@ -59,13 +63,22 @@ func (m *downloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSp
 	var report downloadReport
 	report.Total = len(gems)
 
+	// Ruby developers: errgroup is like Ruby's concurrent-ruby gem
+	// It manages goroutines and collects errors - similar to ThreadPoolExecutor
+	// Go's concurrency model: goroutines (lightweight threads) + channels (message passing)
 	g, ctx := errgroup.WithContext(ctx)
-	semaphore := make(chan struct{}, m.workers)
+	// Semaphore pattern using buffered channels - limits concurrent downloads
+	// Ruby's Concurrent::Semaphore, but using Go's channel semantics
+	semaphore := make(chan struct{}, m.workers) // Buffered channel = max concurrent
 
 	for _, gem := range gems {
+		// Ruby developers: This is a Go gotcha! We must capture loop variables
+		// Unlike Ruby blocks, Go closures can capture changing variables
 		gem := gem
 
+		// g.Go is like spawning a thread/fiber - runs concurrently
 		g.Go(func() error {
+			// This select is like Ruby's Timeout.timeout but more explicit
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -78,6 +91,7 @@ func (m *downloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSp
 				return err
 			}
 
+			// Mutex.Lock/Unlock is like Ruby's synchronize { } block
 			report.mu.Lock()
 			if downloaded {
 				report.Downloaded++
@@ -89,6 +103,7 @@ func (m *downloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSp
 		})
 	}
 
+	// Wait for all goroutines - like Thread.join in Ruby
 	err := g.Wait()
 	return report, err
 }

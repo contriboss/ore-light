@@ -17,6 +17,8 @@ import (
 	"github.com/contriboss/ore-light/internal/resolver"
 )
 
+// Ruby developers: This is like a result object from bundle install
+// Tracks what was installed, skipped, and extension build results
 type installReport struct {
 	Total             int
 	Installed         int

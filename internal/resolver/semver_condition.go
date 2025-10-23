@@ -10,6 +10,11 @@ import (
 )
 
 // SemverCondition implements pubgrub.Condition using semver constraints
+//
+// Ruby developers: Go interfaces are implicit - no "include" or "implements" keyword!
+// If a type has the right methods, it satisfies the interface automatically.
+// This is like Ruby's duck typing, but checked at compile time.
+// pubgrub.Condition requires: Satisfies(Version) bool and String() string
 type SemverCondition struct {
 	constraint *semver.Constraints
 	original   string

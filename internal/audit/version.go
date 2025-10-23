@@ -6,12 +6,19 @@ import (
 	"strings"
 )
 
-// MatchesVersion checks if a gem version matches a version constraint
-// Supports Ruby gem version constraints: >=, <=, >, <, ~>, =, !=
+// MatchesVersion implements Ruby's version constraint matching in Go.
+// Ruby developers: This is like Gem::Requirement.satisfied_by?
+// Parses Ruby gem version constraints (>=, <=, >, <, ~>, =, !=)
+//
+// Why this exists: Ruby's version constraints need to work identically in Go.
+// Go doesn't have Ruby's flexible string operators, so we parse manually.
 func MatchesVersion(version string, constraint string) (bool, error) {
 	constraint = strings.TrimSpace(constraint)
 
 	// Handle multiple constraints separated by comma
+	// This is like Gem::Requirement.new([">= 1.0", "< 2.0"])
+	// Ruby developers: Go doesn't have operator overloading, so we recursively
+	// check each constraint. This is explicit recursion vs Ruby's implicit iteration.
 	if strings.Contains(constraint, ",") {
 		parts := strings.Split(constraint, ",")
 		for _, part := range parts {
@@ -20,7 +27,7 @@ func MatchesVersion(version string, constraint string) (bool, error) {
 				return false, err
 			}
 			if !matches {
-				return false, nil
+				return false, nil // Go requires explicit early returns
 			}
 		}
 		return true, nil

@@ -9,11 +9,16 @@ import (
 )
 
 // RubyGemsSource implements pubgrub.Source using the RubyGems.org API
+//
+// Ruby developers: This is a concurrent-safe cache using Go's sync.RWMutex.
+// Unlike Ruby's Thread::Mutex, RWMutex allows multiple readers OR one writer.
+// It's like ActiveSupport's Concurrent::Map but built into the language.
+// The struct is thread-safe by design - not by accident!
 type RubyGemsSource struct {
 	client    *rubygemsclient.Client
-	cache     map[string]map[string][]pubgrub.Term // cache[gemName][version] = dependencies
-	mu        sync.RWMutex
-	sourceURL string // The source URL this client queries
+	cache     map[string]map[string][]pubgrub.Term // Nested map requires careful locking
+	mu        sync.RWMutex                         // RWMutex = Read-Write mutex for performance
+	sourceURL string                               // The source URL this client queries
 }
 
 // NewRubyGemsSource creates a new RubyGems source for dependency resolution

@@ -12,7 +12,14 @@ import (
 	"github.com/tinyrange/tinyrange/experimental/pubgrub"
 )
 
-// GenerateLockfile resolves dependencies and generates a lockfile
+// GenerateLockfile resolves gem dependencies and writes a lockfile.
+//
+// Ruby developers: This is like running `bundle lock` or `bundle install`
+// Resolves all gem dependencies using PubGrub algorithm and writes Gemfile.lock
+//
+// Why this exists: Bundler is Ruby-specific. We need a Go implementation
+// that can resolve dependencies without Ruby installed. PubGrub is the
+// state-of-the-art dependency resolution algorithm (also used by Dart's pub).
 func GenerateLockfile(gemfilePath string) error {
 	// Parse Gemfile
 	parser := gemfile.NewGemfileParser(gemfilePath)
@@ -22,6 +29,7 @@ func GenerateLockfile(gemfilePath string) error {
 	}
 
 	// Create RubyGems sources for different gem servers
+	// This is like Bundler's source management (rubygems.org, custom mirrors, etc.)
 	sources := make(map[string]*RubyGemsSource)
 	getSource := func(url string) *RubyGemsSource {
 		if url == "" {

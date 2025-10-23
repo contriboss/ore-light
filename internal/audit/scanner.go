@@ -6,13 +6,15 @@ import (
 	"github.com/contriboss/gemfile-go/lockfile"
 )
 
-// Vulnerability represents a found security vulnerability
+// Ruby developers: This is like a Ruby data class or Struct
+// Represents a found vulnerability - similar to what bundler-audit returns
 type Vulnerability struct {
 	Gem      lockfile.GemSpec
 	Advisory Advisory
 }
 
-// Scanner scans gems for security vulnerabilities
+// This is like a Ruby service object that encapsulates business logic
+// Scanner performs security scans using a vulnerability database
 type Scanner struct {
 	Database *Database
 }

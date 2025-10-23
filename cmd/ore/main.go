@@ -29,6 +29,8 @@ var (
 )
 
 func main() {
+	// Ruby developers: This is like parsing ARGV in a Ruby CLI script
+	// Go requires explicit length checks - no implicit nil handling like Ruby's ARGV[0]
 	if len(os.Args) < 2 {
 		printHelp()
 		return
@@ -37,6 +39,9 @@ func main() {
 	cmd := os.Args[1]
 	args := os.Args[2:]
 
+	// This is like Ruby's case/when, but switch in Go doesn't fall through by default!
+	// In Ruby you need 'when' to match multiple conditions; Go evaluates once and exits.
+	// No need for 'break' statements - they're implicit. Use 'fallthrough' for fall-through.
 	switch cmd {
 	case "--help", "-h", "help":
 		printHelp()
@@ -680,6 +685,8 @@ func defaultGemfilePath() string {
 }
 
 func loadLockfile(lockfilePath string) (*lockfile.Lockfile, error) {
+	// Ruby developers: This is like File.open with explicit error handling
+	// defer is like Ruby's ensure block but scoped to the current function
 	file, err := os.Open(lockfilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open lockfile: %w", err)
@@ -708,11 +715,14 @@ func deduplicateGemSpecs(specs []lockfile.GemSpec) []lockfile.GemSpec {
 		return nil
 	}
 
+	// This is like Ruby's specs.uniq_by(&:full_name)
+	// Go uses maps for deduplication instead of built-in array methods
 	unique := make(map[string]lockfile.GemSpec, len(specs))
 	for _, spec := range specs {
 		unique[spec.FullName()] = spec
 	}
 
+	// Convert map back to slice - Go doesn't have .values method
 	result := make([]lockfile.GemSpec, 0, len(unique))
 	for _, spec := range unique {
 		result = append(result, spec)

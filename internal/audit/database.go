@@ -14,7 +14,8 @@ const (
 	DatabaseURL = "https://github.com/rubysec/ruby-advisory-db.git"
 )
 
-// Database represents the ruby-advisory-db
+// Ruby developers: This is like a Repository pattern object
+// Manages the ruby-advisory-db git repository
 type Database struct {
 	Path string
 }

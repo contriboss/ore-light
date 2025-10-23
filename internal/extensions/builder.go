@@ -12,7 +12,8 @@ import (
 	rubyext "github.com/contriboss/ruby-extension-go"
 )
 
-// BuildConfig contains configuration for extension builds
+// Ruby developers: This is like a configuration object for native extensions
+// Similar to what bundle install uses when compiling C extensions
 type BuildConfig struct {
 	SkipExtensions bool
 	Verbose        bool
@@ -20,7 +21,8 @@ type BuildConfig struct {
 	RubyPath       string
 }
 
-// Builder wraps the ruby-extension-go builder factory
+// This is like RubyGems' ext builder but as a Go service object
+// Wraps ruby-extension-go for building native extensions (C, Rust, etc.)
 type Builder struct {
 	factory *rubyext.BuilderFactory
 	config  *BuildConfig
