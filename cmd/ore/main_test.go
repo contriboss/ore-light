@@ -77,7 +77,14 @@ func TestVersionInfo(t *testing.T) {
 
 func TestConfigOverrides(t *testing.T) {
 	origCfg := appConfig
-	appConfig = &Config{VendorDir: "/tmp/vendor-test", CacheDir: "/tmp/cache-test", GemMirror: "https://mirror.test", Gemfile: "/tmp/CustomGemfile"}
+	appConfig = &Config{
+		VendorDir: "/tmp/vendor-test",
+		CacheDir:  "/tmp/cache-test",
+		GemSources: []SourceConfig{
+			{URL: "https://mirror.test", Fallback: ""},
+		},
+		Gemfile: "/tmp/CustomGemfile",
+	}
 	t.Cleanup(func() { appConfig = origCfg })
 
 	type envState struct {
@@ -122,8 +129,9 @@ func TestConfigOverrides(t *testing.T) {
 		t.Fatalf("expected cache dir from config, got %s", cache)
 	}
 
-	if mirror := defaultDownloadBaseURL(); mirror != "https://mirror.test" {
-		t.Fatalf("expected mirror from config, got %s", mirror)
+	sources := getGemSources()
+	if len(sources) != 1 || sources[0].URL != "https://mirror.test" {
+		t.Fatalf("expected gem source from config, got %v", sources)
 	}
 
 	if gemfile := defaultGemfilePath(); gemfile != "/tmp/CustomGemfile" {
@@ -166,7 +174,10 @@ func TestLoadGemSpecs(t *testing.T) {
 	// Quick sanity check: downloading with force=false should skip already cached non-existent case,
 	// so ensure the download manager builds a cache path without touching network.
 	cacheDir := t.TempDir()
-	dm, err := newDownloadManager(cacheDir, "https://example.com", defaultHTTPClient(), 1)
+	sourceConfigs := []SourceConfig{
+		{URL: "https://example.com", Fallback: ""},
+	}
+	dm, err := newDownloadManager(cacheDir, sourceConfigs, defaultHTTPClient(), 1)
 	if err != nil {
 		t.Fatalf("unexpected error creating download manager: %v", err)
 	}

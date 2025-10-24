@@ -145,6 +145,44 @@ Features:
 
 **Note:** This is a Go implementation extracted from ore_reference, providing the same workflow as bundler-audit without requiring Ruby.
 
+### Gem Source Fallback (v0.1.1+)
+
+Ore Light supports configuring multiple gem sources with automatic fallback when a primary source fails:
+
+**Features:**
+- Configure multiple gem sources with optional fallback URLs
+- Automatic retry with fallback source on network errors, 5xx responses, or rate limiting (429)
+- Support for authenticated sources (private gems, Sidekiq Pro, etc.)
+- Pre-flight health checks to verify source availability before downloads
+- Each source can have at most ONE fallback (no chaining)
+
+**Configuration Example** (in `~/.config/ore/config.toml` or `.ore.toml`):
+```toml
+# Primary internal mirror, fallback to rubygems.org
+[[gem_sources]]
+url = "http://internal-mirror.company.com"
+fallback = "https://rubygems.org"
+
+# Private gems with authentication
+[[gem_sources]]
+url = "https://token:@gems.contribsys.com"  # Sidekiq Pro
+fallback = "http://local-cache.dev"
+
+# Additional source without fallback
+[[gem_sources]]
+url = "https://gem.coop"
+```
+
+**Authentication:**
+- Token auth: `https://token:@gems.example.com`
+- Basic auth: `https://username:password@gems.example.com`
+
+When you run `ore install` or `ore download`, Ore Light will:
+1. Perform health checks on all configured sources
+2. Try downloading from the primary source
+3. If a retryable error occurs and a fallback is configured, automatically switch to the fallback
+4. Report which sources were used for successful downloads
+
 ### Configuration
 
 #### Installation Path Priority
@@ -186,15 +224,25 @@ Supported keys:
 ```toml
 vendor_dir = "/custom/path"
 cache_dir = "/path/to/cache"
-gem_mirror = "https://mirror.example.com"
 gemfile = "Gemfile.custom"
+
+# Configure gem sources with optional fallbacks (v0.1.1+)
+[[gem_sources]]
+url = "http://internal-mirror.company.com"
+fallback = "https://rubygems.org"
+
+[[gem_sources]]
+url = "https://token:@gems.contribsys.com"  # Private gems (e.g., Sidekiq Pro)
+fallback = "http://local-cache.dev"
+
+[[gem_sources]]
+url = "https://gem.coop"  # Standalone source without fallback
 ```
 
 #### Environment Variables
 - `ORE_SKIP_EXTENSIONS` / `ORE_LIGHT_SKIP_EXTENSIONS` - Set to `1`, `true`, or `yes` to skip native extension compilation
 - `ORE_VENDOR_DIR` / `ORE_LIGHT_VENDOR_DIR` - Override default vendor directory
 - `ORE_CACHE_DIR` / `ORE_LIGHT_CACHE_DIR` - Override default cache directory
-- `ORE_GEM_MIRROR` / `ORE_LIGHT_GEM_MIRROR` - Override gem download mirror
 
 ## Relationship to `ore_reference`
 

@@ -1,0 +1,23 @@
+# Example ore configuration file demonstrating gem source fallback
+# Copy to ~/.config/ore/config.toml or ./.ore.toml
+
+# Configure gem sources with fallbacks
+[[gem_sources]]
+url = "https://rubygems.org"
+# No fallback for the primary source
+
+# Example with private gem source and fallback
+# [[gem_sources]]
+# url = "https://token:@gems.contribsys.com"  # Sidekiq Pro
+# fallback = "https://rubygems.org"
+
+# Example with internal mirror
+# [[gem_sources]]
+# url = "http://internal-mirror.company.com"
+# fallback = "https://rubygems.org"
+
+# Optional: Set custom cache directory
+# cache_dir = "~/.cache/ore/gems"
+
+# Optional: Set custom vendor directory
+# vendor_dir = "vendor/bundle"

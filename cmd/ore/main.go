@@ -217,6 +217,9 @@ func runDownloadCommand(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Perform pre-flight health checks on gem sources
+	dm.CheckSourceHealth(ctx)
+
 	gems, err := loadGemSpecs(*lockfilePath)
 	if err != nil {
 		return err
@@ -258,6 +261,9 @@ func runInstallCommand(args []string) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Perform pre-flight health checks on gem sources
+	dm.CheckSourceHealth(ctx)
 
 	// Load both regular gems and git gems from lockfile
 	parsed, err := loadLockfile(*lockfilePath)
@@ -800,27 +806,29 @@ func newDefaultDownloadManager(workers int) (*downloadManager, error) {
 		return nil, err
 	}
 
-	baseURL := strings.TrimRight(defaultDownloadBaseURL(), "/")
+	sourceConfigs := getGemSources()
 	client := defaultHTTPClient()
 
-	return newDownloadManager(cacheDir, baseURL, client, workers)
+	return newDownloadManager(cacheDir, sourceConfigs, client, workers)
 }
 
 func defaultHTTPClient() *http.Client {
 	return &http.Client{Timeout: 60 * time.Second}
 }
 
-func defaultDownloadBaseURL() string {
-	if mirror := os.Getenv("ORE_GEM_MIRROR"); mirror != "" {
-		return mirror
+func getGemSources() []SourceConfig {
+	// Check if user has configured sources in TOML
+	if appConfig != nil && len(appConfig.GemSources) > 0 {
+		return appConfig.GemSources
 	}
-	if mirror := os.Getenv("ORE_LIGHT_GEM_MIRROR"); mirror != "" {
-		return mirror
+
+	// Default to rubygems.org if no sources configured
+	return []SourceConfig{
+		{
+			URL:      "https://rubygems.org",
+			Fallback: "",
+		},
 	}
-	if appConfig != nil && appConfig.GemMirror != "" {
-		return appConfig.GemMirror
-	}
-	return "https://rubygems.org/downloads"
 }
 
 func ensureBundlerAvailable() error {

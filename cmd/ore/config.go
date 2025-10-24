@@ -10,11 +10,16 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
+type SourceConfig struct {
+	URL      string `toml:"url"`
+	Fallback string `toml:"fallback,omitempty"`
+}
+
 type Config struct {
-	VendorDir string `toml:"vendor_dir"`
-	CacheDir  string `toml:"cache_dir"`
-	GemMirror string `toml:"gem_mirror"`
-	Gemfile   string `toml:"gemfile"`
+	VendorDir  string         `toml:"vendor_dir"`
+	CacheDir   string         `toml:"cache_dir"`
+	GemSources []SourceConfig `toml:"gem_sources"`
+	Gemfile    string         `toml:"gemfile"`
 }
 
 var appConfig = loadConfig()
@@ -57,8 +62,8 @@ func (c *Config) merge(other Config) {
 	if other.CacheDir != "" {
 		c.CacheDir = other.CacheDir
 	}
-	if other.GemMirror != "" {
-		c.GemMirror = other.GemMirror
+	if len(other.GemSources) > 0 {
+		c.GemSources = other.GemSources
 	}
 	if other.Gemfile != "" {
 		c.Gemfile = other.Gemfile

@@ -12,16 +12,16 @@ import (
 	"sync"
 
 	"github.com/contriboss/gemfile-go/lockfile"
+	"github.com/contriboss/ore-light/internal/sources"
 	"golang.org/x/sync/errgroup"
 )
 
 // Ruby developers: This is like a Ruby class with instance variables
 // Go uses structs instead of classes - no inheritance, just composition
 type downloadManager struct {
-	cacheDir string
-	baseURL  string
-	client   *http.Client
-	workers  int
+	cacheDir      string
+	sourceManager *sources.Manager
+	workers       int
 }
 
 // This is like a thread-safe Ruby object with attr_accessor methods
@@ -33,12 +33,12 @@ type downloadReport struct {
 	mu         sync.Mutex
 }
 
-func newDownloadManager(cacheDir, baseURL string, client *http.Client, workers int) (*downloadManager, error) {
+func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *http.Client, workers int) (*downloadManager, error) {
 	if cacheDir == "" {
 		return nil, fmt.Errorf("cache directory must be provided")
 	}
-	if baseURL == "" {
-		return nil, fmt.Errorf("download base URL must be provided")
+	if len(sourceConfigs) == 0 {
+		return nil, fmt.Errorf("at least one gem source must be configured")
 	}
 	if client == nil {
 		client = defaultHTTPClient()
@@ -51,11 +51,19 @@ func newDownloadManager(cacheDir, baseURL string, client *http.Client, workers i
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
+	// Convert our SourceConfig to sources.SourceConfig for the manager
+	managerConfigs := make([]sources.SourceConfig, len(sourceConfigs))
+	for i, config := range sourceConfigs {
+		managerConfigs[i] = sources.SourceConfig{
+			URL:      config.URL,
+			Fallback: config.Fallback,
+		}
+	}
+
 	return &downloadManager{
-		cacheDir: cacheDir,
-		baseURL:  strings.TrimRight(baseURL, "/"),
-		client:   client,
-		workers:  workers,
+		cacheDir:      cacheDir,
+		sourceManager: sources.NewManager(managerConfigs, client),
+		workers:       workers,
 	}, nil
 }
 
@@ -129,23 +137,6 @@ func (m *downloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 		return false, fmt.Errorf("failed to prepare cache dir: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/%s", m.baseURL, gemFileName(gem))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return false, fmt.Errorf("failed to create request for %s: %w", gem.FullName(), err)
-	}
-
-	resp, err := m.client.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("failed to download %s: %w", gem.FullName(), err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("unexpected status %d while downloading %s", resp.StatusCode, gem.FullName())
-	}
-
 	tempFile, err := os.CreateTemp(filepath.Dir(cachePath), "ore-*.gem")
 	if err != nil {
 		return false, fmt.Errorf("failed to create temp file: %w", err)
@@ -155,8 +146,10 @@ func (m *downloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 		os.Remove(tempFile.Name())
 	}()
 
-	if _, err := io.Copy(tempFile, resp.Body); err != nil {
-		return false, fmt.Errorf("failed to write gem %s: %w", gem.FullName(), err)
+	// Use SourceManager to download with fallback support
+	gemName := gemFileName(gem)
+	if err := m.sourceManager.DownloadGem(ctx, gemName, tempFile); err != nil {
+		return false, fmt.Errorf("failed to download %s: %w", gem.FullName(), err)
 	}
 
 	if err := tempFile.Close(); err != nil {
@@ -173,6 +166,29 @@ func (m *downloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 
 func (m *downloadManager) cachePathFor(gem lockfile.GemSpec) string {
 	return filepath.Join(m.cacheDir, gemFileName(gem))
+}
+
+// CheckSourceHealth performs pre-flight health checks on all configured sources
+func (m *downloadManager) CheckSourceHealth(ctx context.Context) {
+	fmt.Println("Checking gem source availability...")
+	m.sourceManager.CheckHealth(ctx)
+
+	// Print health status
+	sources := m.sourceManager.GetSources()
+	for _, source := range sources {
+		if source.Healthy {
+			fmt.Printf("  ✓ %s (healthy)\n", source.URL)
+		} else {
+			fmt.Printf("  ✗ %s (unavailable)\n", source.URL)
+		}
+		if source.Fallback != "" {
+			if source.FallbackHealthy {
+				fmt.Printf("    └─ fallback: %s (healthy)\n", source.Fallback)
+			} else {
+				fmt.Printf("    └─ fallback: %s (unavailable)\n", source.Fallback)
+			}
+		}
+	}
 }
 
 // cacheLocations returns all cache directories to check for gems
