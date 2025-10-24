@@ -40,7 +40,8 @@ jobs:
 
     - name: Create checksums
       run: |
-        sha256sum ore-* > checksums.txt
+        # Only checksum files, not directories
+        sha256sum ore-linux-* ore-darwin-* ore-windows-* > checksums.txt
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
