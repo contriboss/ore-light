@@ -1,0 +1,102 @@
+name: 'Setup Ore'
+description: 'Download and cache the ore binary for fast gem installation'
+author: 'Contriboss'
+
+branding:
+  icon: 'package'
+  color: 'red'
+
+inputs:
+  version:
+    description: 'Ore version to install (e.g., "0.1.0" or "latest")'
+    required: false
+    default: 'latest'
+  token:
+    description: 'GitHub token for API calls'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: 'The installed ore version'
+    value: ${{ steps.install.outputs.version }}
+  cache-hit:
+    description: 'Whether ore was restored from cache'
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Detect platform
+      id: platform
+      shell: bash
+      run: |
+        # Detect OS
+        case "$RUNNER_OS" in
+          Linux)   OS="linux" ;;
+          macOS)   OS="darwin" ;;
+          Windows) OS="windows" ;;
+          *)       echo "Unsupported OS: $RUNNER_OS" && exit 1 ;;
+        esac
+
+        # Detect architecture
+        ARCH="$(uname -m)"
+        case "$ARCH" in
+          x86_64)  ARCH="amd64" ;;
+          aarch64) ARCH="arm64" ;;
+          arm64)   ARCH="arm64" ;;
+          *)       echo "Unsupported architecture: $ARCH" && exit 1 ;;
+        esac
+
+        echo "os=$OS" >> $GITHUB_OUTPUT
+        echo "arch=$ARCH" >> $GITHUB_OUTPUT
+        echo "binary-name=ore-$OS-$ARCH$([ "$OS" = "windows" ] && echo '.exe' || echo '')" >> $GITHUB_OUTPUT
+
+    - name: Resolve version
+      id: resolve-version
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          VERSION=$(gh api repos/contriboss/ore-light/releases/latest --jq '.tag_name')
+        else
+          VERSION="${{ inputs.version }}"
+        fi
+        # Remove 'v' prefix if present
+        VERSION="${VERSION#v}"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Cache ore binary
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/bin/ore
+        key: ore-${{ steps.resolve-version.outputs.version }}-${{ steps.platform.outputs.os }}-${{ steps.platform.outputs.arch }}
+
+    - name: Download ore binary
+      if: steps.cache.outputs.cache-hit != 'true'
+      id: download
+      shell: bash
+      run: |
+        DOWNLOAD_URL="https://github.com/contriboss/ore-light/releases/download/${{ steps.resolve-version.outputs.tag }}/${{ steps.platform.outputs.binary-name }}"
+        echo "Downloading ore from: $DOWNLOAD_URL"
+
+        mkdir -p ~/.local/bin
+        curl -L "$DOWNLOAD_URL" -o ~/.local/bin/ore
+        chmod +x ~/.local/bin/ore
+
+    - name: Add ore to PATH
+      shell: bash
+      run: |
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Verify installation
+      id: install
+      shell: bash
+      run: |
+        ore version
+        INSTALLED_VERSION=$(ore version | awk '{print $3}')
+        echo "version=$INSTALLED_VERSION" >> $GITHUB_OUTPUT
+        echo "✅ Ore $INSTALLED_VERSION installed successfully"

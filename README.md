@@ -246,6 +246,88 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 **Note:** The Docker image uses distroless base (~2MB) and doesn't include Ruby. For gems with native extensions, either use `--skip-extensions` flag or mount Ruby from the host system.
 
+## GitHub Actions
+
+Use ore in your CI/CD workflows with automatic caching for faster builds:
+
+### Quick Start
+
+```yaml
+steps:
+  # Step 1: Install ore (before Ruby setup)
+  - uses: contriboss/ore-light/setup-ore@v1
+    with:
+      version: 'latest'  # or specific version like '0.1.0'
+
+  # Step 2: Setup Ruby WITHOUT bundler caching
+  - uses: ruby/setup-ruby@v1
+    with:
+      ruby-version: '3.4'
+      bundler-cache: false  # Important: Let ore handle gems
+
+  # Step 3: Install gems with ore (includes caching)
+  - uses: contriboss/ore-light/ore-install@v1
+```
+
+### Actions Available
+
+**`setup-ore`** - Installs and caches the ore binary
+- Inputs: `version` (default: `latest`)
+- Outputs: `version`, `cache-hit`
+- Supports: Linux (amd64, arm64), macOS (amd64, arm64), Windows (amd64)
+
+**`ore-install`** - Installs gems with intelligent caching
+- Inputs: `working-directory`, `cache-key-prefix`, `skip-extensions`
+- Outputs: `cache-hit`, `gems-installed`, `elapsed-time`
+- Caches based on: `Gemfile.lock` hash + Ruby version + platform
+
+### Full Example
+
+```yaml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ruby: ['3.2', '3.3', '3.4']
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: contriboss/ore-light/setup-ore@v1
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: false  # Critical!
+
+      - uses: contriboss/ore-light/ore-install@v1
+        id: ore
+
+      - name: Show stats
+        run: |
+          echo "Cache hit: ${{ steps.ore.outputs.cache-hit }}"
+          echo "Gems installed: ${{ steps.ore.outputs.gems-installed }}"
+          echo "Time: ${{ steps.ore.outputs.elapsed-time }}"
+
+      - name: Run tests
+        run: ore exec rake test
+```
+
+### Demo Workflow
+
+See [.github/workflows/ore-demo.yml](.github/workflows/ore-demo.yml) for a complete working example you can trigger manually.
+
+**Key Benefits:**
+- ⚡ **Fast**: Parallel gem downloads + intelligent caching
+- 🔄 **Compatible**: Works with existing Gemfile/Gemfile.lock
+- 🚀 **Simple**: Drop-in replacement for `ruby/setup-ruby` bundler caching
+- 🌍 **Multi-platform**: Linux, macOS, Windows support
+- 📦 **No Ruby required**: ore binary is pure Go
+
 ## Development
 
 ```bash

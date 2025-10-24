@@ -1,0 +1,104 @@
+name: 'Ore Install'
+description: 'Install Ruby gems using ore with intelligent caching'
+author: 'Contriboss'
+
+branding:
+  icon: 'download'
+  color: 'red'
+
+inputs:
+  working-directory:
+    description: 'Directory containing Gemfile'
+    required: false
+    default: '.'
+  cache-key-prefix:
+    description: 'Custom cache key prefix'
+    required: false
+    default: 'ore-gems'
+  cache-version:
+    description: 'Cache version for busting'
+    required: false
+    default: 'v1'
+  skip-extensions:
+    description: 'Skip building native extensions'
+    required: false
+    default: 'false'
+
+outputs:
+  cache-hit:
+    description: 'Whether gems were restored from cache'
+    value: ${{ steps.cache.outputs.cache-hit }}
+  gems-installed:
+    description: 'Number of gems installed'
+    value: ${{ steps.install.outputs.gems-installed }}
+  elapsed-time:
+    description: 'Time taken for installation'
+    value: ${{ steps.install.outputs.elapsed-time }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Get Ruby version
+      id: ruby-version
+      shell: bash
+      run: |
+        RUBY_VERSION=$(ruby -e 'puts RUBY_VERSION')
+        echo "version=$RUBY_VERSION" >> $GITHUB_OUTPUT
+        echo "Ruby version: $RUBY_VERSION"
+
+    - name: Generate cache key
+      id: cache-key
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        LOCKFILE_HASH=$(sha256sum Gemfile.lock | awk '{print $1}')
+        CACHE_KEY="${{ inputs.cache-key-prefix }}-${{ inputs.cache-version }}-${{ runner.os }}-ruby-${{ steps.ruby-version.outputs.version }}-${LOCKFILE_HASH}"
+        echo "key=$CACHE_KEY" >> $GITHUB_OUTPUT
+        echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
+        echo "${{ inputs.cache-key-prefix }}-${{ inputs.cache-version }}-${{ runner.os }}-ruby-${{ steps.ruby-version.outputs.version }}-" >> $GITHUB_OUTPUT
+        echo "${{ inputs.cache-key-prefix }}-${{ inputs.cache-version }}-${{ runner.os }}-" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Cache gems
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.working-directory }}/vendor/bundle
+        key: ${{ steps.cache-key.outputs.key }}
+        restore-keys: ${{ steps.cache-key.outputs.restore-keys }}
+
+    - name: Install gems with ore
+      id: install
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        START_TIME=$(date +%s)
+
+        # Build ore install command
+        INSTALL_CMD="ore install"
+        if [ "${{ inputs.skip-extensions }}" = "true" ]; then
+          INSTALL_CMD="$INSTALL_CMD --skip-extensions"
+        fi
+
+        # Run install and capture output
+        echo "Running: $INSTALL_CMD"
+        OUTPUT=$($INSTALL_CMD 2>&1 | tee /dev/stderr)
+
+        # Parse output for statistics
+        GEMS_INSTALLED=$(echo "$OUTPUT" | grep -oP 'Installed \K[0-9]+' || echo "0")
+
+        END_TIME=$(date +%s)
+        ELAPSED=$((END_TIME - START_TIME))
+
+        echo "gems-installed=$GEMS_INSTALLED" >> $GITHUB_OUTPUT
+        echo "elapsed-time=${ELAPSED}s" >> $GITHUB_OUTPUT
+
+        # Summary
+        echo "### Ore Install Summary 📦" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Cache Hit**: ${{ steps.cache.outputs.cache-hit }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Gems Installed**: $GEMS_INSTALLED" >> $GITHUB_STEP_SUMMARY
+        echo "- **Time Taken**: ${ELAPSED}s" >> $GITHUB_STEP_SUMMARY
+        echo "- **Working Directory**: ${{ inputs.working-directory }}" >> $GITHUB_STEP_SUMMARY
+
+        echo "✅ Gems installed successfully in ${ELAPSED}s"

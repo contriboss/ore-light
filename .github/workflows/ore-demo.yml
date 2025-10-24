@@ -1,0 +1,104 @@
+name: Ore Demo (Gem Installation with Caching)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ruby-version:
+        description: 'Ruby version to test'
+        required: false
+        default: '3.4'
+        type: choice
+        options:
+          - '3.4'
+          - '3.3'
+          - '3.2'
+      ore-version:
+        description: 'Ore version to use'
+        required: false
+        default: 'latest'
+
+jobs:
+  demo:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # Step 1: Install ore BEFORE Ruby setup
+      - name: Setup Ore
+        uses: ./setup-ore
+        id: setup-ore
+        with:
+          version: ${{ inputs.ore-version }}
+
+      # Step 2: Setup Ruby WITHOUT bundler caching
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: false  # Critical: Let ore handle gems instead of bundler
+
+      # Step 3: Create a test Gemfile
+      - name: Create test Gemfile
+        run: |
+          mkdir -p test-project
+          cd test-project
+          cat > Gemfile <<'EOF'
+          source "https://rubygems.org"
+
+          gem "rack", "~> 3.0"
+          gem "rackup", "~> 2.1"
+          gem "sinatra", "~> 4.0"
+          EOF
+
+          # Generate lockfile with ore
+          ore lock
+
+      # Step 4: Install gems with ore (with caching)
+      - name: Install Gems with Ore
+        id: ore-install
+        uses: ./ore-install
+        with:
+          working-directory: test-project
+
+      # Step 5: Show detailed results
+      - name: Display Cache Statistics
+        run: |
+          echo "## 📊 Ore Installation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Environment" >> $GITHUB_STEP_SUMMARY
+          echo "- **OS**: ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ruby**: ${{ inputs.ruby-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ore**: ${{ steps.setup-ore.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Performance" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cache Hit**: ${{ steps.ore-install.outputs.cache-hit }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Gems Installed**: ${{ steps.ore-install.outputs.gems-installed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time Taken**: ${{ steps.ore-install.outputs.elapsed-time }}" >> $GITHUB_STEP_SUMMARY
+
+      # Step 6: Verify gems work
+      - name: Test Installed Gems
+        working-directory: test-project
+        run: |
+          echo "Testing ore exec..."
+          ore exec ruby -e "
+            require 'bundler/setup'
+            require 'rack'
+            require 'sinatra/base'
+            puts '✅ All gems loaded successfully!'
+            puts 'Rack version: ' + Rack::VERSION
+            puts 'Sinatra version: ' + Sinatra::VERSION
+          "
+
+      # Step 7: Show ore cache stats
+      - name: Show Ore Cache Information
+        run: |
+          echo "### 🗄️ Ore Cache" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ore cache || true
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
