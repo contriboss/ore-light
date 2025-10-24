@@ -59,7 +59,19 @@ runs:
         GH_TOKEN: ${{ inputs.token }}
       run: |
         if [ "${{ inputs.version }}" = "latest" ]; then
-          VERSION=$(gh api repos/contriboss/ore-light/releases/latest --jq '.tag_name')
+          # Try to get latest release, fallback to current tag if in release workflow
+          VERSION=$(gh api repos/contriboss/ore-light/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
+          if [ -z "$VERSION" ]; then
+            # No releases yet - check if we're in a release workflow
+            if [ -n "$GITHUB_REF_NAME" ] && [[ "$GITHUB_REF_NAME" == v* ]]; then
+              VERSION="$GITHUB_REF_NAME"
+              echo "No releases found, using current tag: $VERSION"
+            else
+              echo "Error: No releases found and version set to 'latest'"
+              echo "Please specify a specific version or wait for the first release"
+              exit 1
+            fi
+          fi
         else
           VERSION="${{ inputs.version }}"
         fi
