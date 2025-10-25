@@ -65,6 +65,7 @@ Ore Light provides complete Bundler command parity with 21 commands:
 - `ore check` - Verify all gems are installed
 - `ore audit` - Scan for security vulnerabilities (bundler-audit compatible)
 - `ore audit update` - Update vulnerability database
+- `ore audit licenses` - Scan installed gems for license information
 
 **Installation & Cleanup:**
 - `ore download` - Prefetch gems (no Ruby required) and warm the cache
@@ -147,6 +148,27 @@ Features:
 - Database stored at `~/.local/share/ruby-advisory-db`
 
 **Note:** This is a Go implementation extracted from ore_reference, providing the same workflow as bundler-audit without requiring Ruby.
+
+### License Auditing
+
+Scan your installed gems to see their license information, grouped by license type:
+
+```bash
+# Scan installed gems for licenses
+ore audit licenses
+```
+
+Features:
+- Reads license info from installed gemspecs using Ruby
+- Groups gems by license type
+- Color-coded output:
+  - Green: Permissive licenses (MIT, Apache, BSD, ISC, Ruby, etc.)
+  - Yellow with ⚠️: Copyleft licenses (GPL, AGPL, LGPL)
+  - Red with ❌: Unknown or missing licenses
+- Shows total gem count
+- Helps identify licensing compliance issues
+
+**Note:** Requires Ruby to read gemspec files. Run `ore install` first to ensure gems are installed.
 
 ### Gem Source Fallback (v0.1.1+)
 

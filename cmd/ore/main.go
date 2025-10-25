@@ -1185,6 +1185,9 @@ func runTreeCommand(args []string) error {
 }
 
 func runAuditCommand(args []string) error {
+	if len(args) > 0 && args[0] == "licenses" {
+		return runAuditLicenses(args[1:])
+	}
 	if len(args) > 0 && args[0] == "update" {
 		return runAuditUpdate(args[1:])
 	}
@@ -1241,6 +1244,25 @@ func runAuditUpdate(args []string) error {
 	}
 
 	return db.Update()
+}
+
+func runAuditLicenses(args []string) error {
+	fs := flag.NewFlagSet("audit licenses", flag.ContinueOnError)
+	vendorDir := fs.String("vendor", defaultVendorDir(), "Path to installed gems")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	// Scan for licenses
+	report, err := audit.ScanLicenses(*vendorDir)
+	if err != nil {
+		return err
+	}
+
+	// Print the report
+	audit.PrintLicenseReport(report)
+
+	return nil
 }
 
 func printAuditResults(result *audit.ScanResult) {
