@@ -127,6 +127,10 @@ func main() {
 		if err := commands.RunStats(args); err != nil {
 			exitWithError(err)
 		}
+	case "why":
+		if err := runWhyCommand(args); err != nil {
+			exitWithError(err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %q\n\n", cmd)
 		printHelp()
@@ -187,6 +191,7 @@ Commands:
   cache        Inspect or prune the ore gem cache
   exec         Run commands via bundle exec with ore-managed environment
   stats        Show Ruby environment statistics
+  why          Show dependency chains for a gem
   version      Show version information
 
 Use "ore <command> --help" for command-specific options.
@@ -1313,4 +1318,18 @@ func printVulnerability(vuln audit.Vulnerability) {
 	}
 
 	fmt.Println()
+}
+
+func runWhyCommand(args []string) error {
+	fs := flag.NewFlagSet("why", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if len(fs.Args()) == 0 {
+		return fmt.Errorf("usage: ore why <gem>")
+	}
+
+	gemName := fs.Args()[0]
+	return commands.Why(gemName)
 }

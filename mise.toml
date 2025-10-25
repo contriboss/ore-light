@@ -1,2 +1,3 @@
 [tools]
 go = "latest"
+ruby = "3.4.7"
