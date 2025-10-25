@@ -59,7 +59,11 @@ func Install() error {
 
 	prefix := os.Getenv("ORE_INSTALL_PREFIX")
 	if prefix == "" {
-		prefix = "/usr/local/bin"
+		if home := os.Getenv("HOME"); home != "" {
+			prefix = filepath.Join(home, ".local", "bin")
+		} else {
+			prefix = "/usr/local/bin"
+		}
 	}
 
 	if err := os.MkdirAll(prefix, 0o755); err != nil {

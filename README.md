@@ -381,10 +381,20 @@ See [.github/workflows/ore-demo.yml](.github/workflows/ore-demo.yml) for a compl
 ```bash
 mise install
 mage build
-# optionally install globally (requires write access to /usr/local/bin)
-# mage install
+
+# Install to ~/.local/bin (default if HOME is set)
+mage install
+
+# Or install to custom location
+ORE_INSTALL_PREFIX=/usr/local/bin mage install
+
 ./bin/ore --help
 ```
+
+**Installation behavior:**
+- Defaults to `~/.local/bin` if `HOME` is set
+- Falls back to `/usr/local/bin` if `HOME` is not set
+- Override with `ORE_INSTALL_PREFIX` environment variable
 
 ## License
 
