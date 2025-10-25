@@ -95,6 +95,10 @@ func main() {
 		if err := commands.RunClean(args); err != nil {
 			exitWithError(err)
 		}
+	case "pristine":
+		if err := runPristineCommand(args); err != nil {
+			exitWithError(err)
+		}
 	case "config":
 		if err := commands.RunConfig(args); err != nil {
 			exitWithError(err)
@@ -1378,6 +1382,17 @@ func runOpenCommand(args []string) error {
 
 	gemName := fs.Args()[0]
 	return commands.Open(gemName, *vendorDir)
+}
+
+func runPristineCommand(args []string) error {
+	fs := flag.NewFlagSet("pristine", flag.ContinueOnError)
+	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	gemNames := fs.Args()
+	return commands.Pristine(gemNames, *lockfilePath)
 }
 
 func runSearchCommand(args []string) error {

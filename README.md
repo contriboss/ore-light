@@ -72,6 +72,7 @@ Ore Light provides complete Bundler command parity with 21 commands:
 - `ore download` - Prefetch gems (no Ruby required) and warm the cache
 - `ore install` - Download and install gems with automatic native extension building
 - `ore clean` - Remove unused gems from vendor directory
+- `ore pristine` - Restore gems to pristine condition using `gem pristine` (requires Ruby)
 
 **Execution:**
 - `ore exec` - Run commands via `bundle exec` with ore-managed environment
