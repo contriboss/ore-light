@@ -123,6 +123,10 @@ func main() {
 		if err := runAuditCommand(args); err != nil {
 			exitWithError(err)
 		}
+	case "stats":
+		if err := commands.RunStats(args); err != nil {
+			exitWithError(err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %q\n\n", cmd)
 		printHelp()
@@ -182,6 +186,7 @@ Commands:
   install      Download (if needed) and unpack gems into a vendor directory
   cache        Inspect or prune the ore gem cache
   exec         Run commands via bundle exec with ore-managed environment
+  stats        Show Ruby environment statistics
   version      Show version information
 
 Use "ore <command> --help" for command-specific options.
