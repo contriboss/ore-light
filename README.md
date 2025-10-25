@@ -58,6 +58,7 @@ Ore Light provides complete Bundler command parity with 21 commands:
 - `ore list` - List all gems in the current bundle
 - `ore outdated` - Show gems with newer versions available
 - `ore show` - Show the source location of a gem
+- `ore open` - Open a gem's source code in your editor
 - `ore platform` - Display platform compatibility information
 - `ore tree` - Display colorful dependency tree visualization
 

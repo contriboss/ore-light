@@ -83,6 +83,10 @@ func main() {
 		if err := commands.RunPlatform(args); err != nil {
 			exitWithError(err)
 		}
+	case "open":
+		if err := runOpenCommand(args); err != nil {
+			exitWithError(err)
+		}
 	case "show":
 		if err := commands.RunShow(args); err != nil {
 			exitWithError(err)
@@ -1359,6 +1363,21 @@ func runWhyCommand(args []string) error {
 
 	gemName := fs.Args()[0]
 	return commands.Why(gemName)
+}
+
+func runOpenCommand(args []string) error {
+	fs := flag.NewFlagSet("open", flag.ContinueOnError)
+	vendorDir := fs.String("vendor", defaultVendorDir(), "Path to installed gems")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if len(fs.Args()) == 0 {
+		return fmt.Errorf("usage: ore open <gem>")
+	}
+
+	gemName := fs.Args()[0]
+	return commands.Open(gemName, *vendorDir)
 }
 
 func runSearchCommand(args []string) error {
