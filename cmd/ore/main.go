@@ -131,6 +131,10 @@ func main() {
 		if err := runWhyCommand(args); err != nil {
 			exitWithError(err)
 		}
+	case "search":
+		if err := runSearchCommand(args); err != nil {
+			exitWithError(err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %q\n\n", cmd)
 		printHelp()
@@ -192,6 +196,7 @@ Commands:
   exec         Run commands via bundle exec with ore-managed environment
   stats        Show Ruby environment statistics
   why          Show dependency chains for a gem
+  search       Search for gems on RubyGems.org
   version      Show version information
 
 Use "ore <command> --help" for command-specific options.
@@ -1332,4 +1337,59 @@ func runWhyCommand(args []string) error {
 
 	gemName := fs.Args()[0]
 	return commands.Why(gemName)
+}
+
+func runSearchCommand(args []string) error {
+	// Separate query from flags
+	// Accept: ore search rails --limit 3  OR  ore search --limit 3 rails
+	var query string
+	var flagArgs []string
+
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--limit" || args[i] == "-limit" {
+			// Skip flag and its value
+			if i+1 < len(args) {
+				flagArgs = append(flagArgs, args[i], args[i+1])
+				i++ // Skip the value
+			}
+		} else if strings.HasPrefix(args[i], "--limit=") || strings.HasPrefix(args[i], "-limit=") {
+			flagArgs = append(flagArgs, args[i])
+		} else if !strings.HasPrefix(args[i], "-") {
+			// This is the query
+			if query == "" {
+				query = args[i]
+			}
+		}
+	}
+
+	if query == "" {
+		return fmt.Errorf("usage: ore search <query> [--limit N]")
+	}
+
+	// Parse flags
+	fs := flag.NewFlagSet("search", flag.ContinueOnError)
+	limit := fs.Int("limit", 10, "Maximum number of results to display")
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+
+	// Get gem sources from config
+	sources := getSearchSources()
+
+	return commands.Search(query, *limit, sources)
+}
+
+// getSearchSources returns the list of gem source URLs to search
+func getSearchSources() []string {
+	// Check if user has configured sources
+	if appConfig != nil && len(appConfig.GemSources) > 0 {
+		sources := make([]string, 0, len(appConfig.GemSources))
+		for _, src := range appConfig.GemSources {
+			sources = append(sources, src.URL)
+		}
+		return sources
+	}
+
+	// Default to rubygems.org
+	return []string{"https://rubygems.org"}
 }

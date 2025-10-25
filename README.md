@@ -81,6 +81,7 @@ Ore Light provides complete Bundler command parity with 21 commands:
 - `ore cache` - Inspect or prune the gem cache
 - `ore stats` - Show Ruby environment statistics
 - `ore why` - Show dependency chains for a gem
+- `ore search` - Search for gems on RubyGems.org
 - `ore version` - Show version information
 
 ### Native Extension Support
