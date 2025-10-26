@@ -143,6 +143,14 @@ func main() {
 		if err := runSearchCommand(args); err != nil {
 			exitWithError(err)
 		}
+	case "gems":
+		if err := runGemsCommand(args); err != nil {
+			exitWithError(err)
+		}
+	case "browse":
+		if err := commands.RunBrowse(); err != nil {
+			exitWithError(err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %q\n\n", cmd)
 		printHelp()
@@ -411,6 +419,13 @@ func runInstallCommand(args []string) error {
 	}
 	if totalExtFailed > 0 {
 		fmt.Fprintf(os.Stderr, "Warning: %d extension(s) failed to build.\n", totalExtFailed)
+	}
+
+	// Display post-install messages
+	if totalInstalled > 0 {
+		if messages, err := commands.ReadPostInstallMessages(*vendorDir); err == nil {
+			commands.DisplayPostInstallMessages(messages)
+		}
 	}
 
 	// Build simplified exec command suggestion
@@ -1448,4 +1463,14 @@ func getSearchSources() []string {
 
 	// Default to rubygems.org
 	return []string{"https://rubygems.org"}
+}
+
+func runGemsCommand(args []string) error {
+	fs := flag.NewFlagSet("gems", flag.ContinueOnError)
+	filter := fs.String("filter", "", "Filter gems by name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	return commands.RunGems(*filter)
 }

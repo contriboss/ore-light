@@ -85,6 +85,8 @@ Ore Light provides complete Bundler command parity with 21 commands:
 - `ore stats` - Show Ruby environment statistics
 - `ore why` - Show dependency chains for a gem
 - `ore search` - Search for gems on RubyGems.org
+- `ore gems` - List all installed gems in the system (with optional `--filter`)
+- `ore browse` - Interactive TUI to browse, search, and manage installed gems
 - `ore version` - Show version information
 
 ### Native Extension Support
@@ -171,6 +173,50 @@ Features:
 - Helps identify licensing compliance issues
 
 **Note:** Requires Ruby to read gemspec files. Run `ore install` first to ensure gems are installed.
+
+### System Gem Browsing
+
+Two commands for exploring all gems installed on your system (not just those in Gemfile.lock):
+
+#### `ore gems` - List All Installed Gems
+
+Simple command-line listing of all gems in your Ruby installation:
+
+```bash
+# List all installed gems
+ore gems
+
+# Filter by name
+ore gems --filter rack
+```
+
+Features:
+- Shows all system gems with versions
+- Groups multiple versions of the same gem
+- Color-coded output
+- Total count summary
+
+#### `ore browse` - Interactive TUI
+
+Full-featured terminal UI for browsing and managing gems:
+
+```bash
+ore browse
+```
+
+Features:
+- **Interactive list** with vim-style navigation (j/k to move)
+- **Search/filter** - Press `/` to filter gems as you type
+- **Quick actions:**
+  - `o` - Open gem source in your editor
+  - `i` - Show gem info (future: full gem details)
+  - `w` - Show why gem is installed (future: dependency chain)
+  - `q` or `Esc` - Quit
+- **Real-time filtering** with instant results
+- **Status bar** showing selected gem and keyboard shortcuts
+- **Split view** ready for details panel (future enhancement)
+
+Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) for a smooth TUI experience.
 
 ### Gem Source Fallback (v0.1.1+)
 
