@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	version     = "0.0.0-dev"
+	version     = "0.2.0"
 	buildCommit = "unknown"
 	buildTime   = "unknown"
 )
