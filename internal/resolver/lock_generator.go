@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
@@ -21,6 +22,12 @@ import (
 // that can resolve dependencies without Ruby installed. PubGrub is the
 // state-of-the-art dependency resolution algorithm (also used by Dart's pub).
 func GenerateLockfile(gemfilePath string) error {
+	return GenerateLockfileWithPins(gemfilePath, nil)
+}
+
+// GenerateLockfileWithPins resolves gem dependencies with optional version pins.
+// versionPins is a map of gem name -> exact version to pin (used for selective updates).
+func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string) error {
 	// Parse Gemfile
 	parser := gemfile.NewGemfileParser(gemfilePath)
 	parsed, err := parser.Parse()
@@ -49,7 +56,8 @@ func GenerateLockfile(gemfilePath string) error {
 	// Convert Gemfile dependencies to PubGrub terms
 	var allSolutions []pubgrub.NameVersion
 	seenPackages := make(map[string]pubgrub.Version)
-	gemSources := make(map[string]string) // gem name -> source URL
+	gemSources := make(map[string]string)  // gem name -> source URL
+	gemGroups := make(map[string][]string) // gem name -> groups
 
 	// Track git and path dependencies separately
 	var gitSpecs []lockfile.GitGemSpec
@@ -59,9 +67,17 @@ func GenerateLockfile(gemfilePath string) error {
 
 	fmt.Printf("Resolving dependencies...\n")
 
+	// Create a unified solver to handle all regular gem dependencies
+	// This allows proper conflict resolution across all dependencies
+	unifiedSolver := pubgrub.NewSolver(defaultSource)
+	var regularDepTerms []pubgrub.Term
+
 	for _, dep := range parsed.Dependencies {
-		// Skip development/test gems for MVP (can be added later)
-		// TODO: Add group support
+		// Track groups for this dependency
+		// Groups determine when gems are installed (e.g., --without development test)
+		if len(dep.Groups) > 0 {
+			gemGroups[dep.Name] = dep.Groups
+		}
 
 		// Check if this is a git dependency
 		if dep.Source != nil && dep.Source.Type == "git" {
@@ -102,27 +118,8 @@ func GenerateLockfile(gemfilePath string) error {
 			gitSpec.Dependencies = lockfileDeps
 			gitSpecs = append(gitSpecs, gitSpec)
 
-			// Resolve transitive dependencies from git gem
-			gitSolver := pubgrub.NewSolver(defaultSource)
-			for _, gitDep := range gitDeps {
-				solution, err := gitSolver.Solve(gitDep)
-				if err != nil {
-					return fmt.Errorf("failed to resolve dependency %s of git gem %s: %w", gitDep.Name, dep.Name, err)
-				}
-
-				// Merge solutions
-				for _, pkg := range solution {
-					pkgName := string(pkg.Name)
-					if existingVer, seen := seenPackages[pkgName]; seen {
-						if pkg.Version.Sort(existingVer) > 0 {
-							seenPackages[pkgName] = pkg.Version
-						}
-					} else {
-						seenPackages[pkgName] = pkg.Version
-						allSolutions = append(allSolutions, pkg)
-					}
-				}
-			}
+			// Add transitive dependencies from git gem to regular solver
+			regularDepTerms = append(regularDepTerms, gitDeps...)
 
 			continue
 		}
@@ -163,38 +160,17 @@ func GenerateLockfile(gemfilePath string) error {
 			pathSpec.Dependencies = lockfileDeps
 			pathSpecs = append(pathSpecs, pathSpec)
 
-			// Resolve transitive dependencies from path gem
-			pathSolver := pubgrub.NewSolver(defaultSource)
-			for _, pathDep := range pathGemDeps {
-				solution, err := pathSolver.Solve(pathDep)
-				if err != nil {
-					return fmt.Errorf("failed to resolve dependency %s of path gem %s: %w", pathDep.Name, dep.Name, err)
-				}
-
-				// Merge solutions
-				for _, pkg := range solution {
-					pkgName := string(pkg.Name)
-					if existingVer, seen := seenPackages[pkgName]; seen {
-						if pkg.Version.Sort(existingVer) > 0 {
-							seenPackages[pkgName] = pkg.Version
-						}
-					} else {
-						seenPackages[pkgName] = pkg.Version
-						allSolutions = append(allSolutions, pkg)
-					}
-				}
-			}
+			// Add transitive dependencies from path gem to regular solver
+			regularDepTerms = append(regularDepTerms, pathGemDeps...)
 
 			continue
 		}
 
-		// Determine which source to use for this gem
-		gemSource := defaultSource
+		// Determine which source URL to record for this gem
 		gemSourceURL := "https://rubygems.org/"
 		if dep.Source != nil && dep.Source.Type == "rubygems" {
 			gemSourceURL = dep.Source.URL
 			if gemSourceURL != "" {
-				gemSource = getSource(gemSourceURL)
 				// Ensure URL ends with /
 				if gemSourceURL[len(gemSourceURL)-1] != '/' {
 					gemSourceURL += "/"
@@ -204,12 +180,27 @@ func GenerateLockfile(gemfilePath string) error {
 
 		fmt.Printf("Resolving %s from %s...\n", dep.Name, gemSourceURL)
 
+		// Store gem source for later
+		gemSources[dep.Name] = gemSourceURL
+
 		// Convert constraints
 		var condition pubgrub.Condition
-		if len(dep.Constraints) > 0 {
-			// For now, use the first constraint
-			// TODO: Handle multiple constraints
-			semverCondition, err := NewSemverCondition(dep.Constraints[0])
+
+		// Check if this gem has a pinned version (for selective updates)
+		if pinnedVersion, pinned := versionPins[dep.Name]; pinned {
+			// Pin to exact version
+			semverCondition, err := NewSemverCondition("= " + pinnedVersion)
+			if err != nil {
+				// If we can't parse, use any version
+				condition = &AnyVersionCondition{}
+			} else {
+				condition = semverCondition
+			}
+		} else if len(dep.Constraints) > 0 {
+			// Combine multiple constraints with ", " (semver library supports compound constraints)
+			// Example: [">= 1.0", "< 2.0"] becomes ">= 1.0, < 2.0"
+			constraintStr := strings.Join(dep.Constraints, ", ")
+			semverCondition, err := NewSemverCondition(constraintStr)
 			if err != nil {
 				// If we can't parse, use any version
 				condition = &AnyVersionCondition{}
@@ -222,43 +213,46 @@ func GenerateLockfile(gemfilePath string) error {
 		}
 
 		term := pubgrub.NewTerm(pubgrub.Name(dep.Name), condition)
+		regularDepTerms = append(regularDepTerms, term)
+	}
 
-		// Solve for this dependency using the gem's source
-		gemSolver := pubgrub.NewSolver(gemSource)
-		solution, err := gemSolver.Solve(term)
+	// Solve all regular dependencies together for proper conflict resolution
+	for _, term := range regularDepTerms {
+		solution, err := unifiedSolver.Solve(term)
 		if err != nil {
-			// Provide helpful error context
-			constraintStr := "any version"
-			if len(dep.Constraints) > 0 {
-				constraintStr = dep.Constraints[0]
-			}
-
 			return fmt.Errorf(`Could not resolve dependency: %s
-  Constraint: %s
 
   This could mean:
-  - No versions of %s satisfy the constraint %s
-  - Conflicting version requirements from other dependencies
+  - No versions satisfy the constraints
+  - Conflicting version requirements from dependencies
 
   Try: ore add %s (without version constraint) to see available versions
 
-  Original error: %w`, dep.Name, constraintStr, dep.Name, constraintStr, dep.Name, err)
+  Original error: %w`, term.Name, term.Name, err)
 		}
 
-		// Merge solutions, keeping track of seen packages and their sources
+		// Collect all solved packages
 		for _, pkg := range solution {
 			pkgName := string(pkg.Name)
 			if existingVer, seen := seenPackages[pkgName]; seen {
-				// If we've seen this package, keep the higher version
-				// TODO: This is a simplification - proper resolver should handle conflicts
+				// Update to higher version if needed
 				if pkg.Version.Sort(existingVer) > 0 {
 					seenPackages[pkgName] = pkg.Version
-					gemSources[pkgName] = gemSourceURL
+					// Update in allSolutions
+					for i, existing := range allSolutions {
+						if string(existing.Name) == pkgName {
+							allSolutions[i] = pkg
+							break
+						}
+					}
 				}
 			} else {
 				seenPackages[pkgName] = pkg.Version
-				gemSources[pkgName] = gemSourceURL
 				allSolutions = append(allSolutions, pkg)
+				// Inherit source from dependencies
+				if gemSources[pkgName] == "" {
+					gemSources[pkgName] = "https://rubygems.org/"
+				}
 			}
 		}
 	}
@@ -288,9 +282,14 @@ func GenerateLockfile(gemfilePath string) error {
 		// Convert dependencies to lockfile format
 		var lockfileDeps []lockfile.Dependency
 		for _, dep := range deps {
+			// Extract constraint string from Condition using String() method
+			var constraints []string
+			if dep.Condition != nil && dep.Condition.String() != ">= 0" {
+				constraints = []string{dep.Condition.String()}
+			}
 			lockfileDeps = append(lockfileDeps, lockfile.Dependency{
-				Name: string(dep.Name),
-				// TODO: Extract constraints from Condition
+				Name:        string(dep.Name),
+				Constraints: constraints,
 			})
 		}
 
@@ -299,6 +298,7 @@ func GenerateLockfile(gemfilePath string) error {
 			Version:      version,
 			Dependencies: lockfileDeps,
 			SourceURL:    gemSources[gemName],
+			Groups:       gemGroups[gemName], // Track which groups this gem belongs to
 		}
 	}
 

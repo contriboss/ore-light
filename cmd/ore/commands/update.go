@@ -39,27 +39,50 @@ func RunUpdate(args []string) error {
 	}
 
 	// Determine which gems to update
+	var versionPins map[string]string
 	if len(gems) == 0 {
 		// Update all gems
 		if *verbose {
 			fmt.Println("🔄 Updating all gems...")
 		}
 	} else {
-		// Update specific gems
+		// Update specific gems - pin non-updated gems to their current versions
 		if *verbose {
 			fmt.Printf("🔄 Updating gems: %v\n", gems)
 		}
+
+		if existingLock != nil {
+			// Create a map of gems to update for quick lookup
+			gemsToUpdate := make(map[string]bool)
+			for _, gem := range gems {
+				gemsToUpdate[gem] = true
+			}
+
+			// Pin all other gems to their current versions
+			versionPins = make(map[string]string)
+			for _, spec := range existingLock.GemSpecs {
+				if !gemsToUpdate[spec.Name] {
+					versionPins[spec.Name] = spec.Version
+					if *verbose {
+						fmt.Printf("  Pinning %s to %s\n", spec.Name, spec.Version)
+					}
+				}
+			}
+
+			// Also pin git and path gems
+			for _, spec := range existingLock.GitSpecs {
+				if !gemsToUpdate[spec.Name] {
+					// Git gems are already pinned by revision in the Gemfile
+					if *verbose {
+						fmt.Printf("  Keeping git gem %s at revision %s\n", spec.Name, spec.Revision)
+					}
+				}
+			}
+		}
 	}
 
-	// If we have an existing lockfile, we'll keep versions of gems we're not updating
-	// For now, we'll just regenerate the entire lockfile
-	// TODO: Implement selective update by pinning non-updated gems
-	if existingLock != nil && len(gems) > 0 && *verbose {
-		fmt.Println("Note: Currently updates all transitive dependencies. Selective update coming soon.")
-	}
-
-	// Regenerate lockfile (this updates everything for now)
-	if err := resolver.GenerateLockfile(*gemfilePath); err != nil {
+	// Regenerate lockfile with version pins for selective update
+	if err := resolver.GenerateLockfileWithPins(*gemfilePath, versionPins); err != nil {
 		return fmt.Errorf("failed to update lockfile: %w", err)
 	}
 
