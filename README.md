@@ -33,7 +33,7 @@ ore exec -- ruby -Iconfig -e "puts 'hello'"
 
 ### Typical Workflow
 
-1. Use `ore download` or `ore install` to fetch gems in parallel.
+1. Use `ore fetch` or `ore install` to fetch gems in parallel.
 2. Ore Light respects Bundler configuration:
    - If `.bundle/config` has a path configured (via `ore config --local path vendor/bundle`), gems install there
    - Otherwise, gems install to your system gem directory (same as regular `bundle install`)
@@ -69,7 +69,7 @@ Ore Light provides complete Bundler command parity with 21 commands:
 - `ore audit licenses` - Scan installed gems for license information
 
 **Installation & Cleanup:**
-- `ore download` - Prefetch gems (no Ruby required) and warm the cache
+- `ore fetch` - Prefetch gems (no Ruby required) and warm the cache
 - `ore install` - Download and install gems with automatic native extension building
 - `ore clean` - Remove unused gems from vendor directory
 - `ore pristine` - Restore gems to pristine condition using `gem pristine` (requires Ruby)
@@ -250,7 +250,7 @@ url = "https://gem.coop"
 - Token auth: `https://token:@gems.example.com`
 - Basic auth: `https://username:password@gems.example.com`
 
-When you run `ore install` or `ore download`, Ore Light will:
+When you run `ore install` or `ore fetch`, Ore Light will:
 1. Perform health checks on all configured sources
 2. Try downloading from the primary source
 3. If a retryable error occurs and a fallback is configured, automatically switch to the fallback

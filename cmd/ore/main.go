@@ -107,8 +107,8 @@ func main() {
 		if err := runLockCommand(args); err != nil {
 			exitWithError(err)
 		}
-	case "download":
-		if err := runDownloadCommand(args); err != nil {
+	case "fetch":
+		if err := runFetchCommand(args); err != nil {
 			exitWithError(err)
 		}
 	case "install":
@@ -206,7 +206,7 @@ Commands:
   clean        Remove unused gems from vendor directory
   config       Get and set Bundler configuration options
   lock         Regenerate Gemfile.lock from Gemfile
-  download     Prefetch gems defined in Gemfile.lock (no Ruby required)
+  fetch        Prefetch gems defined in Gemfile.lock (no Ruby required)
   install      Download (if needed) and unpack gems into a vendor directory
   cache        Inspect or prune the ore gem cache
   exec         Run commands via bundle exec with ore-managed environment
@@ -231,8 +231,8 @@ func exitWithError(err error) {
 	os.Exit(1)
 }
 
-func runDownloadCommand(args []string) error {
-	fs := flag.NewFlagSet("download", flag.ContinueOnError)
+func runFetchCommand(args []string) error {
+	fs := flag.NewFlagSet("fetch", flag.ContinueOnError)
 	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
 	force := fs.Bool("force", false, "Re-download gems even if present in cache")
 	workers := fs.Int("workers", runtime.NumCPU(), "Number of concurrent downloads")
