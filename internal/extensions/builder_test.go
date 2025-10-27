@@ -317,13 +317,6 @@ func TestIsRubyAvailable(t *testing.T) {
 	t.Logf("Ruby available: %v", available)
 }
 
-func TestIsCompilerAvailable(t *testing.T) {
-	// This test is environment-dependent
-	// We just check that the function doesn't panic
-	available := IsCompilerAvailable()
-	t.Logf("Compiler available: %v", available)
-}
-
 func TestNewBuilder(t *testing.T) {
 	t.Run("with config", func(t *testing.T) {
 		config := &BuildConfig{

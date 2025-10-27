@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -331,11 +332,26 @@ func (v *SemverVersion) pessimisticUpperBound() (*SemverVersion, error) {
 		return nil, fmt.Errorf("cannot apply ~> to non-numeric segment in %s", v.original)
 	}
 
-	newSegments := make([]versionSegment, pivot+1)
-	copy(newSegments, v.segments[:pivot+1])
+	// Create upper bound with same number of segments as original
+	// For ~> 2.1.0, we want 2.2.0 (not 2.2) to ensure proper comparison
+	// IMPORTANT: Don't use newSemverVersionFromSegments as it trims trailing zeros
+	newSegments := make([]versionSegment, len(v.segments))
+	copy(newSegments, v.segments)
 	newSegments[pivot].num++
 
-	return newSemverVersionFromSegments(newSegments), nil
+	// Zero out all segments after the pivot
+	for i := pivot + 1; i < len(newSegments); i++ {
+		newSegments[i] = versionSegment{numeric: true, num: 0}
+	}
+
+	if os.Getenv("DEBUG_SEMVER") != "" {
+		fmt.Fprintf(os.Stderr, "  segments after: %v\n", newSegments)
+	}
+
+	return &SemverVersion{
+		original: segmentsToString(newSegments),
+		segments: newSegments,
+	}, nil
 }
 
 // AnyVersionCondition accepts any version (for gems with no constraints)
@@ -392,7 +408,10 @@ func parseSegments(version string) []versionSegment {
 		})
 	}
 
-	return trimTrailingZeros(segments)
+	// Don't trim trailing zeros - they're significant for ~> operator
+	// For example, ~> 2.1.0 means >= 2.1.0 and < 2.2.0
+	// But ~> 2.1 means >= 2.1 and < 3.0
+	return segments
 }
 
 func trimTrailingZeros(segments []versionSegment) []versionSegment {

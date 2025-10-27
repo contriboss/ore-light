@@ -266,18 +266,14 @@ STDOUT.binmode
 		t.Fatalf("expected bin/fake to be a Ruby wrapper script, got: %s", data)
 	}
 
-	marshalPath := filepath.Join(vendorDir, "specifications", "cache", fmt.Sprintf("%s.gemspec.marshal", spec.FullName()))
-	if data, err := os.ReadFile(marshalPath); err != nil {
-		t.Fatalf("expected marshal cache to exist: %v", err)
-	} else if len(data) == 0 {
-		t.Fatalf("marshal cache is empty")
-	}
-
+	// Check gemspec file (Ruby code format, not Marshal)
 	specPath := filepath.Join(vendorDir, "specifications", fmt.Sprintf("%s.gemspec", spec.FullName()))
 	if data, err := os.ReadFile(specPath); err != nil {
-		t.Fatalf("expected gemspec shim to exist: %v", err)
-	} else if !strings.Contains(string(data), "Marshal.load") {
-		t.Fatalf("expected gemspec shim to load marshal data, got: %s", data)
+		t.Fatalf("expected gemspec to exist: %v", err)
+	} else if !strings.Contains(string(data), "Gem::Specification.new do |s|") {
+		t.Fatalf("expected gemspec to contain Gem::Specification code, got: %s", data)
+	} else if !strings.Contains(string(data), fmt.Sprintf("s.name = %q", spec.Name)) {
+		t.Fatalf("expected gemspec to contain gem name, got: %s", data)
 	}
 
 	// Second install without --force should skip
