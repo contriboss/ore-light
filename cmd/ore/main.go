@@ -28,6 +28,12 @@ var (
 	buildTime   = "unknown"
 )
 
+const (
+	// DEFAULT_RUBY_VERSION is the fallback Ruby version when detection fails
+	// Update this when new Ruby stable releases come out
+	DEFAULT_RUBY_VERSION = "3.4.0"
+)
+
 func main() {
 	// Ruby developers: This is like parsing ARGV in a Ruby CLI script
 	// Go requires explicit length checks - no implicit nil handling like Ruby's ARGV[0]
@@ -608,59 +614,17 @@ func defaultVendorDir() string {
 
 	// Priority 3: Bundler .bundle/config
 	if bundlePath := readBundleConfigPath(); bundlePath != "" {
-		rubyVersion := detectRubyVersionForVendor()
+		rubyVersion := detectRubyVersion()
 		if rubyVersion != "" {
 			return filepath.Join(bundlePath, "ruby", rubyVersion)
 		}
 		return bundlePath
 	}
 
-	// Priority 4: System GEM_HOME (Bundler default)
-	if gemDir := getSystemGemDir(); gemDir != "" {
-		return gemDir
-	}
-
-	// Fallback: vendor/bundle
-	return filepath.Join("vendor", "bundle")
-}
-
-func detectRubyVersionForVendor() string {
-	// Try .ruby-version file first
-	if data, err := os.ReadFile(".ruby-version"); err == nil {
-		version := string(data)
-		// Trim whitespace
-		for i := len(version) - 1; i >= 0; i-- {
-			if version[i] == '\n' || version[i] == '\r' || version[i] == ' ' {
-				version = version[:i]
-			} else {
-				break
-			}
-		}
-		if len(version) > 0 {
-			return toMajorMinor(version)
-		}
-	}
-
-	// Try ruby -v command
-	cmd := exec.Command("ruby", "-v")
-	output, err := cmd.Output()
-	if err == nil {
-		// Parse "ruby 3.4.7 (2025-10-08 revision ...) [platform]"
-		str := string(output)
-		if len(str) > 5 && str[:4] == "ruby" {
-			// Find version between "ruby " and " ("
-			start := 5
-			end := start
-			for end < len(str) && str[end] != ' ' && str[end] != '(' {
-				end++
-			}
-			if end > start {
-				return toMajorMinor(str[start:end])
-			}
-		}
-	}
-
-	return ""
+	// Priority 4: System gem directory (Bundler-style: global by default)
+	// This now detects Ruby version without requiring Ruby to be installed
+	// Falls back to ~/.gem/ruby/<version> if no system gems found
+	return getSystemGemDir()
 }
 
 // toMajorMinor converts "3.4.7" to "3.4.0" (Bundler convention)
@@ -706,16 +670,166 @@ func readBundleConfigPath() string {
 	return ""
 }
 
-// getSystemGemDir returns the system gem directory from `gem environment gemdir`
-func getSystemGemDir() string {
-	cmd := exec.Command("gem", "environment", "gemdir")
-	output, err := cmd.Output()
+// detectRubyVersion detects the Ruby version to use for gem installation
+// Priority: 1) Gemfile.lock, 2) Gemfile, 3) DEFAULT_RUBY_VERSION
+func detectRubyVersion() string {
+	// 1. Try Gemfile.lock RUBY VERSION
+	if ver := detectRubyVersionFromLockfile(); ver != "" {
+		return ver
+	}
+
+	// 2. Try Gemfile ruby directive (tree-sitter)
+	if ver := detectRubyVersionFromGemfile(); ver != "" {
+		return ver
+	}
+
+	// 3. Fallback to hardcoded latest stable
+	return DEFAULT_RUBY_VERSION
+}
+
+// detectRubyVersionFromLockfile extracts Ruby version from Gemfile.lock
+func detectRubyVersionFromLockfile() string {
+	lockfilePath := defaultLockfilePath()
+	data, err := os.ReadFile(lockfilePath)
 	if err != nil {
 		return ""
 	}
 
-	gemDir := strings.TrimSpace(string(output))
-	return gemDir
+	lines := strings.Split(string(data), "\n")
+	inRubySection := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Look for "RUBY VERSION" section
+		if trimmed == "RUBY VERSION" {
+			inRubySection = true
+			continue
+		}
+
+		// Parse "   ruby 3.4.0p0" or "   ruby 3.4.0"
+		if inRubySection && strings.HasPrefix(trimmed, "ruby ") {
+			versionStr := strings.TrimPrefix(trimmed, "ruby ")
+			// Remove patchlevel suffix (p0, p194, etc)
+			if idx := strings.Index(versionStr, "p"); idx > 0 {
+				versionStr = versionStr[:idx]
+			}
+			return toMajorMinor(versionStr)
+		}
+
+		// Exit Ruby section if we hit another section
+		if inRubySection && trimmed != "" && !strings.HasPrefix(trimmed, "ruby ") {
+			break
+		}
+	}
+
+	return ""
+}
+
+// detectRubyVersionFromGemfile extracts Ruby version from Gemfile using tree-sitter
+func detectRubyVersionFromGemfile() string {
+	gemfilePath := defaultGemfilePath()
+	parser := gemfile.NewGemfileParser(gemfilePath)
+	parsed, err := parser.Parse()
+	if err != nil {
+		return ""
+	}
+
+	// gemfile-go parses: ruby "3.4.0", ruby ">= 3.0", ruby "~> 3.3", etc
+	if parsed.RubyVersion != "" {
+		return normalizeRubyVersion(parsed.RubyVersion)
+	}
+
+	return ""
+}
+
+// normalizeRubyVersion converts version constraints to usable version
+// "3.4.0" -> "3.4.0"
+// ">= 3.0.0" -> "3.0.0"
+// "~> 3.3" -> "3.3.0"
+func normalizeRubyVersion(constraint string) string {
+	// Remove constraint operators
+	constraint = strings.TrimSpace(constraint)
+	constraint = strings.TrimPrefix(constraint, ">=")
+	constraint = strings.TrimPrefix(constraint, "~>")
+	constraint = strings.TrimPrefix(constraint, ">")
+	constraint = strings.TrimSpace(constraint)
+
+	return toMajorMinor(constraint)
+}
+
+// getSystemGemDir returns the system gem directory without requiring Ruby
+// Tries: 1) GEM_HOME env, 2) Standard OS paths, 3) User gem dir, 4) gem command
+func getSystemGemDir() string {
+	// 1. Check GEM_HOME environment variable
+	if gemHome := os.Getenv("GEM_HOME"); gemHome != "" {
+		if info, err := os.Stat(gemHome); err == nil && info.IsDir() {
+			return gemHome
+		}
+	}
+
+	// 2. Detect Ruby version for path construction
+	rubyVersion := detectRubyVersion()
+
+	// 3. Try standard OS-specific gem paths
+	standardPaths := getStandardGemPaths(rubyVersion)
+	for _, path := range standardPaths {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return path
+		}
+	}
+
+	// 4. Try user gem directory
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		userGemDir := filepath.Join(homeDir, ".gem", "ruby", rubyVersion)
+		// Return even if doesn't exist - will be created during install
+		return userGemDir
+	}
+
+	// 5. Last resort: try `gem environment gemdir` if Ruby is available
+	cmd := exec.Command("gem", "environment", "gemdir")
+	if output, err := cmd.Output(); err == nil {
+		gemDir := strings.TrimSpace(string(output))
+		if gemDir != "" {
+			return gemDir
+		}
+	}
+
+	// Should never reach here due to step 4 always returning
+	return ""
+}
+
+// getStandardGemPaths returns OS-specific standard gem installation paths
+func getStandardGemPaths(rubyVersion string) []string {
+	var paths []string
+
+	switch runtime.GOOS {
+	case "darwin": // macOS
+		paths = []string{
+			fmt.Sprintf("/Library/Ruby/Gems/%s", rubyVersion),
+			fmt.Sprintf("/opt/homebrew/lib/ruby/gems/%s", rubyVersion),
+			fmt.Sprintf("/usr/local/lib/ruby/gems/%s", rubyVersion),
+		}
+
+	case "linux":
+		paths = []string{
+			fmt.Sprintf("/usr/lib/ruby/gems/%s", rubyVersion),
+			fmt.Sprintf("/usr/local/lib/ruby/gems/%s", rubyVersion),
+			fmt.Sprintf("/usr/lib64/ruby/gems/%s", rubyVersion),
+		}
+
+	case "windows":
+		programFiles := os.Getenv("ProgramFiles")
+		if programFiles == "" {
+			programFiles = "C:\\Program Files"
+		}
+		paths = []string{
+			fmt.Sprintf("C:\\Ruby%s\\lib\\ruby\\gems\\%s", strings.Replace(rubyVersion, ".", "", -1), rubyVersion),
+			fmt.Sprintf("%s\\Ruby\\lib\\ruby\\gems\\%s", programFiles, rubyVersion),
+		}
+	}
+
+	return paths
 }
 
 func defaultGemfilePath() string {

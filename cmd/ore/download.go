@@ -225,7 +225,7 @@ func tryGetGemPaths() []string {
 		return defaultPaths
 	}
 
-	rubyVer := detectRubyVersionForVendor()
+	rubyVer := detectRubyVersion()
 	if rubyVer == "" {
 		return defaultPaths
 	}
