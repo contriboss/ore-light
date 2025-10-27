@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/contriboss/gemfile-go v0.0.0-20251026140916-52c1ee6081a8
 	github.com/contriboss/pubgrub-go v0.3.0
-	github.com/contriboss/ruby-extension-go v0.0.0-20251022004012-a1ecc7536a32
+	github.com/contriboss/ruby-extension-go v0.1.0
 	github.com/contriboss/rubygems-client-go v0.0.0-20251021215508-4d12239c8c84
 	github.com/pelletier/go-toml/v2 v2.1.1
 	golang.org/x/sync v0.17.0

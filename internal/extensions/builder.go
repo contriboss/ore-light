@@ -75,9 +75,22 @@ func HasExtensions(gemDir string) (bool, []string, error) {
 
 		// Check for known extension build files
 		name := info.Name()
-		if name == "extconf.rb" || name == "Rakefile" || name == "rakefile" ||
-			name == "CMakeLists.txt" || name == "Cargo.toml" ||
-			name == "configure" || name == "configure.sh" || name == "mkrf_conf.rb" {
+		ext := strings.ToLower(filepath.Ext(name))
+
+		// Traditional Ruby builders
+		isRubyBuild := name == "extconf.rb" || name == "Rakefile" || name == "rakefile" ||
+			name == "mkrf_conf.rb" || name == "configure" || name == "configure.sh"
+
+		// Modern build systems
+		isModernBuild := name == "CMakeLists.txt" || name == "Cargo.toml" ||
+			name == "Makefile" || name == "GNUmakefile"
+
+		// Language-specific files
+		isLangFile := name == "go.mod" || name == "build.xml" || name == "pom.xml" ||
+			name == "shard.yml" || name == "build.zig" || name == "Package.swift" ||
+			ext == ".go" || ext == ".java" || ext == ".cr" || ext == ".zig" || ext == ".swift"
+
+		if isRubyBuild || isModernBuild || isLangFile {
 			// Make path relative to gemDir
 			relPath, err := filepath.Rel(gemDir, path)
 			if err != nil {
@@ -151,6 +164,14 @@ func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string) (
 		// StopOnFailure: true, // Stop on first failure
 	}
 
+	// Check tool availability before building
+	if err := b.checkToolsForExtensions(extensions); err != nil {
+		// Warn about missing tools but continue (some gems might have optional extensions)
+		if b.config.Verbose {
+			fmt.Fprintf(os.Stderr, "Warning: Some build tools are missing: %v\n", err)
+		}
+	}
+
 	// Build all extensions
 	results, err := b.factory.BuildAllExtensions(ctx, buildConfig, extensions)
 	if err != nil {
@@ -180,6 +201,39 @@ func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string) (
 	result.Extensions = builtExtensions
 	result.Success = true
 	return result, nil
+}
+
+// checkToolsForExtensions checks if required build tools are available for the extensions
+func (b *Builder) checkToolsForExtensions(extensions []string) error {
+	var missingTools []string
+	checkedBuilders := make(map[string]bool) // Track builders we've already checked
+
+	for _, ext := range extensions {
+		builder, err := b.factory.BuilderFor(ext)
+		if err != nil {
+			continue // Skip if we can't find a builder
+		}
+
+		builderName := builder.Name()
+		if checkedBuilders[builderName] {
+			continue // Already checked this builder type
+		}
+		checkedBuilders[builderName] = true
+
+		// Check if builder supports tool checking
+		if checker, ok := builder.(interface {
+			CheckTools() error
+		}); ok {
+			if err := checker.CheckTools(); err != nil {
+				missingTools = append(missingTools, fmt.Sprintf("%s: %v", builderName, err))
+			}
+		}
+	}
+
+	if len(missingTools) > 0 {
+		return fmt.Errorf("%s", strings.Join(missingTools, "; "))
+	}
+	return nil
 }
 
 // buildGemEnvironment creates environment variables for gem discovery
@@ -239,15 +293,4 @@ func ShouldSkipExtensions() bool {
 func IsRubyAvailable() bool {
 	_, err := exec.LookPath("ruby")
 	return err == nil
-}
-
-// IsCompilerAvailable checks if a C compiler is available
-func IsCompilerAvailable() bool {
-	compilers := []string{"gcc", "clang", "cc"}
-	for _, compiler := range compilers {
-		if _, err := exec.LookPath(compiler); err == nil {
-			return true
-		}
-	}
-	return false
 }
