@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/contriboss/pubgrub-go"
 	rubygemsclient "github.com/contriboss/rubygems-client-go"
-	"github.com/tinyrange/tinyrange/experimental/pubgrub"
 )
 
 // RubyGemsSource implements pubgrub.Source using the RubyGems.org API
@@ -42,7 +42,7 @@ func (s *RubyGemsSource) SourceURL() string {
 
 // GetDependencies returns the dependencies for a specific package version
 func (s *RubyGemsSource) GetDependencies(name pubgrub.Name, version pubgrub.Version) ([]pubgrub.Term, error) {
-	gemName := string(name)
+	gemName := name.Value()
 	versionStr := version.String()
 
 	// Check cache first
@@ -70,15 +70,15 @@ func (s *RubyGemsSource) GetDependencies(name pubgrub.Name, version pubgrub.Vers
 			semverCond, err := NewSemverCondition(dep.Requirements)
 			if err != nil {
 				// If we can't parse the constraint, use AnyVersion
-				condition = &AnyVersionCondition{}
+				condition = NewAnyVersionCondition()
 			} else {
 				condition = semverCond
 			}
 		} else {
-			condition = &AnyVersionCondition{}
+			condition = NewAnyVersionCondition()
 		}
 
-		term := pubgrub.NewTerm(pubgrub.Name(dep.Name), condition)
+		term := pubgrub.NewTerm(pubgrub.MakeName(dep.Name), condition)
 		terms = append(terms, term)
 	}
 
@@ -95,7 +95,7 @@ func (s *RubyGemsSource) GetDependencies(name pubgrub.Name, version pubgrub.Vers
 
 // GetVersions returns all available versions for a package
 func (s *RubyGemsSource) GetVersions(name pubgrub.Name) ([]pubgrub.Version, error) {
-	gemName := string(name)
+	gemName := name.Value()
 
 	versions, err := s.client.GetGemVersions(gemName)
 	if err != nil {

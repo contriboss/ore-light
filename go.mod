@@ -3,20 +3,20 @@ module github.com/contriboss/ore-light
 go 1.25.1
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/contriboss/gemfile-go v0.0.0-20251021145745-0d2590e48061
+	github.com/contriboss/gemfile-go v0.0.0-20251026140916-52c1ee6081a8
+	github.com/contriboss/pubgrub-go v0.2.0
 	github.com/contriboss/ruby-extension-go v0.0.0-20251022004012-a1ecc7536a32
 	github.com/contriboss/rubygems-client-go v0.0.0-20251021215508-4d12239c8c84
 	github.com/pelletier/go-toml/v2 v2.1.1
-	github.com/tinyrange/tinyrange v0.2.6
 	golang.org/x/sync v0.17.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
+	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
@@ -36,6 +36,7 @@ require (
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 )

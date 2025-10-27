@@ -10,7 +10,7 @@ import (
 
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
-	"github.com/tinyrange/tinyrange/experimental/pubgrub"
+	"github.com/contriboss/pubgrub-go"
 )
 
 // GenerateLockfile resolves gem dependencies and writes a lockfile.
@@ -67,9 +67,9 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 
 	fmt.Printf("Resolving dependencies...\n")
 
-	// Create a unified solver to handle all regular gem dependencies
-	// This allows proper conflict resolution across all dependencies
-	unifiedSolver := pubgrub.NewSolver(defaultSource)
+	// Create a root source for all dependencies
+	// The new pubgrub-go uses a root package to collect all requirements
+	rootSource := pubgrub.NewRootSource()
 	var regularDepTerms []pubgrub.Term
 
 	for _, dep := range parsed.Dependencies {
@@ -112,7 +112,7 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 			var lockfileDeps []lockfile.Dependency
 			for _, gitDep := range gitDeps {
 				lockfileDeps = append(lockfileDeps, lockfile.Dependency{
-					Name: string(gitDep.Name),
+					Name: gitDep.Name.Value(),
 				})
 			}
 			gitSpec.Dependencies = lockfileDeps
@@ -154,7 +154,7 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 			var lockfileDeps []lockfile.Dependency
 			for _, pathDep := range pathGemDeps {
 				lockfileDeps = append(lockfileDeps, lockfile.Dependency{
-					Name: string(pathDep.Name),
+					Name: pathDep.Name.Value(),
 				})
 			}
 			pathSpec.Dependencies = lockfileDeps
@@ -192,7 +192,7 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 			semverCondition, err := NewSemverCondition("= " + pinnedVersion)
 			if err != nil {
 				// If we can't parse, use any version
-				condition = &AnyVersionCondition{}
+				condition = NewAnyVersionCondition()
 			} else {
 				condition = semverCondition
 			}
@@ -203,63 +203,61 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 			semverCondition, err := NewSemverCondition(constraintStr)
 			if err != nil {
 				// If we can't parse, use any version
-				condition = &AnyVersionCondition{}
+				condition = NewAnyVersionCondition()
 			} else {
 				condition = semverCondition
 			}
 		} else {
 			// No constraints - accept any version
-			condition = &AnyVersionCondition{}
+			condition = NewAnyVersionCondition()
 		}
 
-		term := pubgrub.NewTerm(pubgrub.Name(dep.Name), condition)
-		regularDepTerms = append(regularDepTerms, term)
+		// Add dependency to root source
+		rootSource.AddPackage(pubgrub.MakeName(dep.Name), condition)
 	}
 
-	// Solve all regular dependencies together for proper conflict resolution
+	// Add transitive dependencies from git/path gems to root source
 	for _, term := range regularDepTerms {
-		solution, err := unifiedSolver.Solve(term)
-		if err != nil {
-			return fmt.Errorf(`Could not resolve dependency: %s
+		rootSource.AddPackage(term.Name, term.Condition)
+	}
+
+	// Create unified solver with root source and gem source
+	// This resolves all dependencies together with proper conflict resolution
+	unifiedSolver := pubgrub.NewSolver(rootSource, defaultSource)
+
+	// Solve all dependencies at once
+	solution, err := unifiedSolver.Solve(rootSource.Term())
+	if err != nil {
+		return fmt.Errorf(`Could not resolve dependencies
 
   This could mean:
   - No versions satisfy the constraints
   - Conflicting version requirements from dependencies
 
-  Try: ore add %s (without version constraint) to see available versions
+  Original error: %w`, err)
+	}
 
-  Original error: %w`, term.Name, term.Name, err)
+	// Collect all solved packages (excluding the root package)
+	rootName := pubgrub.MakeName("$$root")
+	for _, pkg := range solution {
+		// Skip the synthetic root package
+		if pkg.Name == rootName {
+			continue
 		}
 
-		// Collect all solved packages
-		for _, pkg := range solution {
-			pkgName := string(pkg.Name)
-			if existingVer, seen := seenPackages[pkgName]; seen {
-				// Update to higher version if needed
-				if pkg.Version.Sort(existingVer) > 0 {
-					seenPackages[pkgName] = pkg.Version
-					// Update in allSolutions
-					for i, existing := range allSolutions {
-						if string(existing.Name) == pkgName {
-							allSolutions[i] = pkg
-							break
-						}
-					}
-				}
-			} else {
-				seenPackages[pkgName] = pkg.Version
-				allSolutions = append(allSolutions, pkg)
-				// Inherit source from dependencies
-				if gemSources[pkgName] == "" {
-					gemSources[pkgName] = "https://rubygems.org/"
-				}
-			}
+		pkgName := pkg.Name.Value()
+		seenPackages[pkgName] = pkg.Version
+		allSolutions = append(allSolutions, pkg)
+
+		// Inherit source from dependencies
+		if gemSources[pkgName] == "" {
+			gemSources[pkgName] = "https://rubygems.org/"
 		}
 	}
 
 	// Sort solutions by name for consistent output
 	sort.Slice(allSolutions, func(i, j int) bool {
-		return string(allSolutions[i].Name) < string(allSolutions[j].Name)
+		return allSolutions[i].Name.Value() < allSolutions[j].Name.Value()
 	})
 
 	// Determine lockfile path
@@ -269,7 +267,7 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 	depSource := NewRubyGemsSource()
 	specs := make([]lockfile.GemSpec, len(allSolutions))
 	for i, pkg := range allSolutions {
-		gemName := string(pkg.Name)
+		gemName := pkg.Name.Value()
 		version := pkg.Version.String()
 
 		// Get dependencies for this gem
@@ -288,7 +286,7 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 				constraints = []string{dep.Condition.String()}
 			}
 			lockfileDeps = append(lockfileDeps, lockfile.Dependency{
-				Name:        string(dep.Name),
+				Name:        dep.Name.Value(),
 				Constraints: constraints,
 			})
 		}

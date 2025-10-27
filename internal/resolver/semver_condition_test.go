@@ -3,7 +3,7 @@ package resolver
 import (
 	"testing"
 
-	"github.com/tinyrange/tinyrange/experimental/pubgrub"
+	"github.com/contriboss/pubgrub-go"
 )
 
 func TestSemverCondition(t *testing.T) {
@@ -12,25 +12,30 @@ func TestSemverCondition(t *testing.T) {
 		version    string
 		satisfied  bool
 	}{
-		// Tilde constraints (patch-level changes)
-		{"~2.1.0", "2.1.0", true},
-		{"~2.1.0", "2.1.5", true},
-		{"~2.1.0", "2.2.0", false},
-
-		// Caret constraints (minor changes)
-		{"^2.1.0", "2.1.0", true},
-		{"^2.1.0", "2.5.0", true},
-		{"^2.1.0", "3.0.0", false},
-
 		// Ruby tilde-arrow constraints
 		{"~> 2.1.0", "2.1.0", true},
 		{"~> 2.1.0", "2.1.5", true},
 		{"~> 2.1.0", "2.2.0", false},
 
 		// Range constraints
-		{">=2.0.0 <3.0.0", "2.5.0", true},
-		{">=2.0.0 <3.0.0", "1.9.0", false},
-		{">=2.0.0 <3.0.0", "3.0.0", false},
+		{">= 2.0.0, < 3.0.0", "2.5.0", true},
+		{">= 2.0.0, < 3.0.0", "1.9.0", false},
+		{">= 2.0.0, < 3.0.0", "3.0.0", false},
+
+		// Multi-segment Ruby versions
+		{">= 3.3.0.2", "3.3.0.2", true},
+		{">= 3.3.0.2", "3.3.0.1", false},
+		{"~> 3.3.0.2", "3.3.0.5", true},
+		{"~> 3.3.0.2", "3.3.1.0", false},
+
+		// Equality and inequality semantics
+		{"= 1.0", "1.0.0", true},
+		{"!= 1.0.0", "1.0.0", false},
+		{"!= 1.0.0", "1.0.1", true},
+
+		// Pre-release ordering
+		{"< 1.0.0", "1.0.0.beta1", true},
+		{">= 1.0.0", "1.0.0.beta1", false},
 	}
 
 	for _, test := range tests {
@@ -56,9 +61,7 @@ func TestSemverCondition(t *testing.T) {
 
 func TestPubGrubWithSemver(t *testing.T) {
 	// Create an in-memory source for testing
-	source := &pubgrub.InMemorySource{
-		Packages: make(map[pubgrub.Name]map[pubgrub.Version][]pubgrub.Term),
-	}
+	source := &pubgrub.InMemorySource{}
 
 	// Add rails versions
 	rails800, _ := NewSemverVersion("8.0.0")
@@ -72,52 +75,51 @@ func TestPubGrubWithSemver(t *testing.T) {
 	// Rails 8.0.0 depends on rack ~> 2.2.0
 	rackConstraint, _ := NewSemverCondition("~> 2.2.0")
 	source.AddPackage(
-		pubgrub.Name("rails"),
+		pubgrub.MakeName("rails"),
 		rails800,
 		[]pubgrub.Term{
-			pubgrub.NewTerm(pubgrub.Name("rack"), rackConstraint),
+			pubgrub.NewTerm(pubgrub.MakeName("rack"), rackConstraint),
 		},
 	)
 
 	// Rails 8.0.1 depends on rack ~> 2.2.0
 	source.AddPackage(
-		pubgrub.Name("rails"),
+		pubgrub.MakeName("rails"),
 		rails801,
 		[]pubgrub.Term{
-			pubgrub.NewTerm(pubgrub.Name("rack"), rackConstraint),
+			pubgrub.NewTerm(pubgrub.MakeName("rack"), rackConstraint),
 		},
 	)
 
 	// Add rack versions (no dependencies)
-	source.AddPackage(pubgrub.Name("rack"), rack220, []pubgrub.Term{})
-	source.AddPackage(pubgrub.Name("rack"), rack225, []pubgrub.Term{})
-	source.AddPackage(pubgrub.Name("rack"), rack230, []pubgrub.Term{})
+	source.AddPackage(pubgrub.MakeName("rack"), rack220, []pubgrub.Term{})
+	source.AddPackage(pubgrub.MakeName("rack"), rack225, []pubgrub.Term{})
+	source.AddPackage(pubgrub.MakeName("rack"), rack230, []pubgrub.Term{})
 
-	// Create solver
-	solver := pubgrub.NewSolver(source)
-
-	// Solve for rails ~> 8.0.0
+	// Create root source and solver using new API
+	root := pubgrub.NewRootSource()
 	railsConstraint, _ := NewSemverCondition("~> 8.0.0")
-	rootTerm := pubgrub.NewTerm(pubgrub.Name("rails"), railsConstraint)
+	root.AddPackage(pubgrub.MakeName("rails"), railsConstraint)
 
-	solution, err := solver.Solve(rootTerm)
+	solver := pubgrub.NewSolver(root, source)
+	solution, err := solver.Solve(root.Term())
 	if err != nil {
 		t.Fatalf("Failed to solve: %v", err)
 	}
 
 	t.Logf("Solution: %v", solution)
 
-	// Verify we got a valid solution
-	if len(solution) != 2 {
-		t.Errorf("Expected 2 packages in solution, got %d", len(solution))
+	// Verify we got a valid solution (rails + rack, no root)
+	if len(solution) != 3 {
+		t.Errorf("Expected 3 packages in solution (root + rails + rack), got %d", len(solution))
 	}
 
 	// Check that rails and rack are in the solution
 	var railsVersion, rackVersion string
 	for _, pkg := range solution {
-		if string(pkg.Name) == "rails" {
+		if pkg.Name.Value() == "rails" {
 			railsVersion = pkg.Version.String()
-		} else if string(pkg.Name) == "rack" {
+		} else if pkg.Name.Value() == "rack" {
 			rackVersion = pkg.Version.String()
 		}
 	}

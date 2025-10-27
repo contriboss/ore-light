@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/tinyrange/tinyrange/experimental/pubgrub"
+	"github.com/contriboss/pubgrub-go"
 )
 
 // GitSource handles resolution of gems from Git repositories
@@ -217,15 +217,15 @@ puts JSON.generate(deps)
 		if dep.Requirements != "" && dep.Requirements != ">= 0" {
 			semverCond, err := NewSemverCondition(dep.Requirements)
 			if err != nil {
-				condition = &AnyVersionCondition{}
+				condition = NewAnyVersionCondition()
 			} else {
 				condition = semverCond
 			}
 		} else {
-			condition = &AnyVersionCondition{}
+			condition = NewAnyVersionCondition()
 		}
 
-		term := pubgrub.NewTerm(pubgrub.Name(dep.Name), condition)
+		term := pubgrub.NewTerm(pubgrub.MakeName(dep.Name), condition)
 		terms = append(terms, term)
 	}
 

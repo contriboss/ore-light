@@ -22,8 +22,10 @@ github.com/charmbracelet/x/exp/golden v0.0.0-20241011142426-46044092ad91 h1:payR
 github.com/charmbracelet/x/exp/golden v0.0.0-20241011142426-46044092ad91/go.mod h1:wDlXFlCrmJ8J+swcL/MnGUuYnqgQdW9rhSD61oNMb6U=
 github.com/charmbracelet/x/term v0.2.1 h1:AQeHeLZ1OqSXhrAWpYUtZyX1T3zVxfpZuEQMIQaGIAQ=
 github.com/charmbracelet/x/term v0.2.1/go.mod h1:oQ4enTYFV7QN4m0i9mzHrViD7TQKvNEEkHUMCmsxdUg=
-github.com/contriboss/gemfile-go v0.0.0-20251021145745-0d2590e48061 h1:l1PzDuNqLC8YNBcdes2qwdRSCeLMemXTV3LjQGKlyEY=
-github.com/contriboss/gemfile-go v0.0.0-20251021145745-0d2590e48061/go.mod h1:419dypuzNQrW/v2t42cutzl/NJb3e733ZZNP7oUlzM8=
+github.com/contriboss/gemfile-go v0.0.0-20251026140916-52c1ee6081a8 h1:CY2n1IGVIce9vruQQ8WNihgtPhPgTpJ3sr0l3bsddOA=
+github.com/contriboss/gemfile-go v0.0.0-20251026140916-52c1ee6081a8/go.mod h1:419dypuzNQrW/v2t42cutzl/NJb3e733ZZNP7oUlzM8=
+github.com/contriboss/pubgrub-go v0.2.0 h1:CMxJxggfipYFQDo8xtZPT/jnBzHqIfb7ZO0qSQzf7G8=
+github.com/contriboss/pubgrub-go v0.2.0/go.mod h1:GSdpaquQoqedQVXdmuy08Wdef/k108x/fKJcUFyrM+4=
 github.com/contriboss/ruby-extension-go v0.0.0-20251022004012-a1ecc7536a32 h1:CSZaD6ctJ3cooFmQIr9C3kMkU2MciW7ljAA6Gut0/Zs=
 github.com/contriboss/ruby-extension-go v0.0.0-20251022004012-a1ecc7536a32/go.mod h1:xEfGEj82FAlXS842Kf8F9mIyl0gV00puvDhjKcR5xUc=
 github.com/contriboss/rubygems-client-go v0.0.0-20251021215508-4d12239c8c84 h1:qnrT6ipreC6rmduo7+3aGEO2Lc1W/ejcbYRoNupNJPA=
@@ -68,8 +70,6 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/stretchr/testify v1.10.0 h1:Xv5erBjTwe/5IxqUQTdXv5kgmIvbHo3QQyRwhJsOfJA=
 github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
-github.com/tinyrange/tinyrange v0.2.6 h1:xTghiLVujy1iWhndxDD9UzIrGf5ncQqO9Lk7ue3cBZM=
-github.com/tinyrange/tinyrange v0.2.6/go.mod h1:cViROit6Oj5Zp3ehmM/n2zmtnT5lyYFTIQTvE7J/BYw=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 h1:1UoZQm6f0P/ZO0w1Ri+f+ifG/gXhegadRdwBIXEFWDo=
