@@ -237,15 +237,10 @@ func (p *PathSource) CopyToVendor(destDir string) error {
 		return err
 	}
 
-	// Copy all files except .git directory
+	// Copy all files except directories that could cause infinite recursion
 	return filepath.Walk(p.AbsPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
-		}
-
-		// Skip .git directories
-		if info.IsDir() && info.Name() == ".git" {
-			return filepath.SkipDir
 		}
 
 		// Calculate relative path
@@ -257,6 +252,17 @@ func (p *PathSource) CopyToVendor(destDir string) error {
 		// Skip the root directory itself
 		if relPath == "." {
 			return nil
+		}
+
+		// Skip directories that could cause infinite recursion
+		// This prevents copying vendor/ore/gems/foo into vendor/ore/gems/foo/vendor/ore/gems/foo/...
+		if info.IsDir() {
+			skipDirs := []string{".git", "vendor", ".bundle", "tmp"}
+			for _, skip := range skipDirs {
+				if info.Name() == skip {
+					return filepath.SkipDir
+				}
+			}
 		}
 
 		destPath := filepath.Join(destDir, relPath)

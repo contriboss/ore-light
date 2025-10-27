@@ -350,7 +350,7 @@ func runInstallCommand(args []string) error {
 	}
 
 	// Import the extensions package for config
-	extConfig := buildExtensionConfig(*skipExtensions, *verbose)
+	extConfig := buildExtensionConfig(*skipExtensions, *verbose, *vendorDir)
 
 	// Install regular gems
 	var totalInstalled, totalSkipped, totalExtBuilt, totalExtFailed int
@@ -890,7 +890,7 @@ func detectGemfileFromLock(lockfilePath string) string {
 	return ""
 }
 
-func buildExtensionConfig(skipExtensions, verbose bool) *extensions.BuildConfig {
+func buildExtensionConfig(skipExtensions, verbose bool, vendorDir string) *extensions.BuildConfig {
 	// Check environment variable override
 	if extensions.ShouldSkipExtensions() {
 		skipExtensions = true
@@ -900,6 +900,7 @@ func buildExtensionConfig(skipExtensions, verbose bool) *extensions.BuildConfig 
 		SkipExtensions: skipExtensions,
 		Verbose:        verbose,
 		Parallel:       runtime.NumCPU(),
+		VendorDir:      vendorDir,
 	}
 
 	// Check if Ruby is available

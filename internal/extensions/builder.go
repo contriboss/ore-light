@@ -19,6 +19,7 @@ type BuildConfig struct {
 	Verbose        bool
 	Parallel       int
 	RubyPath       string
+	VendorDir      string // Path to vendor/ore directory for GEM_HOME/GEM_PATH
 }
 
 // This is like RubyGems' ext builder but as a Go service object
@@ -139,13 +140,14 @@ func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string) (
 		return result, result.Error
 	}
 
-	// Configure build
+	// Configure build with gem environment
 	buildConfig := &rubyext.BuildConfig{
 		GemDir:      gemDir,
 		RubyPath:    rubyPath,
 		RubyVersion: rubyVersion,
 		Verbose:     b.config.Verbose,
 		Parallel:    b.config.Parallel,
+		Env:         b.buildGemEnvironment(),
 		// StopOnFailure: true, // Stop on first failure
 	}
 
@@ -178,6 +180,29 @@ func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string) (
 	result.Extensions = builtExtensions
 	result.Success = true
 	return result, nil
+}
+
+// buildGemEnvironment creates environment variables for gem discovery
+// This is like what Bundler does - sets GEM_HOME and GEM_PATH so Ruby can find gems in vendor/ore
+func (b *Builder) buildGemEnvironment() map[string]string {
+	env := make(map[string]string)
+
+	// If no vendor directory configured, return empty env
+	if b.config.VendorDir == "" {
+		return env
+	}
+
+	// Set GEM_HOME and GEM_PATH to vendor directory
+	// This allows Ruby to find gems like ffi-compiler that are needed during extension builds
+	env["GEM_HOME"] = b.config.VendorDir
+	env["GEM_PATH"] = b.config.VendorDir
+
+	// Also preserve existing PATH
+	if path := os.Getenv("PATH"); path != "" {
+		env["PATH"] = path
+	}
+
+	return env
 }
 
 // getRubyVersion executes ruby -v and extracts the version
