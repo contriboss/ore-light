@@ -51,7 +51,7 @@ func main() {
 	switch cmd {
 	case "--help", "-h", "help":
 		printHelp()
-	case "--version", "-v", "version":
+	case "--version", "-V", "-v", "version":
 		printVersion()
 	case "add":
 		if err := commands.RunAdd(args); err != nil {
@@ -196,32 +196,39 @@ func runLockCommand(args []string) error {
 }
 
 func printHelp() {
-	fmt.Print(`Usage: ore <command> [options]
+	fmt.Print(`ore
+Ruby gem manager written in Go
+
+Usage: ore [OPTIONS] [COMMAND]
+
+Options:
+  -V, --version    Print version info and exit
+  -h, --help       Print help
 
 Commands:
-  init         Generate a new Gemfile
-  add          Add gems to Gemfile
-  remove       Remove gems from Gemfile
-  update       Update gems to their latest versions within constraints
-  outdated     List gems with newer versions available
-  info         Show detailed information about a gem
-  list         List all gems in the current bundle
-  check        Verify all gems are installed
-  show         Show the source location of a gem in the bundle
-  platform     Display platform compatibility information
-  clean        Remove unused gems from vendor directory
-  config       Get and set Bundler configuration options
-  lock         Regenerate Gemfile.lock from Gemfile
-  fetch        Prefetch gems defined in Gemfile.lock (no Ruby required)
-  install      Download (if needed) and unpack gems into a vendor directory
-  cache        Inspect or prune the ore gem cache
-  exec         Run commands via bundle exec with ore-managed environment
-  stats        Show Ruby environment statistics
-  why          Show dependency chains for a gem
-  search       Search for gems on RubyGems.org
-  version      Show version information
+    init          Create a new Gemfile
+    add           Add gems to Gemfile
+    remove        Remove gems from Gemfile
+    update        Update gems to their latest versions within constraints
+    outdated      List gems with newer versions available
+    lock          Regenerate Gemfile.lock from Gemfile
+    fetch         Download gems into cache (no Ruby required)
+    install       Install gems from Gemfile.lock
+    check         Verify all gems are installed
+    list          List all gems in the current bundle
+    show          Show the source location of a gem
+    info          Show detailed information about a gem
+    search        Search for gems on RubyGems.org
+    why           Show dependency chains for a gem
+    exec          Run commands with ore-managed environment
+    clean         Remove unused gems from vendor directory
+    cache         Inspect or prune the ore gem cache
+    pristine      Restore gems to pristine condition (no Ruby required)
+    config        Get and set Bundler configuration options
+    platform      Display platform compatibility information
+    stats         Show Ruby environment statistics
 
-Use "ore <command> --help" for command-specific options.
+See 'ore <command> --help' for more information on a specific command.
 `)
 }
 
