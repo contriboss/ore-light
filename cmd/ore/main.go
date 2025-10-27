@@ -197,7 +197,6 @@ func runLockCommand(args []string) error {
 
 func printHelp() {
 	fmt.Print(`ore
-Ruby gem manager written in Go
 
 Usage: ore [OPTIONS] [COMMAND]
 
@@ -234,6 +233,7 @@ See 'ore <command> --help' for more information on a specific command.
 
 func printVersion() {
 	fmt.Println(versionInfo())
+	fmt.Println("Ruby gem manager written in Go")
 }
 
 func versionInfo() string {
