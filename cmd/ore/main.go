@@ -1528,12 +1528,18 @@ func runOpenCommand(args []string) error {
 func runPristineCommand(args []string) error {
 	fs := flag.NewFlagSet("pristine", flag.ContinueOnError)
 	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
+	vendorDir := fs.String("vendor", defaultVendorDir(), "Path to installed gems")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
+	cacheDir, err := defaultCacheDir()
+	if err != nil {
+		return err
+	}
+
 	gemNames := fs.Args()
-	return commands.Pristine(gemNames, *lockfilePath)
+	return commands.Pristine(gemNames, *lockfilePath, cacheDir, *vendorDir)
 }
 
 func runSearchCommand(args []string) error {

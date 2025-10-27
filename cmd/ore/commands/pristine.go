@@ -3,16 +3,16 @@ package commands
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/contriboss/gemfile-go/lockfile"
+	"github.com/contriboss/ore-light/internal/geminstall"
 )
 
-// Pristine restores gems to their pristine condition using `gem pristine`
-func Pristine(gemNames []string, lockfilePath string) error {
+// Pristine restores gems to their pristine condition using pure Go
+func Pristine(gemNames []string, lockfilePath, cacheDir, vendorDir string) error {
 	// Parse lockfile to get gem info
 	lock, err := lockfile.ParseFile(lockfilePath)
 	if err != nil {
@@ -55,8 +55,8 @@ func Pristine(gemNames []string, lockfilePath string) error {
 			gemStyle.Render(gemSpec.Name),
 			gemSpec.Version)
 
-		// Use `gem pristine` to restore the gem
-		if err := restoreGemWithRubyGem(gemSpec.Name, gemSpec.Version); err != nil {
+		// Restore the gem using pure Go
+		if err := restoreGemPureGo(*gemSpec, cacheDir, vendorDir); err != nil {
 			fmt.Fprintf(os.Stderr, "  %s Failed: %v\n",
 				errorStyle.Render("✗"),
 				err)
@@ -81,15 +81,55 @@ func Pristine(gemNames []string, lockfilePath string) error {
 	return nil
 }
 
-// restoreGemWithRubyGem uses `gem pristine` to restore a gem
-func restoreGemWithRubyGem(gemName, version string) error {
-	// Run: gem pristine <gem> --version <version>
-	cmd := exec.Command("gem", "pristine", gemName, "--version", version)
-
-	// Capture output
-	output, err := cmd.CombinedOutput()
+// restoreGemPureGo restores a gem to pristine condition
+// It removes the installed gem and reinstalls it from cache
+func restoreGemPureGo(gemSpec lockfile.GemSpec, cacheDir, vendorDir string) error {
+	// 1. Verify gem exists in cache
+	exists, err := verifyGemInCache(cacheDir, gemSpec.Name, gemSpec.Version)
 	if err != nil {
-		return fmt.Errorf("%w: %s", err, string(output))
+		return fmt.Errorf("failed to verify cache: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("gem not found in cache; run `ore fetch` first")
+	}
+
+	// 2. Find and remove installed gem directory
+	gemPath, err := findGemInstallPath(gemSpec.Name, gemSpec.Version, vendorDir)
+	if err == nil {
+		// Gem is installed, remove it
+		if err := removeGemDirectory(gemPath); err != nil {
+			return fmt.Errorf("failed to remove gem directory: %w", err)
+		}
+	}
+
+	// 3. Remove gemspec file
+	if err := removeGemspec(gemSpec.Name, gemSpec.Version, vendorDir); err != nil {
+		// Non-fatal if gemspec doesn't exist
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove gemspec: %w", err)
+		}
+	}
+
+	// 4. Reinstall from cache using geminstall package
+	cachePath := getGemCachePath(cacheDir, gemSpec.Name, gemSpec.Version)
+	destDir := filepath.Join(vendorDir, "gems", gemSpec.FullName())
+
+	// Extract gem contents
+	metadata, err := geminstall.ExtractGemContents(cachePath, destDir)
+	if err != nil {
+		return fmt.Errorf("failed to extract gem: %w", err)
+	}
+
+	// Write gemspec
+	if len(metadata) > 0 {
+		if err := geminstall.WriteGemSpecification(vendorDir, gemSpec, metadata); err != nil {
+			return fmt.Errorf("failed to write gemspec: %w", err)
+		}
+	}
+
+	// Link binaries
+	if err := geminstall.LinkGemBinaries(destDir, filepath.Join(vendorDir, "bin")); err != nil {
+		return fmt.Errorf("failed to link binaries: %w", err)
 	}
 
 	return nil

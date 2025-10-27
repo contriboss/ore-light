@@ -110,15 +110,18 @@ DEPENDENCIES
 		t.Fatalf("failed to write test lockfile: %v", err)
 	}
 
+	cacheDir := filepath.Join(tmpDir, "cache")
+	vendorDir := filepath.Join(tmpDir, "vendor")
+
 	// Test with valid gem
-	err := Pristine([]string{"rack"}, lockfilePath)
+	err := Pristine([]string{"rack"}, lockfilePath, cacheDir, vendorDir)
 	// We expect this to fail because gem pristine won't find the gem, but it should validate the name
 	if err == nil {
 		t.Log("pristine completed (gem pristine might have run successfully)")
 	}
 
 	// Test with no gems should error
-	err = Pristine([]string{}, lockfilePath)
+	err = Pristine([]string{}, lockfilePath, cacheDir, vendorDir)
 	if err == nil || !strings.Contains(err.Error(), "usage") {
 		t.Errorf("expected usage error with no gems, got %v", err)
 	}
