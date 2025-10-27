@@ -67,7 +67,7 @@ func TestSimpleGemfileParsing(t *testing.T) {
 
 func TestVersionInfo(t *testing.T) {
 	info := versionInfo()
-	if !strings.Contains(info, "ore version") {
+	if !strings.Contains(info, "ore v") {
 		t.Fatalf("expected version info string, got %q", info)
 	}
 	if !strings.Contains(info, version) {

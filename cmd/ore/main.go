@@ -230,7 +230,18 @@ func printVersion() {
 }
 
 func versionInfo() string {
-	return fmt.Sprintf("ore version %s (commit %s, built %s)", version, buildCommit, buildTime)
+	hash := shortHash(buildCommit)
+	return fmt.Sprintf("ore v%s (%s)", version, hash)
+}
+
+func shortHash(commit string) string {
+	if commit == "" || commit == "unknown" {
+		return "unknown"
+	}
+	if len(commit) > 7 {
+		return commit[:7]
+	}
+	return commit
 }
 func exitWithError(err error) {
 	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
