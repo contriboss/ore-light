@@ -32,8 +32,8 @@ github.com/contriboss/pubgrub-go v0.3.0 h1:lM+4LgoCeC6pgS/2nfDzUFO3Jd2G2ooV9XwPA
 github.com/contriboss/pubgrub-go v0.3.0/go.mod h1:GSdpaquQoqedQVXdmuy08Wdef/k108x/fKJcUFyrM+4=
 github.com/contriboss/ruby-extension-go v0.1.0 h1:KNo/Nr6VcG7ZgvWtbhTpfE47AxcZIanxWaHSh9VIzxw=
 github.com/contriboss/ruby-extension-go v0.1.0/go.mod h1:xEfGEj82FAlXS842Kf8F9mIyl0gV00puvDhjKcR5xUc=
-github.com/contriboss/rubygems-client-go v0.0.0-20251021215508-4d12239c8c84 h1:qnrT6ipreC6rmduo7+3aGEO2Lc1W/ejcbYRoNupNJPA=
-github.com/contriboss/rubygems-client-go v0.0.0-20251021215508-4d12239c8c84/go.mod h1:jRwg1ARgvAzJJxwbHOpmEDoCIBFYotuKpP1z2goNk84=
+github.com/contriboss/rubygems-client-go v0.1.0 h1:HGCGLaNtcD58mmTXhdLuKUgerRGQMOqE0NbKw2JCSSI=
+github.com/contriboss/rubygems-client-go v0.1.0/go.mod h1:jRwg1ARgvAzJJxwbHOpmEDoCIBFYotuKpP1z2goNk84=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f h1:Y/CXytFA4m6baUTXGLOoWe4PQhGxaX0KpnayAqC48p4=

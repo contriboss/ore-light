@@ -9,7 +9,7 @@ require (
 	github.com/contriboss/gemfile-go v0.2.0
 	github.com/contriboss/pubgrub-go v0.3.0
 	github.com/contriboss/ruby-extension-go v0.1.0
-	github.com/contriboss/rubygems-client-go v0.0.0-20251021215508-4d12239c8c84
+	github.com/contriboss/rubygems-client-go v0.1.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	golang.org/x/sync v0.17.0
 	gopkg.in/yaml.v3 v3.0.1
