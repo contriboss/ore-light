@@ -22,7 +22,11 @@ Ore Light is the streamlined distribution of Ore – focused on fast gem install
 
 ```bash
 # Install Ore Light (no Ruby required for download)
-curl -Ls https://raw.githubusercontent.com/contriboss/ore-light/main/scripts/install.sh | bash
+# Installs to ~/.local/bin by default (no sudo needed)
+curl -fsSL https://raw.githubusercontent.com/contriboss/ore-light/master/scripts/install.sh | bash
+
+# For system-wide installation to /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/contriboss/ore-light/master/scripts/install.sh | bash -s -- --system
 
 # Install gems (automatically uses vendor/bundle/ruby/<version>)
 ore install
@@ -88,6 +92,24 @@ Ore Light provides complete Bundler command parity with 21 commands:
 - `ore gems` - List all installed gems in the system (with optional `--filter`)
 - `ore browse` - Interactive TUI to browse, search, and manage installed gems
 - `ore version` - Show version information
+
+### Ruby Engine Compatibility
+
+Ore Light automatically detects your Ruby engine and filters gems accordingly:
+
+- **MRI/CRuby** - Full support for C extensions
+- **JRuby** - Automatically skips C extension gems, allows JRuby-specific gems (jdbc-*, jar-dependencies)
+- **TruffleRuby** - Full C extension support via LLVM
+
+The engine is detected via `RUBY_ENGINE` environment variable or by running `ruby -e 'puts RUBY_ENGINE'`.
+
+**Example:**
+```bash
+# JRuby automatically skips json, pg, nokogiri (C extensions)
+# but allows jdbc-postgres, activerecord-jdbc-adapter
+mise use jruby@10.0
+ore install
+```
 
 ### Native Extension Support
 
@@ -218,7 +240,7 @@ Features:
 
 Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) for a smooth TUI experience.
 
-### Gem Source Fallback (v0.1.1+)
+### Gem Source Fallback
 
 Ore Light supports configuring multiple gem sources with automatic fallback when a primary source fails:
 
@@ -299,7 +321,7 @@ vendor_dir = "/custom/path"
 cache_dir = "/path/to/cache"
 gemfile = "Gemfile.custom"
 
-# Configure gem sources with optional fallbacks (v0.1.1+)
+# Configure gem sources with optional fallbacks
 [[gem_sources]]
 url = "http://internal-mirror.company.com"
 fallback = "https://rubygems.org"
