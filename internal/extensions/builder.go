@@ -19,7 +19,7 @@ type BuildConfig struct {
 	Verbose        bool
 	Parallel       int
 	RubyPath       string
-	VendorDir      string // Path to vendor/ore directory for GEM_HOME/GEM_PATH
+	VendorDir      string // Path to vendor directory (e.g., vendor/bundle) for GEM_HOME/GEM_PATH
 }
 
 // This is like RubyGems' ext builder but as a Go service object
@@ -237,7 +237,7 @@ func (b *Builder) checkToolsForExtensions(extensions []string) error {
 }
 
 // buildGemEnvironment creates environment variables for gem discovery
-// This is like what Bundler does - sets GEM_HOME and GEM_PATH so Ruby can find gems in vendor/ore
+// This is like what Bundler does - sets GEM_HOME and GEM_PATH so Ruby can find gems in vendor/bundle
 func (b *Builder) buildGemEnvironment() map[string]string {
 	env := make(map[string]string)
 

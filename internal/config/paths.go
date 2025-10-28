@@ -9,6 +9,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	// DefaultVendorSubdir is the default subdirectory name under vendor/
+	// Using "bundle" for Bundler compatibility
+	DefaultVendorSubdir = "bundle"
+)
+
 // Config represents the application configuration
 type Config struct {
 	VendorDir string
@@ -93,10 +99,9 @@ func DefaultVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 		return bundlePath
 	}
 
-	// Priority 4: System gem directory (Bundler-style: global by default)
-	// This now detects Ruby version without requiring Ruby to be installed
-	// Falls back to ~/.gem/ruby/<version> if no system gems found
-	return getSystemGemDir()
+	// Priority 4: Local vendor/bundle directory (Bundler-compatible default)
+	// This makes ore work as a drop-in replacement for bundle install
+	return filepath.Join("vendor", DefaultVendorSubdir)
 }
 
 // ReadBundleConfigPath reads the BUNDLE_PATH from .bundle/config

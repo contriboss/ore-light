@@ -107,5 +107,5 @@ func defaultVendorDir() string {
 	if env := os.Getenv("ORE_LIGHT_VENDOR_DIR"); env != "" {
 		return env
 	}
-	return filepath.Join("vendor", "ore")
+	return filepath.Join("vendor", "bundle")
 }

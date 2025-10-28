@@ -255,7 +255,7 @@ func (p *PathSource) CopyToVendor(destDir string) error {
 		}
 
 		// Skip directories that could cause infinite recursion
-		// This prevents copying vendor/ore/gems/foo into vendor/ore/gems/foo/vendor/ore/gems/foo/...
+		// This prevents copying vendor/bundle/gems/foo into vendor/bundle/gems/foo/vendor/bundle/gems/foo/...
 		if info.IsDir() {
 			skipDirs := []string{".git", "vendor", ".bundle", "tmp"}
 			for _, skip := range skipDirs {
