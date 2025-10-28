@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/contriboss/gemfile-go/lockfile"
@@ -19,29 +20,51 @@ func NewEngineCompatibility(engine ruby.Engine) *EngineCompatibility {
 	}
 }
 
+// hasNativeCExtension checks if a gem has native C extensions (extconf.rb)
+// Returns true if the gem has C extensions, false for JRuby jar extensions
+func hasNativeCExtension(gem lockfile.GemSpec) bool {
+	if len(gem.Extensions) == 0 {
+		return false
+	}
+
+	// Check for typical C extension build scripts
+	for _, ext := range gem.Extensions {
+		basename := filepath.Base(ext)
+		if basename == "extconf.rb" || basename == "mkrf_conf.rb" || basename == "configure" {
+			return true
+		}
+	}
+
+	return false
+}
+
 // IsCompatible checks if a gem is compatible with the current Ruby engine
 func (ec *EngineCompatibility) IsCompatible(gem lockfile.GemSpec) bool {
-	// Check platform compatibility first
+	// Check platform compatibility first (e.g., java platform for JRuby)
 	if !ec.isPlatformCompatible(gem.Platform) {
 		return false
 	}
 
 	// For pure Ruby gems (no extensions), always compatible
-	if len(gem.Extensions) == 0 && gem.Platform == "" {
+	if len(gem.Extensions) == 0 {
 		return true
 	}
 
-	// For gems with native extensions, check if engine supports them
-	if len(gem.Extensions) > 0 {
+	// For gems with extensions, distinguish C extensions from JRuby jar extensions
+	if hasNativeCExtension(gem) {
+		// This is a C extension (has extconf.rb) - check if engine supports it
 		return ec.engine.SupportsNativeExtensions()
 	}
 
-	// For platform-specific gems, check platform match
-	if gem.Platform != "" {
-		return ec.isPlatformCompatible(gem.Platform)
+	// Extensions present but no extconf.rb - likely JRuby jar extensions
+	// These are compatible with JRuby, but for other engines we fall back to the
+	// engine's native extension support as a conservative proxy
+	if ec.engine.Name == ruby.EngineJRuby {
+		return true // JRuby can handle jar extensions
 	}
 
-	return true
+	// For other engines, check if they support extensions in general
+	return ec.engine.SupportsNativeExtensions()
 }
 
 // isPlatformCompatible checks if a platform is compatible with the engine
@@ -101,9 +124,9 @@ func (ec *EngineCompatibility) GetIncompatibilityReason(gem lockfile.GemSpec) st
 		return "incompatible platform: " + gem.Platform
 	}
 
-	// Check native extensions
-	if len(gem.Extensions) > 0 && !ec.engine.SupportsNativeExtensions() {
-		return "has native extensions but " + ec.engine.Name + " doesn't support them"
+	// Check for native C extensions
+	if hasNativeCExtension(gem) && !ec.engine.SupportsNativeExtensions() {
+		return "has native C extensions but " + ec.engine.Name + " doesn't support them"
 	}
 
 	return "incompatible with " + ec.engine.Name
