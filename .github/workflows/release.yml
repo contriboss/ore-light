@@ -92,27 +92,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Download all artifacts
+    - name: Download Linux AMD64
       uses: actions/download-artifact@v5
       with:
+        name: ore-linux-amd64
         path: dist
 
-    - name: Reorganize artifacts
+    - name: Download Linux ARM64
+      uses: actions/download-artifact@v5
+      with:
+        name: ore-linux-arm64
+        path: dist
+
+    - name: Download macOS AMD64
+      uses: actions/download-artifact@v5
+      with:
+        name: ore-darwin-amd64
+        path: dist
+
+    - name: Download macOS ARM64
+      uses: actions/download-artifact@v5
+      with:
+        name: ore-darwin-arm64
+        path: dist
+
+    - name: List downloaded artifacts
       run: |
-        mkdir -p binaries
-        find dist -type f -name 'ore-*' -exec mv {} binaries/ \;
-        ls -la binaries/
+        ls -la dist/
+        file dist/ore-*
 
     - name: Create checksums
       run: |
-        cd binaries
+        cd dist
         sha256sum ore-* > checksums.txt
         cat checksums.txt
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        files: binaries/*
+        files: dist/*
         draft: false
         prerelease: false
         generate_release_notes: true
