@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	version     = "0.2.0"
+	version     = "dev"
 	buildCommit = "unknown"
 	buildTime   = "unknown"
 )
@@ -248,12 +248,11 @@ See 'ore <command> --help' for more information on a specific command.
 
 func printVersion() {
 	fmt.Println(versionInfo())
-	fmt.Println("Ruby gem manager written in Go")
 }
 
 func versionInfo() string {
 	hash := shortHash(buildCommit)
-	return fmt.Sprintf("ore v%s (%s)", version, hash)
+	return fmt.Sprintf("ore %s (%s)", version, hash)
 }
 
 func shortHash(commit string) string {

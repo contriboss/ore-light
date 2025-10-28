@@ -67,8 +67,8 @@ func TestSimpleGemfileParsing(t *testing.T) {
 
 func TestVersionInfo(t *testing.T) {
 	info := versionInfo()
-	if !strings.Contains(info, "ore v") {
-		t.Fatalf("expected version info string, got %q", info)
+	if !strings.HasPrefix(info, "ore ") {
+		t.Fatalf("expected version info to start with 'ore ', got %q", info)
 	}
 	if !strings.Contains(info, version) {
 		t.Fatalf("expected version string %q in info %q", version, info)
