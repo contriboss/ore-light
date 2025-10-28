@@ -31,7 +31,15 @@ var (
 const (
 	// DEFAULT_RUBY_VERSION is the fallback Ruby version when detection fails
 	// Update this when new Ruby stable releases come out
-	DEFAULT_RUBY_VERSION = "3.4.0"
+	DEFAULT_RUBY_VERSION = "3.4.7"
+
+	// DEFAULT_BUNDLER_VERSION is the Bundler version to write in Gemfile.lock
+	// Update this to match the current stable Bundler release
+	DEFAULT_BUNDLER_VERSION = "2.7.2"
+
+	// DEFAULT_RUBYGEMS_VERSION is the RubyGems version to write in gemspec files
+	// Update this to match the current stable RubyGems release
+	DEFAULT_RUBYGEMS_VERSION = "3.6.4"
 )
 
 func main() {

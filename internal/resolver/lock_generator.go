@@ -374,6 +374,7 @@ func detectBundlerVersion(lockfilePath string) string {
 		}
 	}
 
-	// Fallback to reasonable default
-	return "2.5.0"
+	// Fallback to DEFAULT_BUNDLER_VERSION constant
+	// Note: This should match the constant in cmd/ore/main.go
+	return "2.7.2"
 }

@@ -12,6 +12,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	// DEFAULT_RUBYGEMS_VERSION is the RubyGems version to write in gemspec files
+	// Update this to match the current stable RubyGems release (should match cmd/ore/main.go)
+	DEFAULT_RUBYGEMS_VERSION = "3.6.4"
+)
+
 // gemMetadata represents extracted metadata from YAML
 type gemMetadata struct {
 	Name        string       `yaml:"name"`
@@ -134,7 +140,7 @@ Gem::Specification.new do |s|
   s.licenses = [{{range $i, $l := .Licenses}}{{if $i}}, {{end}}{{printf "%q" $l}}{{end}}]
   s.required_rubygems_version = Gem::Requirement.new(">= 0")
   s.require_paths = ["lib"]
-  s.rubygems_version = "3.5.0"
+  s.rubygems_version = "{{.RubygemsVersion}}"
   s.summary = {{printf "%q" .Summary}}
   s.description = {{printf "%q" .Description}}
 {{- if .Dependencies}}
@@ -150,16 +156,17 @@ var gemspecTmpl = template.Must(template.New("gemspec").Parse(gemspecTemplate))
 
 // gemspecData is the data structure passed to the gemspec template
 type gemspecData struct {
-	Name         string
-	Version      string
-	Platform     string
-	Authors      []string
-	Email        string
-	Homepage     string
-	Licenses     []string
-	Summary      string
-	Description  string
-	Dependencies []lockfile.Dependency
+	Name            string
+	Version         string
+	Platform        string
+	Authors         []string
+	Email           string
+	Homepage        string
+	Licenses        []string
+	Summary         string
+	Description     string
+	Dependencies    []lockfile.Dependency
+	RubygemsVersion string
 }
 
 // extractEmail handles both string and array email types from YAML
@@ -238,16 +245,17 @@ func generateGemspecCode(spec lockfile.GemSpec, meta *gemMetadata) string {
 	}
 
 	data := gemspecData{
-		Name:         spec.Name,
-		Version:      spec.Version,
-		Platform:     platform,
-		Authors:      authors,
-		Email:        email,
-		Homepage:     homepage,
-		Licenses:     licenses,
-		Summary:      summary,
-		Description:  description,
-		Dependencies: spec.Dependencies,
+		Name:            spec.Name,
+		Version:         spec.Version,
+		Platform:        platform,
+		Authors:         authors,
+		Email:           email,
+		Homepage:        homepage,
+		Licenses:        licenses,
+		Summary:         summary,
+		Description:     description,
+		Dependencies:    spec.Dependencies,
+		RubygemsVersion: DEFAULT_RUBYGEMS_VERSION,
 	}
 
 	var buf bytes.Buffer

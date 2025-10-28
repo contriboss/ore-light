@@ -9,19 +9,14 @@ GEM
     rack (3.2.3)
     rake (13.3.0)
 
-
-
 PLATFORMS
-  arm64-darwin24
+  arm64-darwin-24
   ruby
 
-
 DEPENDENCIES
-  minitest
+  minitest!
   rack (~> 3.0)
   rake
 
-
 BUNDLED WITH
    2.7.2
-
