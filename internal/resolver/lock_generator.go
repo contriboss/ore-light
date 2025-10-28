@@ -270,8 +270,8 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 		return allSolutions[i].Name.Value() < allSolutions[j].Name.Value()
 	})
 
-	// Determine lockfile path
-	lockfilePath := gemfilePath + ".lock"
+	// Determine lockfile path - supports both Gemfile.lock and gems.locked
+	lockfilePath := determineLockfilePath(gemfilePath)
 
 	// Convert to lockfile specs and fetch dependencies
 	depSource := NewRubyGemsSource()
@@ -337,6 +337,18 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 
 	fmt.Printf("\n✨ Resolved %d dependencies and wrote %d gems to %s\n", len(parsed.Dependencies), len(specs), lockfilePath)
 	return nil
+}
+
+// determineLockfilePath determines the lockfile path based on the Gemfile path.
+// Supports both Gemfile/Gemfile.lock and gems.rb/gems.locked naming conventions.
+func determineLockfilePath(gemfilePath string) string {
+	base := filepath.Base(gemfilePath)
+	dir := filepath.Dir(gemfilePath)
+
+	if base == "gems.rb" {
+		return filepath.Join(dir, "gems.locked")
+	}
+	return gemfilePath + ".lock"
 }
 
 // detectPlatforms detects the current platform(s) for the lockfile.

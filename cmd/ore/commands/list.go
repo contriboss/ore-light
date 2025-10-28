@@ -5,19 +5,33 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/contriboss/gemfile-go/lockfile"
 )
+
+type gemEntry struct {
+	name    string
+	version string
+	source  string
+	typ     string // "gem", "git", "path"
+}
 
 // RunList implements the ore list command
 func RunList(args []string) error {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
 	verbose := fs.Bool("v", false, "Show gem sources")
+	useTable := fs.Bool("table", false, "Display as table")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	lockfilePath := *gemfilePath + ".lock"
+	// Find the lockfile - supports both Gemfile.lock and gems.locked
+	lockfilePath, err := findLockfilePath(*gemfilePath)
+	if err != nil {
+		return fmt.Errorf("failed to find lockfile: %w", err)
+	}
 
 	// Parse lockfile
 	lock, err := lockfile.ParseFile(lockfilePath)
@@ -26,13 +40,6 @@ func RunList(args []string) error {
 	}
 
 	// Collect all gems
-	type gemEntry struct {
-		name    string
-		version string
-		source  string
-		typ     string // "gem", "git", "path"
-	}
-
 	var allGems []gemEntry
 
 	// Regular gems
@@ -83,16 +90,102 @@ func RunList(args []string) error {
 	})
 
 	// Print gems
-	fmt.Printf("Gems included in the bundle:\n")
-	for _, gem := range allGems {
-		if *verbose {
-			fmt.Printf("  * %s (%s) [%s]\n", gem.name, gem.version, gem.source)
-		} else {
-			fmt.Printf("  * %s (%s)\n", gem.name, gem.version)
+	if *useTable {
+		printGemsTable(allGems, *verbose)
+	} else {
+		fmt.Printf("Gems included in the bundle:\n")
+		for _, gem := range allGems {
+			if *verbose {
+				fmt.Printf("  * %s (%s) [%s]\n", gem.name, gem.version, gem.source)
+			} else {
+				fmt.Printf("  * %s (%s)\n", gem.name, gem.version)
+			}
 		}
 	}
 
 	fmt.Printf("\nTotal: %d gems\n", len(allGems))
 
 	return nil
+}
+
+func printGemsTable(gems []gemEntry, verbose bool) {
+	// Define styles
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("99"))
+
+	gemStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("86"))
+
+	versionStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("229"))
+
+	sourceStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("242"))
+
+	// Prepare table data
+	var rows [][]string
+	if verbose {
+		rows = make([][]string, 0, len(gems)+1)
+		// Header
+		rows = append(rows, []string{"GEM", "VERSION", "SOURCE", "TYPE"})
+		// Data rows
+		for _, gem := range gems {
+			typeIcon := getTypeIcon(gem.typ)
+			rows = append(rows, []string{
+				gemStyle.Render(gem.name),
+				versionStyle.Render(gem.version),
+				sourceStyle.Render(truncateSource(gem.source)),
+				typeIcon,
+			})
+		}
+	} else {
+		rows = make([][]string, 0, len(gems)+1)
+		// Header
+		rows = append(rows, []string{"GEM", "VERSION", "TYPE"})
+		// Data rows
+		for _, gem := range gems {
+			typeIcon := getTypeIcon(gem.typ)
+			rows = append(rows, []string{
+				gemStyle.Render(gem.name),
+				versionStyle.Render(gem.version),
+				typeIcon,
+			})
+		}
+	}
+
+	// Create table with new lipgloss v1.1.0 features
+	t := table.New().
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("238"))).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == 0 {
+				return headerStyle
+			}
+			return lipgloss.NewStyle()
+		}).
+		Headers(rows[0]...).
+		Rows(rows[1:]...)
+
+	fmt.Println(t)
+}
+
+func getTypeIcon(typ string) string {
+	switch typ {
+	case "gem":
+		return "💎"
+	case "git":
+		return "📦"
+	case "path":
+		return "📁"
+	default:
+		return "•"
+	}
+}
+
+func truncateSource(source string) string {
+	if len(source) > 50 {
+		return source[:47] + "..."
+	}
+	return source
 }

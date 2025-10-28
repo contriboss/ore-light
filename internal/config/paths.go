@@ -30,6 +30,7 @@ func DefaultLockfilePath() string {
 }
 
 // DefaultGemfilePath returns the default Gemfile path
+// Supports both Gemfile and gems.rb naming conventions
 func DefaultGemfilePath(cfg *Config) string {
 	if env := os.Getenv("ORE_GEMFILE"); env != "" {
 		return env
@@ -37,6 +38,13 @@ func DefaultGemfilePath(cfg *Config) string {
 	if cfg != nil && cfg.Gemfile != "" {
 		return cfg.Gemfile
 	}
+
+	// Check for gems.rb first (newer Bundler 2.0+ convention)
+	if _, err := os.Stat("gems.rb"); err == nil {
+		return "gems.rb"
+	}
+
+	// Default to Gemfile
 	return "Gemfile"
 }
 

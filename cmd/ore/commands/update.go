@@ -20,13 +20,18 @@ func RunUpdate(args []string) error {
 	}
 
 	gems := fs.Args()
-	lockfilePath := *gemfilePath + ".lock"
+
+	// Find the lockfile - supports both Gemfile.lock and gems.locked
+	lockfilePath, err := findLockfilePath(*gemfilePath)
+	if err != nil {
+		return fmt.Errorf("failed to find lockfile: %w", err)
+	}
 
 	// Parse Gemfile to ensure it exists and is valid
 	parser := gemfile.NewGemfileParser(*gemfilePath)
-	_, err := parser.Parse()
-	if err != nil {
-		return fmt.Errorf("failed to parse Gemfile: %w", err)
+	_, parseErr := parser.Parse()
+	if parseErr != nil {
+		return fmt.Errorf("failed to parse Gemfile: %w", parseErr)
 	}
 
 	// Check if Gemfile.lock exists
@@ -89,11 +94,4 @@ func RunUpdate(args []string) error {
 	fmt.Printf("✨ Updated %s\n", lockfilePath)
 	fmt.Println("💡 Run `ore install` to fetch the updated gems.")
 	return nil
-}
-
-func defaultGemfilePath() string {
-	if env := os.Getenv("ORE_GEMFILE"); env != "" {
-		return env
-	}
-	return "Gemfile"
 }

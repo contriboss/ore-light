@@ -19,7 +19,11 @@ func RunOutdated(args []string) error {
 		return err
 	}
 
-	lockfilePath := *gemfilePath + ".lock"
+	// Find the lockfile - supports both Gemfile.lock and gems.locked
+	lockfilePath, err := findLockfilePath(*gemfilePath)
+	if err != nil {
+		return fmt.Errorf("failed to find lockfile: %w", err)
+	}
 
 	// Parse Gemfile to get constraints
 	parser := gemfile.NewGemfileParser(*gemfilePath)

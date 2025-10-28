@@ -19,11 +19,10 @@ func RunCheck(args []string) error {
 		return err
 	}
 
-	lockfilePath := *gemfilePath + ".lock"
-
-	// Check if lockfile exists
-	if _, err := os.Stat(lockfilePath); err != nil {
-		return fmt.Errorf("lockfile not found at %s - run 'ore lock' first", lockfilePath)
+	// Find the lockfile - supports both Gemfile.lock and gems.locked
+	lockfilePath, err := findLockfilePath(*gemfilePath)
+	if err != nil {
+		return fmt.Errorf("failed to find lockfile: %w - run 'ore lock' first", err)
 	}
 
 	// Parse lockfile

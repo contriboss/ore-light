@@ -792,6 +792,17 @@ func detectGemfileFromLock(lockfilePath string) string {
 	if lockfilePath == "" {
 		lockfilePath = "Gemfile.lock"
 	}
+
+	// Handle gems.locked -> gems.rb
+	if strings.HasSuffix(lockfilePath, "gems.locked") {
+		candidate := strings.TrimSuffix(lockfilePath, ".locked") + ".rb"
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		return ""
+	}
+
+	// Handle Gemfile.lock -> Gemfile (and other .lock files)
 	if !strings.HasSuffix(lockfilePath, ".lock") {
 		return ""
 	}
