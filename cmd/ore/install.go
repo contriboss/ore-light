@@ -234,6 +234,9 @@ func buildExecutionEnv(vendorDir string, specs []lockfile.GemSpec) ([]string, er
 	env := os.Environ()
 	env = setEnv(env, "GEM_HOME", vendorDir)
 	env = setEnv(env, "GEM_PATH", vendorDir)
+	// Disable Bundler's auto-setup in Ruby 3.4+ (gem_prelude)
+	// ore exec manages gem loading directly via RUBYLIB
+	env = setEnv(env, "BUNDLE_GEMFILE", "")
 	env = prependPath(env, filepath.Join(vendorDir, "bin"))
 	env = prependRubyLib(env, libPaths)
 	return env, nil
