@@ -31,6 +31,7 @@ type gemMetadata struct {
 	Licenses    []string     `yaml:"licenses"`
 	License     string       `yaml:"license"`
 	Platform    string       `yaml:"platform"`
+	Extensions  []string     `yaml:"extensions"` // Native C extensions
 }
 
 // versionField handles both nested and simple version formats
@@ -143,6 +144,9 @@ Gem::Specification.new do |s|
   s.rubygems_version = "{{.RubygemsVersion}}"
   s.summary = {{printf "%q" .Summary}}
   s.description = {{printf "%q" .Description}}
+{{- if .Extensions}}
+  s.extensions = [{{range $i, $e := .Extensions}}{{if $i}}, {{end}}{{printf "%q" $e}}{{end}}]
+{{- end}}
 {{- if .Dependencies}}
 
 {{- range .Dependencies}}
@@ -167,6 +171,7 @@ type gemspecData struct {
 	Description     string
 	Dependencies    []lockfile.Dependency
 	RubygemsVersion string
+	Extensions      []string // Native C extensions
 }
 
 // extractEmail handles both string and array email types from YAML
@@ -244,6 +249,12 @@ func generateGemspecCode(spec lockfile.GemSpec, meta *gemMetadata) string {
 		description = fmt.Sprintf("Gem %s version %s installed by Ore", spec.Name, spec.Version)
 	}
 
+	// Extensions - use from metadata if available, otherwise from spec
+	extensions := meta.Extensions
+	if len(extensions) == 0 && len(spec.Extensions) > 0 {
+		extensions = spec.Extensions
+	}
+
 	data := gemspecData{
 		Name:            spec.Name,
 		Version:         spec.Version,
@@ -256,6 +267,7 @@ func generateGemspecCode(spec lockfile.GemSpec, meta *gemMetadata) string {
 		Description:     description,
 		Dependencies:    spec.Dependencies,
 		RubygemsVersion: DEFAULT_RUBYGEMS_VERSION,
+		Extensions:      extensions,
 	}
 
 	var buf bytes.Buffer
