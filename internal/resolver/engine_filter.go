@@ -115,11 +115,11 @@ func (ec *EngineCompatibility) GetIncompatibilityReason(gem lockfile.GemSpec) st
 
 	// Check platform first
 	if gem.Platform != "" && !ec.isPlatformCompatible(gem.Platform) {
-		if ec.engine.Name == ruby.EngineJRuby && gem.Platform != "java" {
+		if ec.engine.Name == ruby.EngineJRuby && !strings.HasSuffix(gem.Platform, "-java") && gem.Platform != "java" {
 			return "requires platform " + gem.Platform + " but using JRuby (java platform)"
 		}
-		if ec.engine.Name == ruby.EngineMRI && gem.Platform == "java" {
-			return "requires Java platform but using MRI"
+		if (ec.engine.Name == ruby.EngineMRI || ec.engine.Name == ruby.EngineTruffleRuby) && (gem.Platform == "java" || strings.HasSuffix(gem.Platform, "-java")) {
+			return "requires Java platform but using " + ec.engine.Name
 		}
 		return "incompatible platform: " + gem.Platform
 	}
