@@ -87,7 +87,6 @@ jobs:
         run: |
           echo "Testing ore exec..."
           ore exec ruby -e "
-            require 'bundler/setup'
             require 'rack'
             require 'sinatra/base'
             puts '✅ All gems loaded successfully!'
