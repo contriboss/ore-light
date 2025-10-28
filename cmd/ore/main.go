@@ -379,16 +379,9 @@ func runInstallCommand(args []string) error {
 	// Filter by current platform
 	gems = filterGemsByPlatform(gems)
 
-	// Filter by Ruby engine compatibility
-	gems, skippedGems := filterGemsByEngine(gems, *verbose)
-	if len(skippedGems) > 0 && *verbose {
-		fmt.Printf("Skipped %d incompatible gems:\n", len(skippedGems))
-		for _, gem := range skippedGems {
-			fmt.Printf("  - %s\n", gem.FullName())
-		}
-	}
-
 	// Download regular gems from rubygems.org
+	// Note: Engine compatibility filtering happens during installation
+	// after extracting metadata (which contains extension info)
 	if len(gems) > 0 {
 		downloadReport, err := dm.DownloadAll(ctx, gems, *force)
 		if err != nil {
@@ -1007,32 +1000,6 @@ func platformMatches(gemPlatform, currentPlatform string) bool {
 
 	// Match arch and os (first two components)
 	return gemParts[0] == currentParts[0] && gemParts[1] == currentParts[1]
-}
-
-// filterGemsByEngine filters gems based on Ruby engine compatibility
-func filterGemsByEngine(gems []lockfile.GemSpec, verbose bool) (compatible []lockfile.GemSpec, skipped []lockfile.GemSpec) {
-	// Detect current Ruby engine
-	engine := ruby.DetectEngine()
-
-	if verbose {
-		fmt.Printf("Detected Ruby engine: %s\n", engine.String())
-	}
-
-	// Create engine compatibility checker
-	checker := resolver.NewEngineCompatibility(engine)
-
-	// Filter gems
-	compatible, skipped = checker.FilterGems(gems)
-
-	// Log incompatible gems
-	for _, gem := range skipped {
-		reason := checker.GetIncompatibilityReason(gem)
-		if verbose {
-			fmt.Printf("⚠️  Skipping %s: %s\n", gem.FullName(), reason)
-		}
-	}
-
-	return compatible, skipped
 }
 
 // filterGitGemsByGroups filters git gems by excluding specified groups

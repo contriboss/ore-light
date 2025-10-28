@@ -15,6 +15,7 @@ import (
 	"github.com/contriboss/ore-light/internal/extensions"
 	"github.com/contriboss/ore-light/internal/geminstall"
 	"github.com/contriboss/ore-light/internal/resolver"
+	"github.com/contriboss/ore-light/internal/ruby"
 )
 
 // Ruby developers: This is like a result object from bundle install
@@ -30,6 +31,10 @@ type installReport struct {
 
 func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, extConfig *extensions.BuildConfig) (installReport, error) {
 	report := installReport{Total: len(gems)}
+
+	// Detect Ruby engine for compatibility filtering
+	engine := ruby.DetectEngine()
+	engineChecker := resolver.NewEngineCompatibility(engine)
 
 	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
 		return report, err
@@ -67,6 +72,28 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 		metadata, err := geminstall.ExtractGemContents(gemPath, destDir)
 		if err != nil {
 			return report, fmt.Errorf("failed to extract %s: %w", gem.FullName(), err)
+		}
+
+		// Check engine compatibility after extracting metadata
+		// Parse metadata to populate gem.Extensions for compatibility check
+		if len(metadata) > 0 {
+			// Parse extensions from metadata YAML
+			gemWithExtensions := gem
+			if extensions := geminstall.ParseExtensionsFromMetadata(metadata); len(extensions) > 0 {
+				gemWithExtensions.Extensions = extensions
+			}
+
+			// Check if gem is compatible with current Ruby engine
+			if !engineChecker.IsCompatible(gemWithExtensions) {
+				reason := engineChecker.GetIncompatibilityReason(gemWithExtensions)
+				if extConfig != nil && extConfig.Verbose {
+					fmt.Printf("⚠️  Skipping %s: %s\n", gem.FullName(), reason)
+				}
+				// Clean up extracted files
+				os.RemoveAll(destDir)
+				report.Skipped++
+				continue
+			}
 		}
 
 		if err := geminstall.CopyGemToVendorCache(gemPath, filepath.Join(vendorDir, "cache", gemFileName(gem))); err != nil {
