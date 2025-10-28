@@ -65,16 +65,14 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 			continue
 		}
 
-		if err := os.RemoveAll(destDir); err != nil {
-			return report, fmt.Errorf("failed to clean install dir for %s: %w", gem.FullName(), err)
-		}
-
-		metadata, err := geminstall.ExtractGemContents(gemPath, destDir)
+		// Performance optimization: Extract only metadata first to check compatibility
+		// This avoids unpacking the entire data.tar.gz for incompatible gems
+		metadata, err := geminstall.ExtractMetadataOnly(gemPath)
 		if err != nil {
-			return report, fmt.Errorf("failed to extract %s: %w", gem.FullName(), err)
+			return report, fmt.Errorf("failed to extract metadata from %s: %w", gem.FullName(), err)
 		}
 
-		// Check engine compatibility after extracting metadata
+		// Check engine compatibility BEFORE full extraction
 		// Parse metadata to populate gem.Extensions for compatibility check
 		if len(metadata) > 0 {
 			// Parse extensions from metadata YAML
@@ -97,15 +95,19 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 				if extConfig != nil && extConfig.Verbose {
 					fmt.Printf("⚠️  Skipping %s: %s\n", gem.FullName(), reason)
 				}
-				// Clean up extracted files
-				if err := os.RemoveAll(destDir); err != nil {
-					if extConfig != nil && extConfig.Verbose {
-						fmt.Fprintf(os.Stderr, "Warning: failed to clean up %s: %v\n", destDir, err)
-					}
-				}
 				report.Skipped++
 				continue
 			}
+		}
+
+		// Gem is compatible - proceed with full extraction
+		if err := os.RemoveAll(destDir); err != nil {
+			return report, fmt.Errorf("failed to clean install dir for %s: %w", gem.FullName(), err)
+		}
+
+		_, err = geminstall.ExtractGemContents(gemPath, destDir)
+		if err != nil {
+			return report, fmt.Errorf("failed to extract %s: %w", gem.FullName(), err)
 		}
 
 		if err := geminstall.CopyGemToVendorCache(gemPath, filepath.Join(vendorDir, "cache", gemFileName(gem))); err != nil {

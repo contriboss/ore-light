@@ -10,6 +10,40 @@ import (
 	"path/filepath"
 )
 
+// ExtractMetadataOnly extracts only the metadata from a .gem file without extracting contents
+// This is much faster than ExtractGemContents and useful for compatibility checks
+func ExtractMetadataOnly(gemPath string) ([]byte, error) {
+	file, err := os.Open(gemPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	tr := tar.NewReader(file)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		switch header.Name {
+		case "metadata.gz":
+			buf, err := io.ReadAll(tr)
+			if err != nil {
+				return nil, err
+			}
+			return decompressMetadata(buf)
+		case "metadata":
+			return io.ReadAll(tr)
+		}
+	}
+
+	return nil, fmt.Errorf("metadata not found in %s", gemPath)
+}
+
 // ExtractGemContents extracts a .gem file to the destination directory
 // Returns the metadata YAML bytes
 func ExtractGemContents(gemPath, destDir string) ([]byte, error) {
