@@ -31,19 +31,19 @@ jobs:
         CGO_ENABLED: 1
       run: |
         # Linux AMD64
-        CC=x86_64-linux-gnu-gcc GOOS=linux GOARCH=amd64 go build -o ore-linux-amd64 -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
+        CC=x86_64-linux-gnu-gcc GOOS=linux GOARCH=amd64 go build -tags tree_sitter -o ore-linux-amd64 -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
 
         # Linux ARM64
-        CC=aarch64-linux-gnu-gcc GOOS=linux GOARCH=arm64 go build -o ore-linux-arm64 -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
+        CC=aarch64-linux-gnu-gcc GOOS=linux GOARCH=arm64 go build -tags tree_sitter -o ore-linux-arm64 -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
 
         # macOS AMD64 (disable CGO for cross-compilation)
-        CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ore-darwin-amd64 -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
+        CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags tree_sitter -o ore-darwin-amd64 -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
 
         # macOS ARM64 (disable CGO for cross-compilation)
-        CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ore-darwin-arm64 -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
+        CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags tree_sitter -o ore-darwin-arm64 -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
 
         # Windows AMD64 (disable CGO for cross-compilation)
-        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ore-windows-amd64.exe -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
+        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags tree_sitter -o ore-windows-amd64.exe -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/ore
 
     - name: Create checksums
       run: |
