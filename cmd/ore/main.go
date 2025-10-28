@@ -17,9 +17,11 @@ import (
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/cmd/ore/commands"
 	"github.com/contriboss/ore-light/internal/audit"
+	"github.com/contriboss/ore-light/internal/cache"
+	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/extensions"
 	"github.com/contriboss/ore-light/internal/resolver"
-	"gopkg.in/yaml.v3"
+	"github.com/contriboss/ore-light/internal/ruby"
 )
 
 var (
@@ -618,160 +620,50 @@ func runExecCommand(args []string) error {
 }
 
 func defaultLockfilePath() string {
-	// Try to auto-detect Gemfile.lock or gems.locked
-	// This respects BUNDLE_GEMFILE if set
-	lockPath, err := lockfile.FindLockfileOnly()
-	if err == nil {
-		return lockPath
-	}
-
-	// Fallback to Gemfile.lock for backward compatibility
-	return "Gemfile.lock"
+	return config.DefaultLockfilePath()
 }
 
 func defaultVendorDir() string {
-	// Priority 1: Environment variables
-	if env := os.Getenv("ORE_VENDOR_DIR"); env != "" {
-		return env
-	}
-	if env := os.Getenv("ORE_LIGHT_VENDOR_DIR"); env != "" {
-		return env
-	}
+	cfg := configAdapter(appConfig)
+	return config.DefaultVendorDir(cfg, detectRubyVersion, getSystemGemDir)
+}
 
-	// Priority 2: Ore config file
-	if appConfig != nil && appConfig.VendorDir != "" {
-		return appConfig.VendorDir
+// configAdapter converts main.Config to internal/config.Config
+func configAdapter(c *Config) *config.Config {
+	if c == nil {
+		return nil
 	}
-
-	// Priority 3: Bundler .bundle/config
-	if bundlePath := readBundleConfigPath(); bundlePath != "" {
-		rubyVersion := detectRubyVersion()
-		if rubyVersion != "" {
-			return filepath.Join(bundlePath, "ruby", rubyVersion)
-		}
-		return bundlePath
+	return &config.Config{
+		VendorDir: c.VendorDir,
+		CacheDir:  c.CacheDir,
+		Gemfile:   c.Gemfile,
 	}
-
-	// Priority 4: System gem directory (Bundler-style: global by default)
-	// This now detects Ruby version without requiring Ruby to be installed
-	// Falls back to ~/.gem/ruby/<version> if no system gems found
-	return getSystemGemDir()
 }
 
 // toMajorMinor converts "3.4.7" to "3.4.0" (Bundler convention)
 func toMajorMinor(version string) string {
-	// Split by dots and keep only major.minor
-	parts := []string{}
-	current := ""
-	for i := 0; i < len(version); i++ {
-		if version[i] == '.' {
-			parts = append(parts, current)
-			current = ""
-		} else {
-			current += string(version[i])
-		}
-	}
-	if current != "" {
-		parts = append(parts, current)
-	}
-
-	// Return major.minor.0
-	if len(parts) >= 2 {
-		return parts[0] + "." + parts[1] + ".0"
-	}
-	return version
+	return config.ToMajorMinor(version)
 }
 
 // readBundleConfigPath reads BUNDLE_PATH from .bundle/config
 func readBundleConfigPath() string {
-	data, err := os.ReadFile(".bundle/config")
-	if err != nil {
-		return ""
-	}
-
-	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return ""
-	}
-
-	if path, ok := config["BUNDLE_PATH"].(string); ok {
-		return path
-	}
-
-	return ""
+	return config.ReadBundleConfigPath()
 }
 
 // detectRubyVersion detects the Ruby version to use for gem installation
 // Priority: 1) Gemfile.lock, 2) Gemfile, 3) DEFAULT_RUBY_VERSION
 func detectRubyVersion() string {
-	// 1. Try Gemfile.lock RUBY VERSION
-	if ver := detectRubyVersionFromLockfile(); ver != "" {
-		return ver
-	}
-
-	// 2. Try Gemfile ruby directive (tree-sitter)
-	if ver := detectRubyVersionFromGemfile(); ver != "" {
-		return ver
-	}
-
-	// 3. Fallback to hardcoded latest stable
-	return DEFAULT_RUBY_VERSION
+	return ruby.DetectRubyVersion(defaultLockfilePath(), defaultGemfilePath(), toMajorMinor, DEFAULT_RUBY_VERSION)
 }
 
 // detectRubyVersionFromLockfile extracts Ruby version from Gemfile.lock
 func detectRubyVersionFromLockfile() string {
-	lockfilePath := defaultLockfilePath()
-	data, err := os.ReadFile(lockfilePath)
-	if err != nil {
-		return ""
-	}
-
-	lines := strings.Split(string(data), "\n")
-	inRubySection := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Look for "RUBY VERSION" section
-		if trimmed == "RUBY VERSION" {
-			inRubySection = true
-			continue
-		}
-
-		// Parse "   ruby 3.4.0p0" or "   ruby 3.4.0"
-		if inRubySection && strings.HasPrefix(trimmed, "ruby ") {
-			versionStr := strings.TrimPrefix(trimmed, "ruby ")
-			// Remove patchlevel suffix (p0, p194, etc)
-			if idx := strings.Index(versionStr, "p"); idx > 0 {
-				versionStr = versionStr[:idx]
-			}
-			return toMajorMinor(versionStr)
-		}
-
-		// Exit Ruby section if we hit another section
-		if inRubySection && trimmed != "" && !strings.HasPrefix(trimmed, "ruby ") {
-			break
-		}
-	}
-
-	return ""
+	return ruby.DetectRubyVersionFromLockfile(defaultLockfilePath(), toMajorMinor)
 }
 
 // detectRubyVersionFromGemfile extracts Ruby version from Gemfile using tree-sitter
 func detectRubyVersionFromGemfile() string {
-	gemfilePath := defaultGemfilePath()
-	parser := gemfile.NewGemfileParser(gemfilePath)
-	parsed, err := parser.Parse()
-	if err != nil {
-		return ""
-	}
-
-	// gemfile-go parses: ruby "3.4.0", ruby ">= 3.0", ruby "~> 3.3", etc
-	if parsed.RubyVersion != "" {
-		return normalizeRubyVersion(parsed.RubyVersion)
-	}
-
-	return ""
+	return ruby.DetectRubyVersionFromGemfile(defaultGemfilePath(), toMajorMinor)
 }
 
 // normalizeRubyVersion converts version constraints to usable version
@@ -779,98 +671,22 @@ func detectRubyVersionFromGemfile() string {
 // ">= 3.0.0" -> "3.0.0"
 // "~> 3.3" -> "3.3.0"
 func normalizeRubyVersion(constraint string) string {
-	// Remove constraint operators
-	constraint = strings.TrimSpace(constraint)
-	constraint = strings.TrimPrefix(constraint, ">=")
-	constraint = strings.TrimPrefix(constraint, "~>")
-	constraint = strings.TrimPrefix(constraint, ">")
-	constraint = strings.TrimSpace(constraint)
-
-	return toMajorMinor(constraint)
+	return ruby.NormalizeRubyVersion(constraint, toMajorMinor)
 }
 
 // getSystemGemDir returns the system gem directory without requiring Ruby
 // Tries: 1) GEM_HOME env, 2) Standard OS paths, 3) User gem dir, 4) gem command
 func getSystemGemDir() string {
-	// 1. Check GEM_HOME environment variable
-	if gemHome := os.Getenv("GEM_HOME"); gemHome != "" {
-		if info, err := os.Stat(gemHome); err == nil && info.IsDir() {
-			return gemHome
-		}
-	}
-
-	// 2. Detect Ruby version for path construction
-	rubyVersion := detectRubyVersion()
-
-	// 3. Try standard OS-specific gem paths
-	standardPaths := getStandardGemPaths(rubyVersion)
-	for _, path := range standardPaths {
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			return path
-		}
-	}
-
-	// 4. Try user gem directory
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		userGemDir := filepath.Join(homeDir, ".gem", "ruby", rubyVersion)
-		// Return even if doesn't exist - will be created during install
-		return userGemDir
-	}
-
-	// 5. Last resort: try `gem environment gemdir` if Ruby is available
-	cmd := exec.Command("gem", "environment", "gemdir")
-	if output, err := cmd.Output(); err == nil {
-		gemDir := strings.TrimSpace(string(output))
-		if gemDir != "" {
-			return gemDir
-		}
-	}
-
-	// Should never reach here due to step 4 always returning
-	return ""
+	return ruby.GetSystemGemDir(detectRubyVersion)
 }
 
 // getStandardGemPaths returns OS-specific standard gem installation paths
 func getStandardGemPaths(rubyVersion string) []string {
-	var paths []string
-
-	switch runtime.GOOS {
-	case "darwin": // macOS
-		paths = []string{
-			fmt.Sprintf("/Library/Ruby/Gems/%s", rubyVersion),
-			fmt.Sprintf("/opt/homebrew/lib/ruby/gems/%s", rubyVersion),
-			fmt.Sprintf("/usr/local/lib/ruby/gems/%s", rubyVersion),
-		}
-
-	case "linux":
-		paths = []string{
-			fmt.Sprintf("/usr/lib/ruby/gems/%s", rubyVersion),
-			fmt.Sprintf("/usr/local/lib/ruby/gems/%s", rubyVersion),
-			fmt.Sprintf("/usr/lib64/ruby/gems/%s", rubyVersion),
-		}
-
-	case "windows":
-		programFiles := os.Getenv("ProgramFiles")
-		if programFiles == "" {
-			programFiles = "C:\\Program Files"
-		}
-		paths = []string{
-			fmt.Sprintf("C:\\Ruby%s\\lib\\ruby\\gems\\%s", strings.Replace(rubyVersion, ".", "", -1), rubyVersion),
-			fmt.Sprintf("%s\\Ruby\\lib\\ruby\\gems\\%s", programFiles, rubyVersion),
-		}
-	}
-
-	return paths
+	return ruby.GetStandardGemPaths(rubyVersion)
 }
 
 func defaultGemfilePath() string {
-	if env := os.Getenv("ORE_GEMFILE"); env != "" {
-		return env
-	}
-	if appConfig != nil && appConfig.Gemfile != "" {
-		return appConfig.Gemfile
-	}
-	return "Gemfile"
+	return config.DefaultGemfilePath(configAdapter(appConfig))
 }
 
 func loadLockfile(lockfilePath string) (*lockfile.Lockfile, error) {
@@ -921,66 +737,17 @@ func deduplicateGemSpecs(specs []lockfile.GemSpec) []lockfile.GemSpec {
 }
 
 func humanBytes(size int64) string {
-	const unit = 1024
-	if size < unit {
-		return fmt.Sprintf("%d B", size)
-	}
-	div, exp := int64(unit), 0
-	for n := size / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(size)/float64(div), "KMGTPE"[exp])
+	return cache.HumanBytes(size)
 }
 
 func defaultCacheDir() (string, error) {
-	if cache := os.Getenv("ORE_CACHE_DIR"); cache != "" {
-		return cache, nil
-	}
-	if cache := os.Getenv("ORE_LIGHT_CACHE_DIR"); cache != "" {
-		return cache, nil
-	}
-	if appConfig != nil && appConfig.CacheDir != "" {
-		return appConfig.CacheDir, nil
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to determine user home directory: %w", err)
-	}
-
-	return filepath.Join(home, ".cache", "ore", "gems"), nil
+	return config.DefaultCacheDir(configAdapter(appConfig))
 }
 
-type cacheStats struct {
-	Files     int
-	TotalSize int64
-}
+type cacheStats = cache.Stats
 
 func collectCacheStats(cacheDir string) (cacheStats, error) {
-	var stats cacheStats
-
-	err := filepath.WalkDir(cacheDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		stats.Files++
-		stats.TotalSize += info.Size()
-		return nil
-	})
-
-	if os.IsNotExist(err) {
-		return stats, nil
-	}
-
-	return stats, err
+	return cache.CollectStats(cacheDir)
 }
 
 func newDefaultDownloadManager(workers int) (*downloadManager, error) {
