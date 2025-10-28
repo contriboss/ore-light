@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -33,6 +34,15 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 	parsed, err := parser.Parse()
 	if err != nil {
 		return fmt.Errorf("failed to parse Gemfile: %w", err)
+	}
+
+	// Handle gemspec directives
+	// Ruby developers: This is like when your Gemfile contains `gemspec`
+	// It loads dependencies from the .gemspec file
+	if len(parsed.Gemspecs) > 0 {
+		if err := loadGemspecDependencies(gemfilePath, parsed); err != nil {
+			return fmt.Errorf("failed to load gemspec dependencies: %w", err)
+		}
 	}
 
 	// Create RubyGems sources for different gem servers
@@ -377,4 +387,112 @@ func detectBundlerVersion(lockfilePath string) string {
 	// Fallback to DEFAULT_BUNDLER_VERSION constant
 	// Note: This should match the constant in cmd/ore/main.go
 	return "2.7.2"
+}
+
+// loadGemspecDependencies loads dependencies from .gemspec files referenced by gemspec directives.
+// Ruby developers: This is equivalent to evaluating the `gemspec` directive in your Gemfile.
+func loadGemspecDependencies(gemfilePath string, parsed *gemfile.ParsedGemfile) error {
+	gemfileDir := filepath.Dir(gemfilePath)
+
+	// Track gemspec names to filter out the gem itself from dependencies
+	gemspecNames := make(map[string]bool)
+
+	for _, gemspecRef := range parsed.Gemspecs {
+		// Resolve the search path relative to the Gemfile
+		searchPath := gemspecRef.Path
+		if !filepath.IsAbs(searchPath) {
+			searchPath = filepath.Join(gemfileDir, searchPath)
+		}
+
+		// Find gemspec files using the glob pattern
+		gemspecFiles, err := findGemspecFiles(searchPath, gemspecRef.Glob, gemspecRef.Name)
+		if err != nil {
+			return fmt.Errorf("failed to find gemspec files in %s: %w", searchPath, err)
+		}
+
+		if len(gemspecFiles) == 0 {
+			return fmt.Errorf("no gemspec files found in %s", searchPath)
+		}
+
+		// Parse each gemspec file and merge dependencies
+		for _, gemspecPath := range gemspecFiles {
+			fmt.Printf("Loading dependencies from %s...\n", filepath.Base(gemspecPath))
+
+			gemspecParser := gemfile.NewGemspecParser(gemspecPath)
+			gemspecFile, err := gemspecParser.Parse()
+			if err != nil {
+				return fmt.Errorf("failed to parse gemspec %s: %w", gemspecPath, err)
+			}
+
+			// Track the gemspec name itself
+			gemspecNames[gemspecFile.Name] = true
+
+			// Add runtime dependencies to the main dependency list
+			for _, dep := range gemspecFile.RuntimeDependencies {
+				// Avoid duplicates - if a gem is already explicitly declared, keep that version
+				if !isDependencyDeclared(parsed.Dependencies, dep.Name) {
+					parsed.Dependencies = append(parsed.Dependencies, dep)
+				}
+			}
+
+			// Add development dependencies with the specified group
+			devGroup := gemspecRef.DevelopmentGroup
+			if devGroup == "" {
+				devGroup = "development"
+			}
+
+			for _, dep := range gemspecFile.DevelopmentDependencies {
+				// Set the development group
+				dep.Groups = []string{devGroup}
+
+				// Avoid duplicates
+				if !isDependencyDeclared(parsed.Dependencies, dep.Name) {
+					parsed.Dependencies = append(parsed.Dependencies, dep)
+				}
+			}
+		}
+	}
+
+	// Filter out the gemspec gem itself from the dependencies list
+	// gemfile-go adds it as a path dependency, but we don't want to resolve it
+	filtered := make([]gemfile.GemDependency, 0, len(parsed.Dependencies))
+	for _, dep := range parsed.Dependencies {
+		if !gemspecNames[dep.Name] {
+			filtered = append(filtered, dep)
+		}
+	}
+	parsed.Dependencies = filtered
+
+	return nil
+}
+
+// findGemspecFiles finds .gemspec files in the given directory matching the glob pattern.
+func findGemspecFiles(searchPath, globPattern, specificName string) ([]string, error) {
+	// If a specific name is provided, look for that exact gemspec
+	if specificName != "" {
+		gemspecPath := filepath.Join(searchPath, specificName+".gemspec")
+		if _, err := os.Stat(gemspecPath); err == nil {
+			return []string{gemspecPath}, nil
+		}
+		return nil, fmt.Errorf("gemspec %s.gemspec not found", specificName)
+	}
+
+	// Otherwise, use the glob pattern to find gemspec files
+	pattern := filepath.Join(searchPath, "*.gemspec")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	return matches, nil
+}
+
+// isDependencyDeclared checks if a gem is already explicitly declared in the dependencies list.
+func isDependencyDeclared(dependencies []gemfile.GemDependency, gemName string) bool {
+	for _, dep := range dependencies {
+		if dep.Name == gemName {
+			return true
+		}
+	}
+	return false
 }
