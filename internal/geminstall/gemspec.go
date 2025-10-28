@@ -85,15 +85,16 @@ func stripRubyYAMLTags(data []byte) []byte {
 }
 
 // ParseExtensionsFromMetadata extracts the extensions list from gem metadata YAML
-func ParseExtensionsFromMetadata(metadataYAML []byte) []string {
+// Returns the extensions list and any parsing error
+func ParseExtensionsFromMetadata(metadataYAML []byte) ([]string, error) {
 	cleanedYAML := stripRubyYAMLTags(metadataYAML)
 
 	var gemMeta gemMetadata
 	if err := yaml.Unmarshal(cleanedYAML, &gemMeta); err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to parse gem metadata: %w", err)
 	}
 
-	return gemMeta.Extensions
+	return gemMeta.Extensions, nil
 }
 
 // WriteGemSpecification writes a gemspec file for the given gem

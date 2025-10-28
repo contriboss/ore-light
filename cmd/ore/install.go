@@ -79,7 +79,15 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 		if len(metadata) > 0 {
 			// Parse extensions from metadata YAML
 			gemWithExtensions := gem
-			if extensions := geminstall.ParseExtensionsFromMetadata(metadata); len(extensions) > 0 {
+			extensions, err := geminstall.ParseExtensionsFromMetadata(metadata)
+			if err != nil {
+				// Failed to parse metadata - be conservative and assume native extensions
+				if extConfig != nil && extConfig.Verbose {
+					fmt.Fprintf(os.Stderr, "⚠️  Warning: %s metadata parse error: %v (assuming native extensions)\n", gem.FullName(), err)
+				}
+				// Create a sentinel extension to trigger native extension check
+				gemWithExtensions.Extensions = []string{"ext/extconf.rb"}
+			} else if len(extensions) > 0 {
 				gemWithExtensions.Extensions = extensions
 			}
 
@@ -90,7 +98,11 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 					fmt.Printf("⚠️  Skipping %s: %s\n", gem.FullName(), reason)
 				}
 				// Clean up extracted files
-				os.RemoveAll(destDir)
+				if err := os.RemoveAll(destDir); err != nil {
+					if extConfig != nil && extConfig.Verbose {
+						fmt.Fprintf(os.Stderr, "Warning: failed to clean up %s: %v\n", destDir, err)
+					}
+				}
 				report.Skipped++
 				continue
 			}
