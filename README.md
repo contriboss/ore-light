@@ -417,7 +417,7 @@ steps:
 **`setup-ore`** - Installs and caches the ore binary
 - Inputs: `version` (default: `latest`)
 - Outputs: `version`, `cache-hit`
-- Supports: Linux (amd64, arm64), macOS (amd64, arm64), Windows (amd64)
+- Supports: Linux (amd64, arm64), macOS (amd64, arm64)
 
 **`ore-install`** - Installs gems with intelligent caching
 - Inputs: `working-directory`, `cache-key-prefix`, `skip-extensions`
@@ -468,7 +468,7 @@ See [.github/workflows/ore-demo.yml](.github/workflows/ore-demo.yml) for a compl
 - ⚡ **Fast**: Parallel gem downloads + intelligent caching
 - 🔄 **Compatible**: Works with existing Gemfile/Gemfile.lock
 - 🚀 **Simple**: Drop-in replacement for `ruby/setup-ruby` bundler caching
-- 🌍 **Multi-platform**: Linux, macOS, Windows support
+- 🌍 **Multi-platform**: Linux and macOS support
 - 📦 **No Ruby required**: ore binary is pure Go
 
 ## Development
