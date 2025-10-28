@@ -200,35 +200,32 @@ func listMiseRubies(activeVersion string) ([]RubyVersion, error) {
 					continue
 				}
 
-				wg.Add(1)
-				go func(version string, isActive bool) {
-					defer wg.Done()
-
+				wg.Go(func() {
 					home, err := os.UserHomeDir()
 					if err != nil {
 						return
 					}
 
-					gemDir := findMiseGemDir(home, version)
+					gemDir := findMiseGemDir(home, mv.Version)
 					if gemDir == "" {
 						versionChan <- RubyVersion{
-							Version:  version,
+							Version:  mv.Version,
 							GemCount: 0,
 							GemSize:  0,
-							IsActive: isActive || version == activeVersion,
+							IsActive: mv.Active || mv.Version == activeVersion,
 						}
 						return
 					}
 
 					count, size, _ := countGems(gemDir)
 					versionChan <- RubyVersion{
-						Version:  version,
+						Version:  mv.Version,
 						GemCount: count,
 						GemSize:  size,
 						GemDir:   gemDir,
-						IsActive: isActive || version == activeVersion,
+						IsActive: mv.Active || mv.Version == activeVersion,
 					}
-				}(mv.Version, mv.Active)
+				})
 			}
 
 			wg.Wait()
@@ -278,30 +275,27 @@ func listMiseRubies(activeVersion string) ([]RubyVersion, error) {
 			continue
 		}
 
-		wg.Add(1)
-		go func(versionName string) {
-			defer wg.Done()
-
-			gemDir := findMiseGemDir(home, versionName)
+		wg.Go(func() {
+			gemDir := findMiseGemDir(home, entry.Name())
 			if gemDir == "" {
 				versionChan <- RubyVersion{
-					Version:  versionName,
+					Version:  entry.Name(),
 					GemCount: 0,
 					GemSize:  0,
-					IsActive: versionName == activeVersion,
+					IsActive: entry.Name() == activeVersion,
 				}
 				return
 			}
 
 			count, size, _ := countGems(gemDir)
 			versionChan <- RubyVersion{
-				Version:  versionName,
+				Version:  entry.Name(),
 				GemCount: count,
 				GemSize:  size,
 				GemDir:   gemDir,
-				IsActive: versionName == activeVersion,
+				IsActive: entry.Name() == activeVersion,
 			}
-		}(entry.Name())
+		})
 	}
 
 	wg.Wait()
@@ -408,33 +402,30 @@ func listVersionsFromDir(dir string, activeVersion string, manager string) ([]Ru
 			continue
 		}
 
-		wg.Add(1)
-		go func(versionName string) {
-			defer wg.Done()
-
-			versionDir := filepath.Join(dir, versionName)
+		wg.Go(func() {
+			versionDir := filepath.Join(dir, entry.Name())
 
 			// Find gem directory
 			gemDir := findGemDir(versionDir)
 			if gemDir == "" {
 				versionChan <- RubyVersion{
-					Version:  versionName,
+					Version:  entry.Name(),
 					GemCount: 0,
 					GemSize:  0,
-					IsActive: versionName == activeVersion,
+					IsActive: entry.Name() == activeVersion,
 				}
 				return
 			}
 
 			count, size, _ := countGems(gemDir)
 			versionChan <- RubyVersion{
-				Version:  versionName,
+				Version:  entry.Name(),
 				GemCount: count,
 				GemSize:  size,
 				GemDir:   gemDir,
-				IsActive: versionName == activeVersion,
+				IsActive: entry.Name() == activeVersion,
 			}
-		}(entry.Name())
+		})
 	}
 
 	wg.Wait()

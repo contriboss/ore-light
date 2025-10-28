@@ -120,30 +120,27 @@ func (m *Manager) CheckHealth(ctx context.Context) {
 			return
 		}
 
-		wg.Add(1)
-		go func(sourceURL string) {
-			defer wg.Done()
-
+		wg.Go(func() {
 			// Try to fetch a small gem to test the source
 			// Using rake as it's commonly available
-			testURL := fmt.Sprintf("%s/downloads/rake-13.0.6.gem", sourceURL)
+			testURL := fmt.Sprintf("%s/downloads/rake-13.0.6.gem", url)
 			req, err := http.NewRequestWithContext(ctx, http.MethodHead, testURL, nil)
 			if err != nil {
-				m.setHealthStatus(sourceURL, false)
+				m.setHealthStatus(url, false)
 				return
 			}
 
 			resp, err := m.client.Do(req)
 			if err != nil {
-				m.setHealthStatus(sourceURL, false)
+				m.setHealthStatus(url, false)
 				return
 			}
 			resp.Body.Close()
 
 			// Consider 200 or 404 as healthy (404 means source works, gem doesn't exist)
 			healthy := resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound
-			m.setHealthStatus(sourceURL, healthy)
-		}(url)
+			m.setHealthStatus(url, healthy)
+		})
 	}
 
 	// Check all sources and their fallbacks
