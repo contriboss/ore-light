@@ -125,6 +125,10 @@ func main() {
 		if err := runCacheCommand(args); err != nil {
 			exitWithError(err)
 		}
+	case "completion":
+		if err := runCompletionCommand(args); err != nil {
+			exitWithError(err)
+		}
 	case "exec":
 		if err := runExecCommand(args); err != nil {
 			exitWithError(err)
@@ -226,6 +230,7 @@ Commands:
     config        Get and set Bundler configuration options
     platform      Display platform compatibility information
     stats         Show Ruby environment statistics
+    completion    Generate shell completion scripts
 
 See 'ore <command> --help' for more information on a specific command.
 `)
