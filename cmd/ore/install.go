@@ -35,7 +35,7 @@ type extensionTarget struct {
 	destDir string
 }
 
-func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, extConfig *extensions.BuildConfig) (installReport, error) {
+func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (installReport, error) {
 	report := installReport{Total: len(gems)}
 
 	// Detect Ruby engine for compatibility filtering
@@ -69,7 +69,22 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 
 		destDir := filepath.Join(vendorDir, "gems", gem.FullName())
 
+		// Smart skip logic
 		if _, err := os.Stat(destDir); err == nil && !force {
+			// If buildExtensions mode is enabled, check if this gem needs extension building
+			if buildExtensions {
+				needsBuild, err := extensions.NeedsBuild(destDir, engine)
+				if err != nil {
+					return report, fmt.Errorf("failed to check if %s needs extension build: %w", gem.FullName(), err)
+				}
+				if needsBuild {
+					// Don't skip - this gem has extensions that need building
+					extensionTargets = append(extensionTargets, extensionTarget{
+						gemName: gem.FullName(),
+						destDir: destDir,
+					})
+				}
+			}
 			report.Skipped++
 			continue
 		}
@@ -347,7 +362,7 @@ func getEnvValue(env []string, key string) (string, bool) {
 }
 
 // installGitGems installs gems from Git sources
-func installGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, extConfig *extensions.BuildConfig) (installReport, error) {
+func installGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (installReport, error) {
 	report := installReport{Total: len(gitSpecs)}
 
 	// Detect Ruby engine for extension compatibility filtering
@@ -366,7 +381,22 @@ func installGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
 		destDir := filepath.Join(vendorDir, "gems", gemName)
 
+		// Smart skip logic
 		if _, err := os.Stat(destDir); err == nil && !force {
+			// If buildExtensions mode is enabled, check if this gem needs extension building
+			if buildExtensions {
+				needsBuild, err := extensions.NeedsBuild(destDir, engine)
+				if err != nil {
+					return report, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
+				}
+				if needsBuild {
+					// Don't skip - this gem has extensions that need building
+					extensionTargets = append(extensionTargets, extensionTarget{
+						gemName: gemName,
+						destDir: destDir,
+					})
+				}
+			}
 			report.Skipped++
 			continue
 		}
@@ -417,7 +447,7 @@ func cloneGitGem(spec lockfile.GitGemSpec, destDir string) error {
 }
 
 // installPathGems installs gems from local paths
-func installPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, extConfig *extensions.BuildConfig) (installReport, error) {
+func installPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (installReport, error) {
 	report := installReport{Total: len(pathSpecs)}
 
 	// Detect Ruby engine for extension compatibility filtering
@@ -436,7 +466,22 @@ func installPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile
 		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
 		destDir := filepath.Join(vendorDir, "gems", gemName)
 
+		// Smart skip logic
 		if _, err := os.Stat(destDir); err == nil && !force {
+			// If buildExtensions mode is enabled, check if this gem needs extension building
+			if buildExtensions {
+				needsBuild, err := extensions.NeedsBuild(destDir, engine)
+				if err != nil {
+					return report, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
+				}
+				if needsBuild {
+					// Don't skip - this gem has extensions that need building
+					extensionTargets = append(extensionTargets, extensionTarget{
+						gemName: gemName,
+						destDir: destDir,
+					})
+				}
+			}
 			report.Skipped++
 			continue
 		}

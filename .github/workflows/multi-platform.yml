@@ -211,7 +211,7 @@ jobs:
       - name: Install gems (build native extensions)
         working-directory: test-multiplatform
         run: |
-          ore install
+          ore install --build-extensions
           echo "✅ Gems installed (native extensions built for ${{ matrix.ruby }})"
 
       - name: Test gem loading

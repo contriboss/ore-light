@@ -325,6 +325,7 @@ func runInstallCommand(args []string) error {
 	force := fs.Bool("force", false, "Re-download or reinstall even if artifacts exist")
 	vendorDir := fs.String("vendor", defaultVendorDir(), "Destination directory for installed gems")
 	skipExtensions := fs.Bool("skip-extensions", false, "Skip building native extensions")
+	buildExtensions := fs.Bool("build-extensions", false, "Force building native extensions even for already-installed gems")
 	verbose := fs.Bool("verbose", false, "Enable verbose output including extension build logs")
 	without := fs.String("without", "", "Comma-separated list of groups to exclude (e.g., development,test)")
 	if err := fs.Parse(args); err != nil {
@@ -403,7 +404,7 @@ func runInstallCommand(args []string) error {
 	// Install regular gems
 	var totalInstalled, totalSkipped, totalExtBuilt, totalExtFailed int
 	if len(gems) > 0 {
-		installReport, err := installFromCache(ctx, dm.CacheDir(), *vendorDir, gems, *force, extConfig)
+		installReport, err := installFromCache(ctx, dm.CacheDir(), *vendorDir, gems, *force, *buildExtensions, extConfig)
 		if err != nil {
 			return err
 		}
@@ -420,7 +421,7 @@ func runInstallCommand(args []string) error {
 	}
 	if len(gitSpecs) > 0 {
 		fmt.Printf("Installing %d git gem(s)...\n", len(gitSpecs))
-		gitReport, err := installGitGems(ctx, *vendorDir, gitSpecs, *force, extConfig)
+		gitReport, err := installGitGems(ctx, *vendorDir, gitSpecs, *force, *buildExtensions, extConfig)
 		if err != nil {
 			return err
 		}
@@ -437,7 +438,7 @@ func runInstallCommand(args []string) error {
 	}
 	if len(pathSpecs) > 0 {
 		fmt.Printf("Installing %d path gem(s)...\n", len(pathSpecs))
-		pathReport, err := installPathGems(ctx, *vendorDir, pathSpecs, *force, extConfig)
+		pathReport, err := installPathGems(ctx, *vendorDir, pathSpecs, *force, *buildExtensions, extConfig)
 		if err != nil {
 			return err
 		}
