@@ -60,10 +60,16 @@ jobs:
             --add-platform aarch64-darwin \
             --add-platform java
 
+      - name: Configure vendor path
+        working-directory: test-multiplatform
+        run: |
+          ore config --local path vendor/bundle
+          echo "✅ Configured vendor path"
+
       - name: Vendor gems
         working-directory: test-multiplatform
         run: |
-          ore install --vendor=vendor/bundle
+          ore install
           echo "✅ Gems vendored to vendor/bundle"
 
       - name: Cache ore gem cache
@@ -78,13 +84,14 @@ jobs:
           path: test-multiplatform/vendor/bundle
           key: gems-prepare-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
 
-      - name: Upload Gemfile and lockfile
+      - name: Upload Gemfile, lockfile, and config
         uses: actions/upload-artifact@v4
         with:
           name: gemfiles
           path: |
             test-multiplatform/Gemfile
             test-multiplatform/Gemfile.lock
+            test-multiplatform/.ore.toml
 
   # Job 2: Test on multiple platforms
   test:
@@ -149,7 +156,7 @@ jobs:
       - name: Install gems (build native extensions)
         working-directory: test-multiplatform
         run: |
-          ore install --vendor=vendor/bundle
+          ore install
           echo "✅ Gems installed (native extensions built for ${{ matrix.ruby }})"
 
       - name: Test gem loading
