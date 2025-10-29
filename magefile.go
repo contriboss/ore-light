@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/magefile/mage/mg"
+	"github.com/magefile/mage/sh"
 )
 
 // Build compiles the ore binary into ./bin/ore.
@@ -82,6 +85,43 @@ func Install() error {
 	}
 
 	fmt.Printf("✅ ore installed to %s\n", dst)
+	return nil
+}
+
+// Fmt runs gofmt on all Go files
+func Fmt() error {
+	fmt.Println("Formatting code...")
+	return sh.Run("go", "fmt", "./...")
+}
+
+// Vet runs go vet on all Go files
+func Vet() error {
+	fmt.Println("Vetting code...")
+	return sh.Run("go", "vet", "./...")
+}
+
+// Bench runs benchmarks
+func Bench() error {
+	fmt.Println("Running benchmarks...")
+	return sh.Run("go", "test", "-bench=.", "./...")
+}
+
+// Deps downloads dependencies
+func Deps() error {
+	fmt.Println("Downloading dependencies...")
+	return sh.Run("go", "mod", "download")
+}
+
+// Tidy tidies go.mod
+func Tidy() error {
+	fmt.Println("Tidying go.mod...")
+	return sh.Run("go", "mod", "tidy")
+}
+
+// CI runs all checks for continuous integration
+func CI() error {
+	mg.SerialDeps(Deps, Fmt, Vet, Test)
+	fmt.Println("All CI checks passed!")
 	return nil
 }
 
