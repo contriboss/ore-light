@@ -187,18 +187,22 @@ func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string, e
 		return result, result.Error
 	}
 
-	// Collect built extensions
 	var builtExtensions []string
 	var buildFailed bool
 	for _, extResult := range results {
+		if extResult == nil {
+			continue
+		}
+
 		if !extResult.Success {
 			buildFailed = true
 			if b.config.Verbose {
 				fmt.Fprintf(os.Stderr, "Extension build failed:\n%s\n", strings.Join(extResult.Output, "\n"))
 			}
-		} else {
-			builtExtensions = append(builtExtensions, extResult.Extensions...)
+			continue
 		}
+
+		builtExtensions = append(builtExtensions, extResult.Extensions...)
 	}
 
 	if buildFailed {
