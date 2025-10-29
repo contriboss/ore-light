@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/contriboss/gemfile-go v0.3.0
+	github.com/contriboss/gemfile-go v0.4.0
 	github.com/contriboss/pubgrub-go v0.3.0
 	github.com/contriboss/ruby-extension-go v0.1.0
 	github.com/contriboss/rubygems-client-go v0.1.0
