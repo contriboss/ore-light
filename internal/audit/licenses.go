@@ -1,15 +1,14 @@
 package audit
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/contriboss/gemfile-go/gemfile"
 )
 
 // GemLicense represents a gem and its license information
@@ -103,42 +102,44 @@ func findSpecificationDirs(vendorDir string) ([]string, error) {
 	return specDirs, err
 }
 
-// readGemLicenses reads license information from gemspec files using Ruby
+// readGemLicenses reads license information from gemspec files using tree-sitter
 func readGemLicenses(specDir string) ([]GemLicense, error) {
-	// Use Ruby to read gemspec files and extract license info
-	rubyScript := `
-require 'rubygems'
-require 'json'
-
-specs_dir = ARGV[0]
-results = []
-
-Dir.glob(File.join(specs_dir, '*.gemspec')).each do |gemspec_file|
-  begin
-    spec = Gem::Specification.load(gemspec_file)
-    if spec
-      results << {
-        name: spec.name,
-        licenses: spec.licenses || []
-      }
-    end
-  rescue => e
-    # Skip problematic gemspecs
-  end
-end
-
-puts JSON.generate(results)
-`
-
-	cmd := exec.Command("ruby", "-e", rubyScript, specDir)
-	output, err := cmd.Output()
+	// Find all gemspec files
+	matches, err := filepath.Glob(filepath.Join(specDir, "*.gemspec"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to run Ruby: %w", err)
+		return nil, fmt.Errorf("failed to glob gemspec files: %w", err)
 	}
 
 	var gems []GemLicense
-	if err := json.Unmarshal(output, &gems); err != nil {
-		return nil, fmt.Errorf("failed to parse Ruby output: %w", err)
+	for _, gemspecPath := range matches {
+		// Read gemspec file
+		content, err := os.ReadFile(gemspecPath)
+		if err != nil {
+			// Skip files we can't read
+			continue
+		}
+
+		// Parse with tree-sitter
+		parser := gemfile.NewTreeSitterGemspecParser(content)
+		gemspec, err := parser.ParseWithTreeSitter()
+		if err != nil {
+			// Skip gemspecs we can't parse
+			continue
+		}
+
+		// Extract licenses
+		var licenses []string
+		if gemspec.License != "" {
+			// Split comma-separated licenses
+			for _, license := range strings.Split(gemspec.License, ",") {
+				licenses = append(licenses, strings.TrimSpace(license))
+			}
+		}
+
+		gems = append(gems, GemLicense{
+			Name:     gemspec.Name,
+			Licenses: licenses,
+		})
 	}
 
 	return gems, nil

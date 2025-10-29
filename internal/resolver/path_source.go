@@ -3,10 +3,10 @@ package resolver
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
+	"strings"
 
+	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/pubgrub-go"
 )
 
@@ -109,58 +109,38 @@ func (p *PathSource) findGemspec() (string, error) {
 	return matches[0], nil
 }
 
-// parseGemspec parses the gemspec file to extract version and dependencies
+// parseGemspec parses the gemspec file to extract version and dependencies using tree-sitter
 func (p *PathSource) parseGemspec(gemspecPath string) (string, []pubgrub.Term, error) {
-	// Use Ruby to parse the gemspec and output version + dependencies as JSON
-	rubyScript := `
-require 'rubygems'
-require 'json'
-
-spec = Gem::Specification.load(ARGV[0])
-deps = spec.dependencies.select { |d| d.type == :runtime }.map do |d|
-  {
-    name: d.name,
-    requirements: d.requirement.to_s
-  }
-end
-
-result = {
-  version: spec.version.to_s,
-  dependencies: deps
-}
-
-puts JSON.generate(result)
-`
-
-	cmd := exec.Command("ruby", "-e", rubyScript, gemspecPath)
-	output, err := cmd.Output()
+	// Read gemspec file
+	content, err := os.ReadFile(gemspecPath)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to parse gemspec with Ruby: %w", err)
+		return "", nil, fmt.Errorf("failed to read gemspec: %w", err)
 	}
 
-	// Parse the JSON output
-	var result struct {
-		Version      string `json:"version"`
-		Dependencies []struct {
-			Name         string `json:"name"`
-			Requirements string `json:"requirements"`
-		} `json:"dependencies"`
+	// Parse with tree-sitter
+	parser := gemfile.NewTreeSitterGemspecParser(content)
+	gemspec, err := parser.ParseWithTreeSitter()
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to parse gemspec: %w", err)
 	}
 
-	if err := parsePathJSON(output, &result); err != nil {
-		return "", nil, fmt.Errorf("failed to parse Ruby output: %w", err)
-	}
-
-	// Convert dependencies to PubGrub terms
+	// Convert RuntimeDependencies to PubGrub terms
 	var terms []pubgrub.Term
-	for _, dep := range result.Dependencies {
+	for _, dep := range gemspec.RuntimeDependencies {
 		var condition pubgrub.Condition
-		if dep.Requirements != "" && dep.Requirements != ">= 0" {
-			semverCond, err := NewSemverCondition(dep.Requirements)
-			if err != nil {
-				condition = NewAnyVersionCondition()
+
+		// Convert constraint strings
+		if len(dep.Constraints) > 0 {
+			constraintStr := strings.Join(dep.Constraints, ", ")
+			if constraintStr != "" && constraintStr != ">= 0" {
+				semverCond, err := NewSemverCondition(constraintStr)
+				if err != nil {
+					condition = NewAnyVersionCondition()
+				} else {
+					condition = semverCond
+				}
 			} else {
-				condition = semverCond
+				condition = NewAnyVersionCondition()
 			}
 		} else {
 			condition = NewAnyVersionCondition()
@@ -170,63 +150,7 @@ puts JSON.generate(result)
 		terms = append(terms, term)
 	}
 
-	return result.Version, terms, nil
-}
-
-// parsePathJSON is a simple JSON parser for path gem data
-func parsePathJSON(data []byte, result interface{}) error {
-	str := string(data)
-
-	switch ptr := result.(type) {
-	case *struct {
-		Version      string `json:"version"`
-		Dependencies []struct {
-			Name         string `json:"name"`
-			Requirements string `json:"requirements"`
-		} `json:"dependencies"`
-	}:
-		// Extract version
-		versionRe := regexp.MustCompile(`"version"\s*:\s*"([^"]+)"`)
-		if match := versionRe.FindStringSubmatch(str); len(match) > 1 {
-			ptr.Version = match[1]
-		}
-
-		// Extract dependencies array
-		depsRe := regexp.MustCompile(`"dependencies"\s*:\s*\[([^\]]*)\]`)
-		depsMatch := depsRe.FindStringSubmatch(str)
-		if len(depsMatch) > 1 {
-			depsStr := depsMatch[1]
-
-			// Parse individual dependency objects
-			objRe := regexp.MustCompile(`\{[^}]+\}`)
-			objects := objRe.FindAllString(depsStr, -1)
-
-			nameRe := regexp.MustCompile(`"name"\s*:\s*"([^"]+)"`)
-			reqRe := regexp.MustCompile(`"requirements"\s*:\s*"([^"]*)"`)
-
-			for _, obj := range objects {
-				nameMatch := nameRe.FindStringSubmatch(obj)
-				reqMatch := reqRe.FindStringSubmatch(obj)
-
-				if len(nameMatch) > 1 {
-					dep := struct {
-						Name         string `json:"name"`
-						Requirements string `json:"requirements"`
-					}{
-						Name: nameMatch[1],
-					}
-					if len(reqMatch) > 1 {
-						dep.Requirements = reqMatch[1]
-					}
-					ptr.Dependencies = append(ptr.Dependencies, dep)
-				}
-			}
-		}
-
-		return nil
-	default:
-		return fmt.Errorf("unsupported type for JSON parsing")
-	}
+	return gemspec.Version, terms, nil
 }
 
 // CopyToVendor copies the path gem to the vendor directory

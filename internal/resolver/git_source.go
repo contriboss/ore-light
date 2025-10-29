@@ -8,9 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
+	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/pubgrub-go"
 )
 
@@ -138,7 +138,7 @@ func (g *GitSource) updateRepo(repoDir string) error {
 // checkoutRef checks out the specified branch, tag, or ref
 func (g *GitSource) checkoutRef(repoDir string) (string, error) {
 	// Determine what to checkout
-	ref := "HEAD"
+	var ref string
 	if g.Tag != "" {
 		ref = g.Tag
 	} else if g.Branch != "" {
@@ -167,7 +167,7 @@ func (g *GitSource) checkoutRef(repoDir string) (string, error) {
 	return strings.TrimSpace(string(shaOutput)), nil
 }
 
-// parseGemspec parses the gemspec file to extract dependencies
+// parseGemspec parses the gemspec file to extract dependencies using tree-sitter
 func (g *GitSource) parseGemspec(repoDir string) ([]pubgrub.Term, error) {
 	// Find the gemspec file
 	gemspecPath, err := g.findGemspec(repoDir)
@@ -175,51 +175,38 @@ func (g *GitSource) parseGemspec(repoDir string) ([]pubgrub.Term, error) {
 		return nil, err
 	}
 
-	// Use Ruby to parse the gemspec and output dependencies as JSON
-	// This is simpler and more reliable than parsing Ruby DSL in Go
-	rubyScript := `
-require 'rubygems'
-require 'json'
-
-spec = Gem::Specification.load(ARGV[0])
-deps = spec.dependencies.select { |d| d.type == :runtime }.map do |d|
-  {
-    name: d.name,
-    requirements: d.requirement.to_s
-  }
-end
-
-puts JSON.generate(deps)
-`
-
-	cmd := exec.Command("ruby", "-e", rubyScript, gemspecPath)
-	output, err := cmd.Output()
+	// Read gemspec file
+	content, err := os.ReadFile(gemspecPath)
 	if err != nil {
-		// If Ruby is not available or gemspec parsing fails, return empty dependencies
+		return []pubgrub.Term{}, nil // graceful fallback
+	}
+
+	// Parse with tree-sitter
+	parser := gemfile.NewTreeSitterGemspecParser(content)
+	gemspec, err := parser.ParseWithTreeSitter()
+	if err != nil {
+		// If tree-sitter parsing fails, return empty dependencies
 		// This allows git gems without dependencies to work
 		return []pubgrub.Term{}, nil
 	}
 
-	// Parse the JSON output
-	var deps []struct {
-		Name         string `json:"name"`
-		Requirements string `json:"requirements"`
-	}
-
-	if err := parseJSON(output, &deps); err != nil {
-		return []pubgrub.Term{}, nil
-	}
-
-	// Convert to PubGrub terms
+	// Convert RuntimeDependencies to PubGrub terms
 	var terms []pubgrub.Term
-	for _, dep := range deps {
+	for _, dep := range gemspec.RuntimeDependencies {
 		var condition pubgrub.Condition
-		if dep.Requirements != "" && dep.Requirements != ">= 0" {
-			semverCond, err := NewSemverCondition(dep.Requirements)
-			if err != nil {
-				condition = NewAnyVersionCondition()
+
+		// Convert constraint strings
+		if len(dep.Constraints) > 0 {
+			constraintStr := strings.Join(dep.Constraints, ", ")
+			if constraintStr != "" && constraintStr != ">= 0" {
+				semverCond, err := NewSemverCondition(constraintStr)
+				if err != nil {
+					condition = NewAnyVersionCondition()
+				} else {
+					condition = semverCond
+				}
 			} else {
-				condition = semverCond
+				condition = NewAnyVersionCondition()
 			}
 		} else {
 			condition = NewAnyVersionCondition()
@@ -263,73 +250,6 @@ func getGitCacheDir() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".cache", "ore", "git"), nil
-}
-
-// parseJSON is a simple JSON parser for dependency data
-func parseJSON(data []byte, v interface{}) error {
-	// Use a simple regexp-based parser to avoid importing encoding/json
-	// for this simple use case
-	switch ptr := v.(type) {
-	case *[]struct {
-		Name         string `json:"name"`
-		Requirements string `json:"requirements"`
-	}:
-		return parseDepJSON(data, ptr)
-	default:
-		return fmt.Errorf("unsupported type for JSON parsing")
-	}
-}
-
-// parseDepJSON parses dependency JSON output from Ruby
-func parseDepJSON(data []byte, deps *[]struct {
-	Name         string `json:"name"`
-	Requirements string `json:"requirements"`
-}) error {
-	str := string(data)
-	str = strings.TrimSpace(str)
-
-	// Handle empty array
-	if str == "[]" {
-		*deps = []struct {
-			Name         string `json:"name"`
-			Requirements string `json:"requirements"`
-		}{}
-		return nil
-	}
-
-	// Parse array of objects
-	nameRe := regexp.MustCompile(`"name"\s*:\s*"([^"]+)"`)
-	reqRe := regexp.MustCompile(`"requirements"\s*:\s*"([^"]*)"`)
-
-	// Split by object boundaries
-	objRe := regexp.MustCompile(`\{[^}]+\}`)
-	objects := objRe.FindAllString(str, -1)
-
-	result := make([]struct {
-		Name         string `json:"name"`
-		Requirements string `json:"requirements"`
-	}, 0, len(objects))
-
-	for _, obj := range objects {
-		nameMatch := nameRe.FindStringSubmatch(obj)
-		reqMatch := reqRe.FindStringSubmatch(obj)
-
-		if len(nameMatch) > 1 {
-			dep := struct {
-				Name         string `json:"name"`
-				Requirements string `json:"requirements"`
-			}{
-				Name: nameMatch[1],
-			}
-			if len(reqMatch) > 1 {
-				dep.Requirements = reqMatch[1]
-			}
-			result = append(result, dep)
-		}
-	}
-
-	*deps = result
-	return nil
 }
 
 // CloneAtRevision clones the repository at a specific revision to a destination directory

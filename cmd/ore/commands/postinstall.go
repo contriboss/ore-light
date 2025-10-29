@@ -1,14 +1,13 @@
 package commands
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/contriboss/gemfile-go/gemfile"
 )
 
 // PostInstallMessage represents a gem's post-install message
@@ -49,57 +48,39 @@ func ReadPostInstallMessages(vendorDir string) ([]PostInstallMessage, error) {
 	return messages, nil
 }
 
-// readMessagesFromSpecDir reads post-install messages from a specifications directory
+// readMessagesFromSpecDir reads post-install messages from a specifications directory using tree-sitter
 func readMessagesFromSpecDir(specDir string) ([]PostInstallMessage, error) {
-	// Use Ruby to read gemspec files and extract post_install_message
-	rubyScript := `
-require 'rubygems'
-require 'json'
-
-specs_dir = ARGV[0]
-results = []
-
-Dir.glob(File.join(specs_dir, '*.gemspec')).each do |gemspec_file|
-  begin
-    spec = Gem::Specification.load(gemspec_file)
-    if spec && spec.post_install_message && !spec.post_install_message.empty?
-      results << {
-        name: spec.name,
-        version: spec.version.to_s,
-        message: spec.post_install_message
-      }
-    end
-  rescue => e
-    # Skip problematic gemspecs
-  end
-end
-
-puts JSON.generate(results)
-`
-
-	cmd := exec.Command("ruby", "-e", rubyScript, specDir)
-	output, err := cmd.Output()
+	// Find all gemspec files
+	matches, err := filepath.Glob(filepath.Join(specDir, "*.gemspec"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to run ruby script: %w", err)
-	}
-
-	var results []struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-		Message string `json:"message"`
-	}
-
-	if err := json.Unmarshal(output, &results); err != nil {
-		return nil, fmt.Errorf("failed to parse ruby output: %w", err)
+		return nil, fmt.Errorf("failed to glob gemspec files: %w", err)
 	}
 
 	var messages []PostInstallMessage
-	for _, r := range results {
-		messages = append(messages, PostInstallMessage{
-			GemName: r.Name,
-			Version: r.Version,
-			Message: r.Message,
-		})
+	for _, gemspecPath := range matches {
+		// Read gemspec file
+		content, err := os.ReadFile(gemspecPath)
+		if err != nil {
+			// Skip files we can't read
+			continue
+		}
+
+		// Parse with tree-sitter
+		parser := gemfile.NewTreeSitterGemspecParser(content)
+		gemspec, err := parser.ParseWithTreeSitter()
+		if err != nil {
+			// Skip gemspecs we can't parse
+			continue
+		}
+
+		// Only include gems with post-install messages
+		if gemspec.PostInstallMessage != "" {
+			messages = append(messages, PostInstallMessage{
+				GemName: gemspec.Name,
+				Version: gemspec.Version,
+				Message: gemspec.PostInstallMessage,
+			})
+		}
 	}
 
 	return messages, nil
