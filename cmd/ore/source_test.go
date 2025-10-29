@@ -87,3 +87,50 @@ end
 		t.Error("activerecord not found with gem.coop source")
 	}
 }
+
+func TestInlineSourceParsing(t *testing.T) {
+	gemfileContent := `gem 'nokogiri', source: 'https://gems.ruby-china.com'
+
+source 'https://rubygems.org' do
+  gem 'rails'
+end
+
+source 'https://gem.coop' do
+  gem 'pg', '~> 1.5'
+end
+`
+
+	tmpdir := t.TempDir()
+	tmpfile := filepath.Join(tmpdir, "Gemfile")
+	if err := os.WriteFile(tmpfile, []byte(gemfileContent), 0644); err != nil {
+		t.Fatalf("Failed to write test Gemfile: %v", err)
+	}
+
+	parser := gemfile.NewGemfileParser(tmpfile)
+	parsed, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("Failed to parse Gemfile: %v", err)
+	}
+
+	tests := map[string]string{
+		"nokogiri": "https://gems.ruby-china.com",
+		"rails":    "https://rubygems.org",
+		"pg":       "https://gem.coop",
+	}
+
+	for _, dep := range parsed.Dependencies {
+		expected, ok := tests[dep.Name]
+		if !ok {
+			continue
+		}
+
+		actual := ""
+		if dep.Source != nil {
+			actual = dep.Source.URL
+		}
+
+		if actual != expected {
+			t.Errorf("Gem %s: expected source %q, got %q", dep.Name, expected, actual)
+		}
+	}
+}
