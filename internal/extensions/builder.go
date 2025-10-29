@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/contriboss/ore-light/internal/ruby"
 	rubyext "github.com/contriboss/ruby-extension-go"
 )
 
@@ -52,8 +53,8 @@ type BuildResult struct {
 	Error      error
 }
 
-// HasExtensions checks if a gem directory contains extensions
-func HasExtensions(gemDir string) (bool, []string, error) {
+// HasExtensions checks if a gem directory contains extensions compatible with the given Ruby engine
+func HasExtensions(gemDir string, engine ruby.Engine) (bool, []string, error) {
 	// Check for common extension directories and files
 	extDir := filepath.Join(gemDir, "ext")
 	if _, err := os.Stat(extDir); err != nil {
@@ -85,10 +86,17 @@ func HasExtensions(gemDir string) (bool, []string, error) {
 		isModernBuild := name == "CMakeLists.txt" || name == "Cargo.toml" ||
 			name == "Makefile" || name == "GNUmakefile"
 
-		// Language-specific files
-		isLangFile := name == "go.mod" || name == "build.xml" || name == "pom.xml" ||
-			name == "shard.yml" || name == "build.zig" || name == "Package.swift" ||
-			ext == ".go" || ext == ".java" || ext == ".cr" || ext == ".zig" || ext == ".swift"
+		// Language-specific files (filter Java files for non-JRuby engines)
+		isJavaFile := name == "build.xml" || name == "pom.xml" || ext == ".java"
+		isOtherLangFile := name == "go.mod" || name == "shard.yml" || name == "build.zig" ||
+			name == "Package.swift" || ext == ".go" || ext == ".cr" || ext == ".zig" || ext == ".swift"
+
+		// Skip Java extensions on non-JRuby engines
+		if isJavaFile && engine.Name != ruby.EngineJRuby {
+			return nil
+		}
+
+		isLangFile := isJavaFile || isOtherLangFile
 
 		if isRubyBuild || isModernBuild || isLangFile {
 			// Make path relative to gemDir
@@ -108,8 +116,8 @@ func HasExtensions(gemDir string) (bool, []string, error) {
 	return len(extensions) > 0, extensions, nil
 }
 
-// BuildExtensions builds all extensions for a gem
-func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string) (*BuildResult, error) {
+// BuildExtensions builds all extensions for a gem compatible with the given Ruby engine
+func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string, engine ruby.Engine) (*BuildResult, error) {
 	result := &BuildResult{
 		GemName: gemName,
 		Success: false,
@@ -122,8 +130,8 @@ func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string) (
 		return result, nil
 	}
 
-	// Check if gem has extensions
-	hasExt, extensions, err := HasExtensions(gemDir)
+	// Check if gem has extensions compatible with this Ruby engine
+	hasExt, extensions, err := HasExtensions(gemDir, engine)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to check for extensions: %w", err)
 		return result, result.Error
@@ -246,10 +254,12 @@ func (b *Builder) buildGemEnvironment() map[string]string {
 		return env
 	}
 
-	// Set GEM_HOME and GEM_PATH to vendor directory
-	// This allows Ruby to find gems like ffi-compiler that are needed during extension builds
+	// Clear any existing GEM env vars to force fresh discovery
 	env["GEM_HOME"] = b.config.VendorDir
 	env["GEM_PATH"] = b.config.VendorDir
+	// Explicitly unset BUNDLE vars that might interfere
+	env["BUNDLE_GEMFILE"] = ""
+	env["BUNDLE_PATH"] = ""
 
 	// Also preserve existing PATH
 	if path := os.Getenv("PATH"); path != "" {

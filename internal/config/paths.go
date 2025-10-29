@@ -99,9 +99,10 @@ func DefaultVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 		return bundlePath
 	}
 
-	// Priority 4: Local vendor/bundle directory (Bundler-compatible default)
-	// This makes ore work as a drop-in replacement for bundle install
-	return filepath.Join("vendor", DefaultVendorSubdir)
+	// Priority 4: System gem directory (default - like `gem install`)
+	// This makes ore behave like gem install by default (no isolation)
+	// Users can set BUNDLE_PATH or use --path flag for isolated installs
+	return getSystemGemDir()
 }
 
 // ReadBundleConfigPath reads the BUNDLE_PATH from .bundle/config
@@ -121,6 +122,32 @@ func ReadBundleConfigPath() string {
 	}
 
 	return ""
+}
+
+// WriteBundleConfig writes a .bundle/config file with the given path
+// This makes ore compatible with Bundler's configuration system
+func WriteBundleConfig(bundlePath string) error {
+	// Create .bundle directory if it doesn't exist
+	if err := os.MkdirAll(".bundle", 0755); err != nil {
+		return fmt.Errorf("failed to create .bundle directory: %w", err)
+	}
+
+	// Create YAML config
+	config := map[string]string{
+		"BUNDLE_PATH": bundlePath,
+	}
+
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	// Write to .bundle/config
+	if err := os.WriteFile(".bundle/config", data, 0644); err != nil {
+		return fmt.Errorf("failed to write .bundle/config: %w", err)
+	}
+
+	return nil
 }
 
 // ToMajorMinor converts "3.4.7" to "3.4.0" (Bundler convention)

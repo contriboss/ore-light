@@ -602,16 +602,9 @@ func runExecCommand(args []string) error {
 		return err
 	}
 
-	if err := ensureBundlerAvailable(); err != nil {
-		return err
-	}
-
-	env = setEnv(env, "BUNDLE_PATH", *vendorDir)
-	if gemfile := detectGemfileFromLock(*lockfilePath); gemfile != "" {
-		env = setEnv(env, "BUNDLE_GEMFILE", gemfile)
-	}
-
-	cmd := exec.Command("bundle", append([]string{"exec"}, cmdArgs...)...)
+	// When using system gems, run command directly (not via bundle exec)
+	// Bundler's auto-load in Ruby 3.4+ handles gem activation automatically
+	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	cmd.Env = env
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

@@ -67,8 +67,8 @@ func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *h
 	}, nil
 }
 
-func (m *downloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSpec, force bool) (downloadReport, error) {
-	var report downloadReport
+func (m *downloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSpec, force bool) (*downloadReport, error) {
+	report := &downloadReport{}
 	report.Total = len(gems)
 
 	// Ruby developers: errgroup is like Ruby's concurrent-ruby gem

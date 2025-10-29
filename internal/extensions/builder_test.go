@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/contriboss/ore-light/internal/ruby"
 )
 
 func TestHasExtensions(t *testing.T) {
@@ -163,7 +165,9 @@ func TestHasExtensions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := tt.setupFunc(t)
-			has, extensions, err := HasExtensions(dir)
+			// Use MRI engine for tests
+			engine := ruby.Engine{Name: ruby.EngineMRI, Version: "3.4.0"}
+			has, extensions, err := HasExtensions(dir, engine)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("HasExtensions() error = %v, wantErr %v", err, tt.wantErr)
@@ -198,8 +202,9 @@ func TestBuildExtensions_SkipExtensions(t *testing.T) {
 
 	builder := NewBuilder(config)
 	ctx := context.Background()
+	engine := ruby.Engine{Name: ruby.EngineMRI, Version: "3.4.0"}
 
-	result, err := builder.BuildExtensions(ctx, dir, "test-gem")
+	result, err := builder.BuildExtensions(ctx, dir, "test-gem", engine)
 	if err != nil {
 		t.Errorf("BuildExtensions() error = %v, want nil", err)
 	}
@@ -223,8 +228,9 @@ func TestBuildExtensions_NoExtensions(t *testing.T) {
 
 	builder := NewBuilder(config)
 	ctx := context.Background()
+	engine := ruby.Engine{Name: ruby.EngineMRI, Version: "3.4.0"}
 
-	result, err := builder.BuildExtensions(ctx, dir, "test-gem")
+	result, err := builder.BuildExtensions(ctx, dir, "test-gem", engine)
 	if err != nil {
 		t.Errorf("BuildExtensions() error = %v, want nil", err)
 	}

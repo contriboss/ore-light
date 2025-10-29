@@ -8,7 +8,64 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 )
+
+// dirCache tracks created directories to avoid redundant MkdirAll syscalls
+type dirCache struct {
+	seen map[string]struct{}
+	mu   sync.Mutex
+}
+
+func newDirCache(root string) *dirCache {
+	dc := &dirCache{seen: make(map[string]struct{}, 256)}
+	// Don't pre-mark root - let it be created properly via Ensure
+	return dc
+}
+
+func (dc *dirCache) mark(path string) {
+	if path == "" || path == "." {
+		return
+	}
+	dc.seen[path] = struct{}{}
+	// Mark all parent directories too
+	parent := filepath.Dir(path)
+	if parent != path && parent != "." {
+		dc.mark(parent)
+	}
+}
+
+func (dc *dirCache) Ensure(path string, mode os.FileMode) error {
+	if path == "" || path == "." {
+		return nil
+	}
+
+	dc.mu.Lock()
+	_, exists := dc.seen[path]
+	dc.mu.Unlock()
+
+	if exists {
+		return nil
+	}
+
+	if err := os.MkdirAll(path, mode); err != nil {
+		return err
+	}
+
+	dc.mu.Lock()
+	dc.mark(path)
+	dc.mu.Unlock()
+
+	return nil
+}
+
+// Buffer pool for file writes - reduces allocations and increases write size
+var copyBufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 128<<10) // 128 KB buffer
+		return &buf
+	},
+}
 
 // ExtractMetadataOnly extracts only the metadata from a .gem file without extracting contents
 // This is much faster than ExtractGemContents and useful for compatibility checks
@@ -111,6 +168,9 @@ func extractDataTar(reader io.Reader, destDir string) error {
 	}
 	defer gz.Close()
 
+	// Initialize directory cache to reduce MkdirAll syscalls
+	cache := newDirCache(destDir)
+
 	tr := tar.NewReader(gz)
 	for {
 		header, err := tr.Next()
@@ -125,21 +185,27 @@ func extractDataTar(reader io.Reader, destDir string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := EnsureDir(targetPath); err != nil {
+			// Use tar header's mode when available
+			mode := header.FileInfo().Mode() & os.ModePerm
+			if mode == 0 {
+				mode = 0o755
+			}
+			if err := cache.Ensure(targetPath, mode); err != nil {
 				return err
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			if err := EnsureDir(filepath.Dir(targetPath)); err != nil {
+			if err := cache.Ensure(filepath.Dir(targetPath), 0o755); err != nil {
 				return err
 			}
 			if err := writeFileFromReader(targetPath, tr, header.FileInfo().Mode()); err != nil {
 				return err
 			}
 		case tar.TypeSymlink:
-			if err := EnsureDir(filepath.Dir(targetPath)); err != nil {
+			if err := cache.Ensure(filepath.Dir(targetPath), 0o755); err != nil {
 				return err
 			}
-			if err := os.RemoveAll(targetPath); err != nil {
+			// Use os.Remove instead of os.RemoveAll - symlinks don't recurse
+			if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
 				return err
 			}
 			if err := os.Symlink(header.Linkname, targetPath); err != nil {
@@ -163,7 +229,11 @@ func writeFileFromReader(path string, r io.Reader, mode os.FileMode) error {
 	}
 	defer f.Close()
 
-	if _, err := io.Copy(f, r); err != nil {
+	// Use pooled buffer to reduce allocations and increase write size
+	bufp := copyBufPool.Get().(*[]byte)
+	defer copyBufPool.Put(bufp)
+
+	if _, err := io.CopyBuffer(f, r, *bufp); err != nil {
 		return err
 	}
 	return nil

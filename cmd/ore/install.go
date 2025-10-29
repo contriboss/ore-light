@@ -29,6 +29,12 @@ type installReport struct {
 	ExtensionsFailed  int
 }
 
+// extensionTarget tracks a gem that needs extensions built
+type extensionTarget struct {
+	gemName string
+	destDir string
+}
+
 func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, extConfig *extensions.BuildConfig) (installReport, error) {
 	report := installReport{Total: len(gems)}
 
@@ -51,6 +57,9 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 
 	// Create extension builder
 	extBuilder := extensions.NewBuilder(extConfig)
+
+	// Collect gems that need extensions built (defer until all gems installed)
+	var extensionTargets []extensionTarget
 
 	for _, gem := range gems {
 		gemPath := findGemInCaches(cacheDir, gem)
@@ -124,27 +133,50 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 			return report, err
 		}
 
-		// Build extensions if present
-		extResult, err := extBuilder.BuildExtensions(ctx, destDir, gem.FullName())
-		if err != nil {
-			// Extension build failure - warn but continue
-			if extConfig != nil && !extConfig.SkipExtensions {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to build extensions for %s: %v\n", gem.FullName(), err)
-				report.ExtensionsFailed++
-			}
-		} else if extResult.Skipped {
-			report.ExtensionsSkipped++
-		} else if extResult.Success && len(extResult.Extensions) > 0 {
-			if extConfig != nil && extConfig.Verbose {
-				fmt.Printf("Built %d extension(s) for %s: %v\n", len(extResult.Extensions), gem.FullName(), extResult.Extensions)
-			}
-			report.ExtensionsBuilt++
-		}
+		// Collect this gem for extension building (defer until all gems installed)
+		extensionTargets = append(extensionTargets, extensionTarget{
+			gemName: gem.FullName(),
+			destDir: destDir,
+		})
 
 		report.Installed++
 	}
 
+	// Build extensions for all installed gems (two-phase: install all, then build all)
+	// This ensures all gem specifications are written before any extensions build,
+	// allowing gems like nokogiri to find build dependencies like mini_portile2
+	if extConfig != nil && extConfig.Verbose {
+		fmt.Printf("Building extensions for %d gems after all installations complete...\n", len(extensionTargets))
+	}
+	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig)
+
 	return report, nil
+}
+
+// buildPendingExtensions builds extensions for all collected targets after installation
+// This ensures all gem specifications are written before any extensions build,
+// allowing gems like nokogiri to find build dependencies like mini_portile2
+func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder, engine ruby.Engine, targets []extensionTarget, report *installReport, extConfig *extensions.BuildConfig) {
+	// Skip if no extension config or extensions disabled
+	if extConfig == nil || extConfig.SkipExtensions {
+		return
+	}
+
+	for _, target := range targets {
+		extResult, err := extBuilder.BuildExtensions(ctx, target.destDir, target.gemName, engine)
+		if err != nil {
+			// Extension build failure - warn but continue
+			fmt.Fprintf(os.Stderr, "Warning: Failed to build extensions for %s: %v\n", target.gemName, err)
+			report.ExtensionsFailed++
+		} else if extResult.Skipped {
+			report.ExtensionsSkipped++
+		} else if extResult.Success && len(extResult.Extensions) > 0 {
+			if extConfig.Verbose {
+				fmt.Printf("Built %d extension(s) for %s: %v\n", len(extResult.Extensions), target.gemName, extResult.Extensions)
+			}
+			report.ExtensionsBuilt++
+		}
+	}
 }
 
 // findGemInCaches searches for a gem in cache directories (ore cache + system cache)
@@ -232,13 +264,20 @@ func buildExecutionEnv(vendorDir string, specs []lockfile.GemSpec) ([]string, er
 	}
 
 	env := os.Environ()
-	env = setEnv(env, "GEM_HOME", vendorDir)
-	env = setEnv(env, "GEM_PATH", vendorDir)
-	// Disable Bundler's auto-setup in Ruby 3.4+ (gem_prelude)
-	// ore exec manages gem loading directly via RUBYLIB
-	env = setEnv(env, "BUNDLE_GEMFILE", "")
+
+	// Only set GEM_HOME/GEM_PATH when using non-system vendorDir (isolated install)
+	// For system gem dir, Ruby's default Gem.dir works correctly
+	systemGemDir := getSystemGemDir()
+	if vendorDir != systemGemDir {
+		env = setEnv(env, "GEM_HOME", vendorDir)
+		env = setEnv(env, "GEM_PATH", vendorDir)
+		// Disable Bundler's auto-setup to avoid conflicts
+		env = setEnv(env, "BUNDLE_GEMFILE", "")
+	}
+
 	env = prependPath(env, filepath.Join(vendorDir, "bin"))
 	env = prependRubyLib(env, libPaths)
+
 	return env, nil
 }
 
@@ -311,11 +350,17 @@ func getEnvValue(env []string, key string) (string, bool) {
 func installGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, extConfig *extensions.BuildConfig) (installReport, error) {
 	report := installReport{Total: len(gitSpecs)}
 
+	// Detect Ruby engine for extension compatibility filtering
+	engine := ruby.DetectEngine()
+
 	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
 		return report, err
 	}
 
 	extBuilder := extensions.NewBuilder(extConfig)
+
+	// Collect gems that need extensions built (defer until all gems installed)
+	var extensionTargets []extensionTarget
 
 	for _, spec := range gitSpecs {
 		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
@@ -340,24 +385,17 @@ func installGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 			return report, err
 		}
 
-		// Build extensions if present
-		extResult, err := extBuilder.BuildExtensions(ctx, destDir, gemName)
-		if err != nil {
-			if extConfig != nil && !extConfig.SkipExtensions {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to build extensions for %s: %v\n", gemName, err)
-				report.ExtensionsFailed++
-			}
-		} else if extResult.Skipped {
-			report.ExtensionsSkipped++
-		} else if extResult.Success && len(extResult.Extensions) > 0 {
-			if extConfig != nil && extConfig.Verbose {
-				fmt.Printf("Built %d extension(s) for %s: %v\n", len(extResult.Extensions), gemName, extResult.Extensions)
-			}
-			report.ExtensionsBuilt++
-		}
+		// Collect this gem for extension building (defer until all gems installed)
+		extensionTargets = append(extensionTargets, extensionTarget{
+			gemName: gemName,
+			destDir: destDir,
+		})
 
 		report.Installed++
 	}
+
+	// Build extensions for all installed gems (two-phase: install all, then build all)
+	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig)
 
 	return report, nil
 }
@@ -382,11 +420,17 @@ func cloneGitGem(spec lockfile.GitGemSpec, destDir string) error {
 func installPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, extConfig *extensions.BuildConfig) (installReport, error) {
 	report := installReport{Total: len(pathSpecs)}
 
+	// Detect Ruby engine for extension compatibility filtering
+	engine := ruby.DetectEngine()
+
 	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
 		return report, err
 	}
 
 	extBuilder := extensions.NewBuilder(extConfig)
+
+	// Collect gems that need extensions built (defer until all gems installed)
+	var extensionTargets []extensionTarget
 
 	for _, spec := range pathSpecs {
 		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
@@ -411,24 +455,17 @@ func installPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile
 			return report, err
 		}
 
-		// Build extensions if present
-		extResult, err := extBuilder.BuildExtensions(ctx, destDir, gemName)
-		if err != nil {
-			if extConfig != nil && !extConfig.SkipExtensions {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to build extensions for %s: %v\n", gemName, err)
-				report.ExtensionsFailed++
-			}
-		} else if extResult.Skipped {
-			report.ExtensionsSkipped++
-		} else if extResult.Success && len(extResult.Extensions) > 0 {
-			if extConfig != nil && extConfig.Verbose {
-				fmt.Printf("Built %d extension(s) for %s: %v\n", len(extResult.Extensions), gemName, extResult.Extensions)
-			}
-			report.ExtensionsBuilt++
-		}
+		// Collect this gem for extension building (defer until all gems installed)
+		extensionTargets = append(extensionTargets, extensionTarget{
+			gemName: gemName,
+			destDir: destDir,
+		})
 
 		report.Installed++
 	}
+
+	// Build extensions for all installed gems (two-phase: install all, then build all)
+	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig)
 
 	return report, nil
 }
