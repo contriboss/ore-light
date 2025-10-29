@@ -155,6 +155,8 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install postgresql@16
+          echo "/opt/homebrew/opt/postgresql@16/bin" >> $GITHUB_PATH
+          echo "PKG_CONFIG_PATH=/opt/homebrew/opt/postgresql@16/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install ore
         run: |
@@ -163,6 +165,18 @@ jobs:
 
       - name: Verify ore installation
         run: ore version
+
+      - name: Debug config
+        working-directory: test-multiplatform
+        run: |
+          echo "=== Files in test-multiplatform ==="
+          ls -la
+          if [ -f .ore.toml ]; then
+            echo "=== .ore.toml contents ==="
+            cat .ore.toml
+          else
+            echo "❌ .ore.toml not found"
+          fi
 
       - name: Install gems (build native extensions)
         working-directory: test-multiplatform
