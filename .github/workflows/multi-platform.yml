@@ -155,11 +155,7 @@ jobs:
       - name: Test gem loading
         working-directory: test-multiplatform
         run: |
-          export BUNDLE_PATH=vendor/bundle
-          ruby -e "
-            # Add vendor/bundle to load path
-            Dir.glob('vendor/bundle/ruby/*/gems/*/lib').each { |path| \$LOAD_PATH.unshift(path) }
-
+          ore exec ruby -e "
             require 'rack'
             require 'sinatra/base'
 
