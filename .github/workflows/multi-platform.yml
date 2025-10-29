@@ -65,6 +65,14 @@ jobs:
         run: |
           ore config --local path vendor/bundle
           echo "✅ Configured vendor path"
+          echo "=== Checking for .ore.toml ==="
+          ls -la | grep -E "(Gemfile|\.ore\.toml)" || true
+          if [ -f .ore.toml ]; then
+            echo "=== .ore.toml contents ==="
+            cat .ore.toml
+          else
+            echo "❌ .ore.toml not found after ore config"
+          fi
 
       - name: Vendor gems
         working-directory: test-multiplatform
