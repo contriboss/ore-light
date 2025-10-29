@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/multi-platform.yml'
+      - 'scripts/install.sh'
 
 # Prevent concurrent runs to avoid cache conflicts
 concurrency:
@@ -12,36 +13,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: MRI on Ubuntu
-            os: ubuntu-latest
-            ruby: '3.4'
+  # Job 1: Prepare gems (fetch and vendor once)
+  prepare:
+    name: Prepare Gems
+    runs-on: ubuntu-latest
 
-          - name: JRuby on Ubuntu
-            os: ubuntu-latest
-            ruby: 'jruby-head'
-
-          - name: TruffleRuby on Ubuntu
-            os: ubuntu-latest
-            ruby: 'truffleruby-head'
-
-          - name: MRI on macOS
-            os: macos-latest
-            ruby: '3.4'
-
-    name: ${{ matrix.name }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: ${{ matrix.ruby }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install ore
         run: |
@@ -51,7 +30,7 @@ jobs:
       - name: Verify ore installation
         run: ore version
 
-      - name: Create multi-platform Gemfile
+      - name: Create test Gemfile
         run: |
           mkdir -p test-multiplatform && cd test-multiplatform
           cat > Gemfile <<'EOF'
@@ -72,8 +51,8 @@ jobs:
           EOF
 
       - name: Generate multi-platform lockfile
+        working-directory: test-multiplatform
         run: |
-          cd test-multiplatform
           ore lock \
             --add-platform x86_64-linux \
             --add-platform aarch64-linux \
@@ -81,16 +60,106 @@ jobs:
             --add-platform aarch64-darwin \
             --add-platform java
 
-      - name: Install gems
+      - name: Vendor gems
+        working-directory: test-multiplatform
         run: |
-          cd test-multiplatform
-          ore install
+          ore install --vendor=vendor/bundle
+          echo "✅ Gems vendored to vendor/bundle"
+
+      - name: Cache ore gem cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ore/gems
+          key: ore-cache-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
+
+      - name: Cache vendored gems
+        uses: actions/cache@v4
+        with:
+          path: test-multiplatform/vendor/bundle
+          key: gems-prepare-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
+
+      - name: Upload Gemfile and lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemfiles
+          path: |
+            test-multiplatform/Gemfile
+            test-multiplatform/Gemfile.lock
+
+  # Job 2: Test on multiple platforms
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: MRI on Ubuntu
+            os: ubuntu-latest
+            ruby: '3.4'
+
+          - name: JRuby on Ubuntu
+            os: ubuntu-latest
+            ruby: 'jruby-head'
+
+          - name: TruffleRuby on Ubuntu
+            os: ubuntu-latest
+            ruby: 'truffleruby-head'
+
+          - name: MRI on macOS
+            os: macos-latest
+            ruby: '3.4'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Gemfile and lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: gemfiles
+          path: test-multiplatform
+
+      - name: Restore ore gem cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ore/gems
+          key: ore-cache-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
+
+      - name: Restore vendored gems
+        uses: actions/cache@v4
+        with:
+          path: test-multiplatform/vendor/bundle
+          key: gems-prepare-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: Install ore
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/contriboss/ore-light/master/scripts/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Verify ore installation
+        run: ore version
+
+      - name: Install gems (build native extensions)
+        working-directory: test-multiplatform
+        run: |
+          ore install --vendor=vendor/bundle
+          echo "✅ Gems installed (native extensions built for ${{ matrix.ruby }})"
 
       - name: Test gem loading
+        working-directory: test-multiplatform
         run: |
-          cd test-multiplatform
+          export BUNDLE_PATH=vendor/bundle
           ruby -e "
-            require 'bundler/setup'
+            # Add vendor/bundle to load path
+            Dir.glob('vendor/bundle/ruby/*/gems/*/lib').each { |path| \$LOAD_PATH.unshift(path) }
+
             require 'rack'
             require 'sinatra/base'
 

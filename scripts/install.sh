@@ -157,7 +157,7 @@ detect_platform() {
   uname_s=$(uname -s 2>/dev/null || true)
   uname_m=$(uname -m 2>/dev/null || true)
 
-  case "${uname_s,,}" in
+  case "$(echo "$uname_s" | tr '[:upper:]' '[:lower:]')" in
     linux)
       os="linux"
       ;;
