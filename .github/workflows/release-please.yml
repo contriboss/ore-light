@@ -17,6 +17,9 @@ jobs:
         id: release
         with:
           release-type: go
+          package-name: ore-light
+          extra-files: |
+            VERSION
 
       - name: Checkout
         if: ${{ steps.release.outputs.release_created }}
