@@ -145,6 +145,17 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby }}
 
+      - name: Install build dependencies (Ubuntu only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libpq-dev
+
+      - name: Install build dependencies (macOS only)
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@16
+
       - name: Install ore
         run: |
           curl -fsSL https://raw.githubusercontent.com/contriboss/ore-light/master/scripts/install.sh | bash
