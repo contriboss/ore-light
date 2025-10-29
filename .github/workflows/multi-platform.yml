@@ -17,6 +17,9 @@ jobs:
   prepare:
     name: Prepare Gems
     runs-on: ubuntu-latest
+    env:
+      GEM_HOME: ${{ github.workspace }}/test-multiplatform/vendor/bundle
+      GEM_PATH: ${{ github.workspace }}/test-multiplatform/vendor/bundle
 
     steps:
       - name: Checkout repository
@@ -63,16 +66,11 @@ jobs:
       - name: Configure vendor path
         working-directory: test-multiplatform
         run: |
-          ore config --local path vendor/bundle
-          echo "✅ Configured vendor path"
-          echo "=== Checking for .ore.toml ==="
-          ls -la | grep -E "(Gemfile|\.ore\.toml)" || true
-          if [ -f .ore.toml ]; then
-            echo "=== .ore.toml contents ==="
-            cat .ore.toml
-          else
-            echo "❌ .ore.toml not found after ore config"
-          fi
+          cat > .ore.toml <<'EOF'
+          path = "vendor/bundle"
+          EOF
+          echo "✅ Created .ore.toml manually"
+          cat .ore.toml
 
       - name: Vendor gems
         working-directory: test-multiplatform
@@ -109,6 +107,8 @@ jobs:
     needs: prepare
     env:
       BUNDLE_PATH: vendor/bundle
+      GEM_HOME: ${{ github.workspace }}/test-multiplatform/vendor/bundle
+      GEM_PATH: ${{ github.workspace }}/test-multiplatform/vendor/bundle
     strategy:
       fail-fast: false
       matrix:
@@ -177,16 +177,35 @@ jobs:
       - name: Verify ore installation
         run: ore version
 
-      - name: Debug config
+      - name: Debug environment and files
         working-directory: test-multiplatform
         run: |
+          echo "=== Environment Variables ==="
+          echo "BUNDLE_PATH: ${BUNDLE_PATH:-not set}"
+          echo "GEM_HOME: ${GEM_HOME:-not set}"
+          echo "GEM_PATH: ${GEM_PATH:-not set}"
+          echo ""
+          echo "=== Ruby Information ==="
+          ruby -v
+          gem env
+          echo ""
           echo "=== Files in test-multiplatform ==="
           ls -la
+          echo ""
           if [ -f .ore.toml ]; then
             echo "=== .ore.toml contents ==="
             cat .ore.toml
           else
             echo "❌ .ore.toml not found"
+          fi
+          echo ""
+          echo "=== Contents of vendor/bundle ==="
+          if [ -d vendor/bundle ]; then
+            find vendor/bundle -type f -name "*.gemspec" | head -20
+            echo "..."
+            echo "Total gem files: $(find vendor/bundle -name "*.gemspec" | wc -l)"
+          else
+            echo "❌ vendor/bundle directory not found"
           fi
 
       - name: Install gems (build native extensions)
