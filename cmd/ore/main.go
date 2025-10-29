@@ -182,6 +182,14 @@ func runLockCommand(args []string) error {
 	fs := flag.NewFlagSet("lock", flag.ContinueOnError)
 	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
 	verbose := fs.Bool("v", false, "Enable verbose output")
+
+	// Multi-value flag for platforms (like bundle lock --add-platform)
+	var platforms []string
+	fs.Func("add-platform", "Add a platform to the lockfile (can be repeated)", func(s string) error {
+		platforms = append(platforms, s)
+		return nil
+	})
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -194,7 +202,7 @@ func runLockCommand(args []string) error {
 		fmt.Printf("🔒 Resolving dependencies from %s…\n", *gemfilePath)
 	}
 
-	if err := resolver.GenerateLockfile(*gemfilePath); err != nil {
+	if err := resolver.GenerateLockfileWithPlatforms(*gemfilePath, nil, platforms); err != nil {
 		return fmt.Errorf("failed to generate lockfile: %w", err)
 	}
 

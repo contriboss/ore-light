@@ -23,12 +23,19 @@ import (
 // that can resolve dependencies without Ruby installed. PubGrub is the
 // state-of-the-art dependency resolution algorithm (also used by Dart's pub).
 func GenerateLockfile(gemfilePath string) error {
-	return GenerateLockfileWithPins(gemfilePath, nil)
+	return GenerateLockfileWithPlatforms(gemfilePath, nil, nil)
 }
 
 // GenerateLockfileWithPins resolves gem dependencies with optional version pins.
 // versionPins is a map of gem name -> exact version to pin (used for selective updates).
 func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string) error {
+	return GenerateLockfileWithPlatforms(gemfilePath, versionPins, nil)
+}
+
+// GenerateLockfileWithPlatforms resolves gem dependencies with optional version pins and platforms.
+// versionPins is a map of gem name -> exact version to pin (used for selective updates).
+// platforms is a list of additional platforms to add to the lockfile (e.g., "x86_64-linux", "java").
+func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]string, platforms []string) error {
 	// Parse Gemfile
 	parser := gemfile.NewGemfileParser(gemfilePath)
 	parsed, err := parser.Parse()
@@ -315,7 +322,7 @@ func GenerateLockfileWithPins(gemfilePath string, versionPins map[string]string)
 		GemSpecs:  specs,
 		GitSpecs:  gitSpecs,
 		PathSpecs: pathSpecs,
-		Platforms: detectPlatforms(),
+		Platforms: detectPlatforms(lockfilePath, platforms),
 		Dependencies: func() []lockfile.Dependency {
 			var deps []lockfile.Dependency
 			for _, dep := range parsed.Dependencies {
@@ -355,18 +362,49 @@ func determineLockfilePath(gemfilePath string) string {
 // Bundler lockfiles typically include:
 // 1. "ruby" - for platform-independent gems
 // 2. Current platform (e.g., "arm64-darwin-24", "x86_64-linux")
-func detectPlatforms() []string {
-	platforms := []string{"ruby"}
+// 3. Any existing platforms from previous lockfile
+// 4. Additional platforms specified via --add-platform flag
+func detectPlatforms(lockfilePath string, additionalPlatforms []string) []string {
+	platformSet := make(map[string]bool)
 
-	// Try to get Ruby platform
+	// Always include "ruby" for platform-independent gems
+	platformSet["ruby"] = true
+
+	// Read existing platforms from lockfile if it exists
+	if _, err := os.Stat(lockfilePath); err == nil {
+		if file, err := os.Open(lockfilePath); err == nil {
+			defer file.Close()
+			if parsed, err := lockfile.Parse(file); err == nil {
+				for _, p := range parsed.Platforms {
+					platformSet[p] = true
+				}
+			}
+		}
+	}
+
+	// Add current platform if Ruby is available
 	cmd := exec.Command("ruby", "-e", "puts RUBY_PLATFORM")
 	output, err := cmd.Output()
 	if err == nil {
 		platform := regexp.MustCompile(`\s+`).ReplaceAllString(string(output), "")
 		if platform != "" && platform != "ruby" {
-			platforms = append(platforms, platform)
+			platformSet[platform] = true
 		}
 	}
+
+	// Add additional platforms from --add-platform flags
+	for _, p := range additionalPlatforms {
+		if p != "" {
+			platformSet[p] = true
+		}
+	}
+
+	// Convert set to sorted slice for consistent output
+	platforms := make([]string, 0, len(platformSet))
+	for p := range platformSet {
+		platforms = append(platforms, p)
+	}
+	sort.Strings(platforms)
 
 	return platforms
 }

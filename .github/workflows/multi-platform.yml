@@ -1,0 +1,189 @@
+name: Multi-Platform Gem Installation
+
+on:
+  workflow_dispatch: # Manual trigger for testing
+  pull_request:
+    paths:
+      - '.github/workflows/multi-platform.yml'
+
+jobs:
+  # Step 1: Fetch all gems for all platforms
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build ore
+        run: go build -o ore ./cmd/ore
+
+      - name: Create multi-platform Gemfile
+        run: |
+          mkdir -p test-multiplatform && cd test-multiplatform
+          cat > Gemfile <<'EOF'
+          source 'https://rubygems.org'
+
+          source 'https://gem.coop' do
+            gem 'sidekiq', '~> 7.0'
+            gem 'activerecord', '~> 7.2.0'  # Lock to 7.2 for JRuby compatibility
+          end
+
+          # MRI-specific gems (C extensions)
+          platform :mri do
+            gem 'pg', '~> 1.5'
+          end
+
+          # JRuby-specific gems (Java adapters)
+          platform :jruby do
+            gem 'activerecord-jdbc-adapter', '~> 72.0'  # Rails 7.2.x support
+            gem 'jdbc-postgres', '~> 42.0'
+          end
+          EOF
+
+      - name: Generate multi-platform lockfile
+        run: |
+          cd test-multiplatform
+          ../ore lock \
+            --add-platform x86_64-linux \
+            --add-platform aarch64-linux \
+            --add-platform x86_64-darwin \
+            --add-platform aarch64-darwin \
+            --add-platform java
+
+      - name: Configure vendor/bundle path
+        run: |
+          cd test-multiplatform
+          mkdir -p .bundle
+          cat > .bundle/config <<EOF
+          ---
+          BUNDLE_PATH: "vendor/bundle"
+          EOF
+
+      - name: Fetch gems for all platforms
+        run: |
+          cd test-multiplatform
+          ../ore install
+
+      - name: Cache vendor/bundle
+        uses: actions/cache/save@v4
+        with:
+          path: test-multiplatform/vendor/bundle
+          key: gems-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
+
+  # Step 2-4: Test matrix with different Ruby engines/platforms
+  test:
+    needs: fetch
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: MRI on Ubuntu
+            os: ubuntu-latest
+            ruby: '3.4'
+
+          - name: JRuby on Ubuntu
+            os: ubuntu-latest
+            ruby: 'jruby-9.4'
+
+          - name: MRI on macOS
+            os: macos-latest
+            ruby: '3.4'
+
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build ore
+        run: go build -o ore ./cmd/ore
+
+      - name: Restore cached gems
+        uses: actions/cache/restore@v4
+        with:
+          path: test-multiplatform/vendor/bundle
+          key: gems-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
+          fail-on-cache-miss: true
+
+      - name: Create test Gemfile (from fetch job)
+        run: |
+          mkdir -p test-multiplatform && cd test-multiplatform
+          cat > Gemfile <<'EOF'
+          source 'https://rubygems.org'
+
+          source 'https://gem.coop' do
+            gem 'sidekiq', '~> 7.0'
+            gem 'activerecord', '~> 7.2.0'
+          end
+
+          platform :mri do
+            gem 'pg', '~> 1.5'
+          end
+
+          platform :jruby do
+            gem 'activerecord-jdbc-adapter', '~> 72.0'
+            gem 'jdbc-postgres', '~> 42.0'
+          end
+          EOF
+
+      - name: Copy lockfile from cache
+        run: |
+          cd test-multiplatform
+          # Lockfile should be part of the checkout, but recreate it for safety
+          ../ore lock \
+            --add-platform x86_64-linux \
+            --add-platform aarch64-linux \
+            --add-platform x86_64-darwin \
+            --add-platform aarch64-darwin \
+            --add-platform java
+
+      - name: Configure vendor/bundle path
+        run: |
+          cd test-multiplatform
+          mkdir -p .bundle
+          cat > .bundle/config <<EOF
+          ---
+          BUNDLE_PATH: "vendor/bundle"
+          EOF
+
+      - name: Install gems (from cache)
+        run: |
+          cd test-multiplatform
+          ../ore install
+
+      - name: Test gem loading
+        run: |
+          cd test-multiplatform
+          ruby -e "
+            require 'bundler/setup'
+            require 'sidekiq'
+            require 'active_record'
+
+            puts '✅ Core gems loaded successfully!'
+            puts 'ActiveRecord version: ' + ActiveRecord::VERSION::STRING
+            puts 'Sidekiq version: ' + Sidekiq::VERSION
+
+            # Platform-specific tests
+            if RUBY_ENGINE == 'jruby'
+              require 'activerecord-jdbc-adapter'
+              require 'jdbc/postgres'
+              puts '✅ JRuby gems loaded successfully!'
+            else
+              require 'pg'
+              puts '✅ MRI gems loaded successfully!'
+              puts 'pg version: ' + PG::VERSION
+            end
+          "
