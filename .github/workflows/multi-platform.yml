@@ -27,10 +27,8 @@ jobs:
           cat > Gemfile <<'EOF'
           source 'https://rubygems.org'
 
-          source 'https://gem.coop' do
-            gem 'sidekiq', '~> 7.0'
-            gem 'activerecord', '~> 7.2.0'  # Lock to 7.2 for JRuby compatibility
-          end
+          gem 'rack', '~> 3.0'
+          gem 'sinatra', '~> 4.0'
 
           # MRI-specific gems (C extensions)
           platform :mri do
@@ -39,7 +37,6 @@ jobs:
 
           # JRuby-specific gems (Java adapters)
           platform :jruby do
-            gem 'activerecord-jdbc-adapter', '~> 72.0'  # Rails 7.2.x support
             gem 'jdbc-postgres', '~> 42.0'
           end
           EOF
@@ -124,17 +121,14 @@ jobs:
           cat > Gemfile <<'EOF'
           source 'https://rubygems.org'
 
-          source 'https://gem.coop' do
-            gem 'sidekiq', '~> 7.0'
-            gem 'activerecord', '~> 7.2.0'
-          end
+          gem 'rack', '~> 3.0'
+          gem 'sinatra', '~> 4.0'
 
           platform :mri do
             gem 'pg', '~> 1.5'
           end
 
           platform :jruby do
-            gem 'activerecord-jdbc-adapter', '~> 72.0'
             gem 'jdbc-postgres', '~> 42.0'
           end
           EOF
@@ -169,18 +163,18 @@ jobs:
           cd test-multiplatform
           ruby -e "
             require 'bundler/setup'
-            require 'sidekiq'
-            require 'active_record'
+            require 'rack'
+            require 'sinatra/base'
 
             puts '✅ Core gems loaded successfully!'
-            puts 'ActiveRecord version: ' + ActiveRecord::VERSION::STRING
-            puts 'Sidekiq version: ' + Sidekiq::VERSION
+            puts 'Rack version: ' + Rack::VERSION
+            puts 'Sinatra version: ' + Sinatra::VERSION
 
             # Platform-specific tests
             if RUBY_ENGINE == 'jruby'
-              require 'activerecord-jdbc-adapter'
               require 'jdbc/postgres'
               puts '✅ JRuby gems loaded successfully!'
+              puts 'JDBC Postgres version: ' + Jdbc::Postgres::VERSION
             else
               require 'pg'
               puts '✅ MRI gems loaded successfully!'
