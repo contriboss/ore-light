@@ -246,7 +246,7 @@ STDOUT.binmode
 
 	ctx := context.Background()
 	extConfig := &extensions.BuildConfig{SkipExtensions: true}
-	report, err := installFromCache(ctx, cacheDir, vendorDir, []lockfile.GemSpec{spec}, false, extConfig)
+	report, err := installFromCache(ctx, cacheDir, vendorDir, []lockfile.GemSpec{spec}, false, false, extConfig)
 	if err != nil {
 		t.Fatalf("installFromCache returned error: %v", err)
 	}
@@ -277,7 +277,7 @@ STDOUT.binmode
 	}
 
 	// Second install without --force should skip
-	report, err = installFromCache(ctx, cacheDir, vendorDir, []lockfile.GemSpec{spec}, false, extConfig)
+	report, err = installFromCache(ctx, cacheDir, vendorDir, []lockfile.GemSpec{spec}, false, false, extConfig)
 	if err != nil {
 		t.Fatalf("second installFromCache returned error: %v", err)
 	}
@@ -286,7 +286,7 @@ STDOUT.binmode
 	}
 
 	// Force reinstall should re-extract
-	report, err = installFromCache(ctx, cacheDir, vendorDir, []lockfile.GemSpec{spec}, true, extConfig)
+	report, err = installFromCache(ctx, cacheDir, vendorDir, []lockfile.GemSpec{spec}, true, false, extConfig)
 	if err != nil {
 		t.Fatalf("forced installFromCache returned error: %v", err)
 	}
