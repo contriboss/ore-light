@@ -1,0 +1,11 @@
+{
+  "release-type": "simple",
+  "packages": {
+    ".": {
+      "version-file": "VERSION",
+      "package-name": "ore-light",
+      "include-component-in-tag": false,
+      "tag-separator": ""
+    }
+  }
+}
