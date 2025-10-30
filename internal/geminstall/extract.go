@@ -74,7 +74,9 @@ func ExtractMetadataOnly(gemPath string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	tr := tar.NewReader(file)
 	for {
@@ -108,7 +110,9 @@ func ExtractGemContents(gemPath, destDir string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	tr := tar.NewReader(file)
 	var dataFound bool
@@ -166,7 +170,9 @@ func extractDataTar(reader io.Reader, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create gzip reader: %w", err)
 	}
-	defer gz.Close()
+	defer func() {
+		_ = gz.Close()
+	}()
 
 	// Initialize directory cache to reduce MkdirAll syscalls
 	cache := newDirCache(destDir)
@@ -193,7 +199,7 @@ func extractDataTar(reader io.Reader, destDir string) error {
 			if err := cache.Ensure(targetPath, mode); err != nil {
 				return err
 			}
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg:
 			if err := cache.Ensure(filepath.Dir(targetPath), 0o755); err != nil {
 				return err
 			}
@@ -227,7 +233,9 @@ func writeFileFromReader(path string, r io.Reader, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	// Use pooled buffer to reduce allocations and increase write size
 	bufp := copyBufPool.Get().(*[]byte)
@@ -244,7 +252,9 @@ func decompressMetadata(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decompress metadata: %w", err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 	return io.ReadAll(reader)
 }
 
@@ -258,13 +268,17 @@ func CopyGemToVendorCache(srcPath, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() {
+		_ = src.Close()
+	}()
 
 	dest, err := os.Create(destPath)
 	if err != nil {
 		return err
 	}
-	defer dest.Close()
+	defer func() {
+		_ = dest.Close()
+	}()
 
 	if _, err := io.Copy(dest, src); err != nil {
 		return err

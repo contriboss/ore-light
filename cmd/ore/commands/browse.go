@@ -32,9 +32,6 @@ var (
 
 	normalItemStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252"))
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("244"))
 )
 
 type groupedGem struct {
@@ -59,7 +56,6 @@ type model struct {
 	searchMode  bool
 	width       int
 	height      int
-	selectedGem *groupedGem
 	message     string
 	quitting    bool
 	openPath    string // Path to open in editor after quitting

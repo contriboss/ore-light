@@ -234,17 +234,6 @@ func NewSemverVersion(versionString string) (*SemverVersion, error) {
 	}, nil
 }
 
-func newSemverVersionFromSegments(segments []versionSegment) *SemverVersion {
-	copied := make([]versionSegment, len(segments))
-	copy(copied, segments)
-	copied = trimTrailingZeros(copied)
-
-	return &SemverVersion{
-		original: segmentsToString(copied),
-		segments: copied,
-	}
-}
-
 // String returns the version string
 func (v *SemverVersion) String() string {
 	if v == nil || v.original == "" {
@@ -412,24 +401,6 @@ func parseSegments(version string) []versionSegment {
 	// For example, ~> 2.1.0 means >= 2.1.0 and < 2.2.0
 	// But ~> 2.1 means >= 2.1 and < 3.0
 	return segments
-}
-
-func trimTrailingZeros(segments []versionSegment) []versionSegment {
-	i := len(segments) - 1
-	for i >= 0 {
-		seg := segments[i]
-		if seg.numeric && seg.num == 0 {
-			i--
-			continue
-		}
-		break
-	}
-
-	if i < 0 {
-		return []versionSegment{{numeric: true, num: 0}}
-	}
-
-	return segments[:i+1]
 }
 
 func segmentAt(segments []versionSegment, index int) versionSegment {

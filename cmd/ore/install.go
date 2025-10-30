@@ -74,7 +74,9 @@ func installBuildDependency(ctx context.Context, gemName, cacheDir, vendorDir st
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer outFile.Close()
+		defer func() {
+			_ = outFile.Close()
+		}()
 
 		if err := sourceManager.DownloadGem(ctx, gemFileName, outFile); err != nil {
 			return fmt.Errorf("failed to download %s: %w", gemName, err)
@@ -299,10 +301,16 @@ func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder,
 			// Add vendorDir/bin to PATH so installed binstubs (like rake) can be found by exec.LookPath
 			binDir := filepath.Join(vendorDir, "bin")
 			currentPath := os.Getenv("PATH")
+			var pathErr error
 			if currentPath != "" {
-				os.Setenv("PATH", binDir+":"+currentPath)
+				pathErr = os.Setenv("PATH", binDir+":"+currentPath)
 			} else {
-				os.Setenv("PATH", binDir)
+				pathErr = os.Setenv("PATH", binDir)
+			}
+			if pathErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to update PATH for build dependencies: %v\n", pathErr)
+				report.ExtensionsFailed++
+				continue
 			}
 
 			// Retry building extensions after installing dependencies
@@ -705,7 +713,9 @@ func createFakeGemArchive(dest string, files map[string][]byte, marshalData []by
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	tw := tar.NewWriter(file)
 

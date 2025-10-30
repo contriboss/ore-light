@@ -245,7 +245,7 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 	// Solve all dependencies at once
 	solution, err := unifiedSolver.Solve(rootSource.Term())
 	if err != nil {
-		return fmt.Errorf(`Could not resolve dependencies
+		return fmt.Errorf(`could not resolve dependencies
 
   This could mean:
   - No versions satisfy the constraints
@@ -373,7 +373,9 @@ func detectPlatforms(lockfilePath string, additionalPlatforms []string) []string
 	// Read existing platforms from lockfile if it exists
 	if _, err := os.Stat(lockfilePath); err == nil {
 		if file, err := os.Open(lockfilePath); err == nil {
-			defer file.Close()
+			defer func() {
+				_ = file.Close()
+			}()
 			if parsed, err := lockfile.Parse(file); err == nil {
 				for _, p := range parsed.Platforms {
 					platformSet[p] = true

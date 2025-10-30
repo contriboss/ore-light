@@ -295,12 +295,12 @@ func TestShouldSkipExtensions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear all relevant env vars first
-			os.Unsetenv("ORE_SKIP_EXTENSIONS")
-			os.Unsetenv("ORE_LIGHT_SKIP_EXTENSIONS")
+			_ = os.Unsetenv("ORE_SKIP_EXTENSIONS")
+			_ = os.Unsetenv("ORE_LIGHT_SKIP_EXTENSIONS")
 
 			// Set test env vars
 			for k, v := range tt.envVars {
-				os.Setenv(k, v)
+				_ = os.Setenv(k, v)
 			}
 
 			got := ShouldSkipExtensions()
@@ -310,7 +310,7 @@ func TestShouldSkipExtensions(t *testing.T) {
 
 			// Clean up
 			for k := range tt.envVars {
-				os.Unsetenv(k)
+				_ = os.Unsetenv(k)
 			}
 		})
 	}
@@ -332,7 +332,7 @@ func TestNewBuilder(t *testing.T) {
 		}
 		builder := NewBuilder(config)
 		if builder == nil {
-			t.Error("NewBuilder() returned nil")
+			t.Fatal("NewBuilder() returned nil")
 		}
 		if builder.config.Parallel != 8 {
 			t.Errorf("NewBuilder() config.Parallel = %d, want 8", builder.config.Parallel)
@@ -342,7 +342,7 @@ func TestNewBuilder(t *testing.T) {
 	t.Run("with nil config", func(t *testing.T) {
 		builder := NewBuilder(nil)
 		if builder == nil {
-			t.Error("NewBuilder() returned nil")
+			t.Fatal("NewBuilder() returned nil")
 		}
 		if builder.config.Parallel != 4 {
 			t.Errorf("NewBuilder() config.Parallel = %d, want 4 (default)", builder.config.Parallel)

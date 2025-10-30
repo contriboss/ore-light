@@ -53,9 +53,10 @@ func findLockfilePath(gemfilePath string) (string, error) {
 
 	// Fallback: try the other convention
 	var fallbackName string
-	if base == "gems.rb" {
+	switch base {
+	case "gems.rb":
 		fallbackName = "Gemfile.lock"
-	} else if base == "Gemfile" {
+	case "Gemfile":
 		fallbackName = "gems.locked"
 	}
 

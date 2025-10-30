@@ -27,7 +27,6 @@ import (
 var (
 	version     = "dev"
 	buildCommit = "unknown"
-	buildTime   = "unknown"
 )
 
 const (
@@ -195,7 +194,7 @@ func runLockCommand(args []string) error {
 	}
 
 	if _, err := os.Stat(*gemfilePath); err != nil {
-		return fmt.Errorf("Gemfile not found at %s", *gemfilePath)
+		return fmt.Errorf("gemfile not found at %s", *gemfilePath)
 	}
 
 	if *verbose {
@@ -275,45 +274,6 @@ func shortHash(commit string) string {
 func exitWithError(err error) {
 	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	os.Exit(1)
-}
-
-func runFetchCommand(args []string) error {
-	fs := flag.NewFlagSet("fetch", flag.ContinueOnError)
-	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
-	force := fs.Bool("force", false, "Re-download gems even if present in cache")
-	workers := fs.Int("workers", runtime.NumCPU(), "Number of concurrent downloads")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	dm, err := newDefaultDownloadManager(*workers)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Perform pre-flight health checks on gem sources
-	dm.CheckSourceHealth(ctx)
-
-	gems, err := loadGemSpecs(*lockfilePath)
-	if err != nil {
-		return err
-	}
-
-	if len(gems) == 0 {
-		fmt.Println("No gems found in lockfile.")
-		return nil
-	}
-
-	report, err := dm.DownloadAll(ctx, gems, *force)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Download complete. %d fetched, %d skipped (cached).\n", report.Downloaded, report.Skipped)
-	return nil
 }
 
 func runInstallCommand(args []string) error {
@@ -649,43 +609,16 @@ func toMajorMinor(version string) string {
 }
 
 // readBundleConfigPath reads BUNDLE_PATH from .bundle/config
-func readBundleConfigPath() string {
-	return config.ReadBundleConfigPath()
-}
-
 // detectRubyVersion detects the Ruby version to use for gem installation
 // Priority: 1) Gemfile.lock, 2) Gemfile, 3) DEFAULT_RUBY_VERSION
 func detectRubyVersion() string {
 	return ruby.DetectRubyVersion(defaultLockfilePath(), defaultGemfilePath(), toMajorMinor, DEFAULT_RUBY_VERSION)
 }
 
-// detectRubyVersionFromLockfile extracts Ruby version from Gemfile.lock
-func detectRubyVersionFromLockfile() string {
-	return ruby.DetectRubyVersionFromLockfile(defaultLockfilePath(), toMajorMinor)
-}
-
-// detectRubyVersionFromGemfile extracts Ruby version from Gemfile using tree-sitter
-func detectRubyVersionFromGemfile() string {
-	return ruby.DetectRubyVersionFromGemfile(defaultGemfilePath(), toMajorMinor)
-}
-
-// normalizeRubyVersion converts version constraints to usable version
-// "3.4.0" -> "3.4.0"
-// ">= 3.0.0" -> "3.0.0"
-// "~> 3.3" -> "3.3.0"
-func normalizeRubyVersion(constraint string) string {
-	return ruby.NormalizeRubyVersion(constraint, toMajorMinor)
-}
-
 // getSystemGemDir returns the system gem directory without requiring Ruby
 // Tries: 1) GEM_HOME env, 2) Standard OS paths, 3) User gem dir, 4) gem command
 func getSystemGemDir() string {
 	return ruby.GetSystemGemDir(detectRubyVersion)
-}
-
-// getStandardGemPaths returns OS-specific standard gem installation paths
-func getStandardGemPaths(rubyVersion string) []string {
-	return ruby.GetStandardGemPaths(rubyVersion)
 }
 
 func defaultGemfilePath() string {
@@ -699,7 +632,9 @@ func loadLockfile(lockfilePath string) (*lockfile.Lockfile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open lockfile: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	parsed, err := lockfile.Parse(file)
 	if err != nil {
@@ -782,13 +717,6 @@ func getGemSources() []SourceConfig {
 			Fallback: "",
 		},
 	}
-}
-
-func ensureBundlerAvailable() error {
-	if _, err := exec.LookPath("bundle"); err != nil {
-		return fmt.Errorf("bundler executable not found in PATH (install Ruby + Bundler to continue)")
-	}
-	return nil
 }
 
 func detectGemfileFromLock(lockfilePath string) string {

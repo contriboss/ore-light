@@ -163,7 +163,7 @@ func GetStandardGemPaths(rubyVersion string) []string {
 			programFiles = "C:\\Program Files"
 		}
 		paths = []string{
-			fmt.Sprintf("C:\\Ruby%s\\lib\\ruby\\gems\\%s", strings.Replace(rubyVersion, ".", "", -1), rubyVersion),
+			fmt.Sprintf("C:\\Ruby%s\\lib\\ruby\\gems\\%s", strings.ReplaceAll(rubyVersion, ".", ""), rubyVersion),
 			fmt.Sprintf("%s\\Ruby\\lib\\ruby\\gems\\%s", programFiles, rubyVersion),
 		}
 	}

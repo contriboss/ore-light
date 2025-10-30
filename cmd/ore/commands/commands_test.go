@@ -55,33 +55,33 @@ func TestOpenGetEditor(t *testing.T) {
 	origVisual := os.Getenv("VISUAL")
 	origEditor := os.Getenv("EDITOR")
 	t.Cleanup(func() {
-		os.Setenv("BUNDLER_EDITOR", origBundler)
-		os.Setenv("VISUAL", origVisual)
-		os.Setenv("EDITOR", origEditor)
+		_ = os.Setenv("BUNDLER_EDITOR", origBundler)
+		_ = os.Setenv("VISUAL", origVisual)
+		_ = os.Setenv("EDITOR", origEditor)
 	})
 
 	// Test BUNDLER_EDITOR takes precedence
-	os.Setenv("BUNDLER_EDITOR", "bundler_editor")
-	os.Setenv("VISUAL", "visual")
-	os.Setenv("EDITOR", "editor")
+	_ = os.Setenv("BUNDLER_EDITOR", "bundler_editor")
+	_ = os.Setenv("VISUAL", "visual")
+	_ = os.Setenv("EDITOR", "editor")
 	if got := getEditor(); got != "bundler_editor" {
 		t.Errorf("expected BUNDLER_EDITOR to take precedence, got %q", got)
 	}
 
 	// Test VISUAL is next
-	os.Unsetenv("BUNDLER_EDITOR")
+	_ = os.Unsetenv("BUNDLER_EDITOR")
 	if got := getEditor(); got != "visual" {
 		t.Errorf("expected VISUAL as second choice, got %q", got)
 	}
 
 	// Test EDITOR is last
-	os.Unsetenv("VISUAL")
+	_ = os.Unsetenv("VISUAL")
 	if got := getEditor(); got != "editor" {
 		t.Errorf("expected EDITOR as fallback, got %q", got)
 	}
 
 	// Test empty when none set
-	os.Unsetenv("EDITOR")
+	_ = os.Unsetenv("EDITOR")
 	if got := getEditor(); got != "" {
 		t.Errorf("expected empty string when no editor set, got %q", got)
 	}

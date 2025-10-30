@@ -42,7 +42,7 @@ func hasCompiledArtifacts(gemDir string) bool {
 // hasArtifactsIn recursively searches a directory for files with given extensions.
 func hasArtifactsIn(dir string, extensions []string) bool {
 	found := false
-	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}

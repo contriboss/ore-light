@@ -135,7 +135,7 @@ func (m *Manager) CheckHealth(ctx context.Context) {
 				m.setHealthStatus(url, false)
 				return
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Consider 200 or 404 as healthy (404 means source works, gem doesn't exist)
 			healthy := resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound
@@ -228,7 +228,9 @@ func (m *Manager) download(ctx context.Context, url string, auth *Authentication
 	if err != nil {
 		return fmt.Errorf("network error: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return &HTTPError{StatusCode: resp.StatusCode, URL: url}

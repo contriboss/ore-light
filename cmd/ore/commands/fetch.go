@@ -104,7 +104,9 @@ func fetchGem(ctx context.Context, client *rubygemsclient.Client, sourceManager 
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() {
+		_ = outFile.Close()
+	}()
 
 	// Download gem
 	if err := sourceManager.DownloadGem(ctx, gemFileName, outFile); err != nil {
@@ -123,12 +125,14 @@ func fetchGem(ctx context.Context, client *rubygemsclient.Client, sourceManager 
 			}
 
 			// Close previous file and open new one
-			outFile.Close()
+			_ = outFile.Close()
 			outFile, err = os.Create(cachedPath)
 			if err != nil {
 				return fmt.Errorf("failed to create output file: %w", err)
 			}
-			defer outFile.Close()
+			defer func() {
+				_ = outFile.Close()
+			}()
 
 			if err := sourceManager.DownloadGem(ctx, gemFileName, outFile); err != nil {
 				return fmt.Errorf("failed to download: %w", err)

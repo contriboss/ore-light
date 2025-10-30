@@ -162,7 +162,7 @@ func setConfig(scope, key, value string) error {
 	// Load existing config or create new
 	config := make(map[string]interface{})
 	if data, err := os.ReadFile(configPath); err == nil {
-		yaml.Unmarshal(data, &config)
+		_ = yaml.Unmarshal(data, &config)
 	}
 
 	// Convert key to Bundler format (e.g., "path" -> "BUNDLE_PATH")
