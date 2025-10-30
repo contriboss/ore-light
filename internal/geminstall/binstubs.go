@@ -9,13 +9,24 @@ import (
 
 // LinkGemBinaries creates binstub wrappers for gem executables
 func LinkGemBinaries(gemDir, binDir string) error {
-	exeDir := filepath.Join(gemDir, "bin")
+	// Modern gems use exe/ directory, older ones use bin/
+	// Try exe/ first, fall back to bin/
+	exeDir := filepath.Join(gemDir, "exe")
 	entries, err := os.ReadDir(exeDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			// Try bin/ directory as fallback
+			exeDir = filepath.Join(gemDir, "bin")
+			entries, err = os.ReadDir(exeDir)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return nil
+				}
+				return err
+			}
+		} else {
+			return err
 		}
-		return err
 	}
 
 	// Get gem name from directory (e.g., "vendor/gems/rake-13.3.0" -> "rake-13.3.0")

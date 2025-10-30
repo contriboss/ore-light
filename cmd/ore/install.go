@@ -12,10 +12,13 @@ import (
 	"strings"
 
 	"github.com/contriboss/gemfile-go/lockfile"
+	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/extensions"
 	"github.com/contriboss/ore-light/internal/geminstall"
 	"github.com/contriboss/ore-light/internal/resolver"
 	"github.com/contriboss/ore-light/internal/ruby"
+	"github.com/contriboss/ore-light/internal/sources"
+	rubygems "github.com/contriboss/rubygems-client-go"
 )
 
 // Ruby developers: This is like a result object from bundle install
@@ -33,6 +36,81 @@ type installReport struct {
 type extensionTarget struct {
 	gemName string
 	destDir string
+}
+
+// installBuildDependency fetches and installs a build-time dependency gem (like rake)
+// Returns error if fetch or install fails
+func installBuildDependency(ctx context.Context, gemName, cacheDir, vendorDir string, verbose bool) error {
+	// Create RubyGems client
+	client := rubygems.NewClient()
+
+	// Get latest version
+	versions, err := client.GetGemVersions(gemName)
+	if err != nil {
+		return fmt.Errorf("failed to get versions for %s: %w", gemName, err)
+	}
+	if len(versions) == 0 {
+		return fmt.Errorf("no versions found for %s", gemName)
+	}
+	targetVersion := versions[0]
+
+	// Construct gem filename (platform-independent for build tools)
+	gemFileName := fmt.Sprintf("%s-%s.gem", gemName, targetVersion)
+	cachedPath := filepath.Join(cacheDir, gemFileName)
+
+	// Check if already cached
+	if _, err := os.Stat(cachedPath); err != nil {
+		// Need to download
+		if verbose {
+			fmt.Printf("📦 Fetching build dependency %s-%s...\n", gemName, targetVersion)
+		}
+
+		// Create source manager for download
+		sourceManager := sources.NewManager([]sources.SourceConfig{
+			{URL: "https://rubygems.org", Fallback: ""},
+		}, nil)
+
+		outFile, err := os.Create(cachedPath)
+		if err != nil {
+			return fmt.Errorf("failed to create output file: %w", err)
+		}
+		defer outFile.Close()
+
+		if err := sourceManager.DownloadGem(ctx, gemFileName, outFile); err != nil {
+			return fmt.Errorf("failed to download %s: %w", gemName, err)
+		}
+	}
+
+	// Extract to vendor/gems
+	gemSpec := lockfile.GemSpec{
+		Name:    gemName,
+		Version: targetVersion,
+	}
+	destDir := filepath.Join(vendorDir, "gems", gemSpec.FullName())
+
+	// Extract gem contents AND metadata
+	metadata, err := geminstall.ExtractGemContents(cachedPath, destDir)
+	if err != nil {
+		return fmt.Errorf("failed to extract %s: %w", gemName, err)
+	}
+
+	// Write gemspec so Ruby can find the gem
+	if len(metadata) > 0 {
+		if err := geminstall.WriteGemSpecification(vendorDir, gemSpec, metadata); err != nil {
+			return fmt.Errorf("failed to write gemspec for %s: %w", gemName, err)
+		}
+	}
+
+	// Link binaries
+	if err := geminstall.LinkGemBinaries(destDir, filepath.Join(vendorDir, "bin")); err != nil {
+		return fmt.Errorf("failed to link binaries for %s: %w", gemName, err)
+	}
+
+	if verbose {
+		fmt.Printf("✓ Installed build dependency %s-%s\n", gemName, targetVersion)
+	}
+
+	return nil
 }
 
 func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (installReport, error) {
@@ -163,7 +241,7 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 	if extConfig != nil && extConfig.Verbose {
 		fmt.Printf("Building extensions for %d gems after all installations complete...\n", len(extensionTargets))
 	}
-	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig)
+	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig, cacheDir, vendorDir)
 
 	return report, nil
 }
@@ -171,7 +249,7 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 // buildPendingExtensions builds extensions for all collected targets after installation
 // This ensures all gem specifications are written before any extensions build,
 // allowing gems like nokogiri to find build dependencies like mini_portile2
-func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder, engine ruby.Engine, targets []extensionTarget, report *installReport, extConfig *extensions.BuildConfig) {
+func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder, engine ruby.Engine, targets []extensionTarget, report *installReport, extConfig *extensions.BuildConfig, cacheDir, vendorDir string) {
 	// Skip if no extension config or extensions disabled
 	if extConfig == nil || extConfig.SkipExtensions {
 		return
@@ -179,7 +257,63 @@ func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder,
 
 	for _, target := range targets {
 		extResult, err := extBuilder.BuildExtensions(ctx, target.destDir, target.gemName, engine)
-		if err != nil {
+
+		// Check if build failed due to missing dependencies
+		if (err != nil || !extResult.Success) && extResult != nil && len(extResult.MissingDependencies) > 0 {
+			// Try to install missing build dependencies
+			if extConfig.Verbose {
+				fmt.Printf("Extension build for %s requires: %v\n", target.gemName, extResult.MissingDependencies)
+			}
+
+			// Determine cacheDir if not provided
+			actualCacheDir := cacheDir
+			if actualCacheDir == "" {
+				// Import config package to get default cache dir
+				var configErr error
+				actualCacheDir, configErr = config.DefaultCacheDir(nil)
+				if configErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: Failed to determine cache directory: %v\n", configErr)
+					report.ExtensionsFailed++
+					continue
+				}
+			}
+
+			// Install each missing dependency
+			allInstalled := true
+			for _, dep := range extResult.MissingDependencies {
+				if extConfig.Verbose {
+					fmt.Printf("Installing build dependency: %s\n", dep)
+				}
+				if err := installBuildDependency(ctx, dep, actualCacheDir, vendorDir, extConfig.Verbose); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: Failed to install build dependency %s: %v\n", dep, err)
+					allInstalled = false
+					break
+				}
+			}
+
+			if !allInstalled {
+				report.ExtensionsFailed++
+				continue
+			}
+
+			// Add vendorDir/bin to PATH so installed binstubs (like rake) can be found by exec.LookPath
+			binDir := filepath.Join(vendorDir, "bin")
+			currentPath := os.Getenv("PATH")
+			if currentPath != "" {
+				os.Setenv("PATH", binDir+":"+currentPath)
+			} else {
+				os.Setenv("PATH", binDir)
+			}
+
+			// Retry building extensions after installing dependencies
+			if extConfig.Verbose {
+				fmt.Printf("Retrying extension build for %s...\n", target.gemName)
+			}
+			extResult, err = extBuilder.BuildExtensions(ctx, target.destDir, target.gemName, engine)
+		}
+
+		// Check final result
+		if err != nil || (extResult != nil && !extResult.Success) {
 			// Extension build failure - warn but continue
 			fmt.Fprintf(os.Stderr, "Warning: Failed to build extensions for %s: %v\n", target.gemName, err)
 			report.ExtensionsFailed++
@@ -425,7 +559,7 @@ func installGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 	}
 
 	// Build extensions for all installed gems (two-phase: install all, then build all)
-	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig)
+	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig, "", vendorDir)
 
 	return report, nil
 }
@@ -510,7 +644,7 @@ func installPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile
 	}
 
 	// Build extensions for all installed gems (two-phase: install all, then build all)
-	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig)
+	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig, "", vendorDir)
 
 	return report, nil
 }

@@ -46,11 +46,12 @@ func NewBuilder(config *BuildConfig) *Builder {
 
 // BuildResult represents the result of building extensions for a gem
 type BuildResult struct {
-	GemName    string
-	Extensions []string
-	Success    bool
-	Skipped    bool
-	Error      error
+	GemName             string
+	Extensions          []string
+	Success             bool
+	Skipped             bool
+	Error               error
+	MissingDependencies []string // Build-time dependencies that were missing (e.g., rake)
 }
 
 // HasExtensions checks if a gem directory contains extensions compatible with the given Ruby engine
@@ -182,13 +183,11 @@ func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string, e
 
 	// Build all extensions
 	results, err := b.factory.BuildAllExtensions(ctx, buildConfig, extensions)
-	if err != nil {
-		result.Error = fmt.Errorf("extension build failed for %s: %w", gemName, err)
-		return result, result.Error
-	}
 
+	// Process results even if there's an error, to collect MissingDependencies
 	var builtExtensions []string
 	var buildFailed bool
+	var missingDeps []string
 	for _, extResult := range results {
 		if extResult == nil {
 			continue
@@ -199,14 +198,23 @@ func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string, e
 			if b.config.Verbose {
 				fmt.Fprintf(os.Stderr, "Extension build failed:\n%s\n", strings.Join(extResult.Output, "\n"))
 			}
+			// Collect missing dependencies from failed builds
+			if len(extResult.MissingDependencies) > 0 {
+				missingDeps = append(missingDeps, extResult.MissingDependencies...)
+			}
 			continue
 		}
 
 		builtExtensions = append(builtExtensions, extResult.Extensions...)
 	}
 
-	if buildFailed {
-		result.Error = fmt.Errorf("one or more extensions failed to build for %s", gemName)
+	if buildFailed || err != nil {
+		result.MissingDependencies = missingDeps
+		if err != nil {
+			result.Error = fmt.Errorf("extension build failed for %s: %w", gemName, err)
+		} else {
+			result.Error = fmt.Errorf("one or more extensions failed to build for %s", gemName)
+		}
 		return result, result.Error
 	}
 
@@ -265,9 +273,13 @@ func (b *Builder) buildGemEnvironment() map[string]string {
 	env["BUNDLE_GEMFILE"] = ""
 	env["BUNDLE_PATH"] = ""
 
-	// Also preserve existing PATH
-	if path := os.Getenv("PATH"); path != "" {
-		env["PATH"] = path
+	// Add vendor bin directory to PATH so installed binstubs (like rake) can be found
+	binDir := filepath.Join(b.config.VendorDir, "bin")
+	currentPath := os.Getenv("PATH")
+	if currentPath != "" {
+		env["PATH"] = binDir + ":" + currentPath
+	} else {
+		env["PATH"] = binDir
 	}
 
 	return env
