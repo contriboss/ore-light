@@ -144,8 +144,8 @@ func TestRunLockCommandMissingGemfile(t *testing.T) {
 	missing := filepath.Join(tmp, "Gemfile")
 
 	err := runLockCommand([]string{"--gemfile", missing})
-	if err == nil || !strings.Contains(err.Error(), "Gemfile not found") {
-		t.Fatalf("expected missing Gemfile error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "gemfile not found") {
+		t.Fatalf("expected missing gemfile error, got %v", err)
 	}
 }
 
