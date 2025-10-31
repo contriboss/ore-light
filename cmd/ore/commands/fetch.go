@@ -9,8 +9,8 @@ import (
 	"runtime"
 
 	"github.com/contriboss/ore-light/internal/config"
+	"github.com/contriboss/ore-light/internal/registry"
 	"github.com/contriboss/ore-light/internal/sources"
-	rubygemsclient "github.com/contriboss/rubygems-client-go"
 )
 
 // RunFetch implements the ore fetch command
@@ -42,8 +42,11 @@ func RunFetch(args []string) error {
 		return fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	// Create RubyGems client
-	client := rubygemsclient.NewClient()
+	// Create registry client
+	client, err := registry.NewClient("https://rubygems.org", registry.ProtocolRubygems)
+	if err != nil {
+		return fmt.Errorf("failed to create registry client: %w", err)
+	}
 
 	// Create source manager
 	sourceManager := sources.NewManager([]sources.SourceConfig{
@@ -62,14 +65,14 @@ func RunFetch(args []string) error {
 	return nil
 }
 
-func fetchGem(ctx context.Context, client *rubygemsclient.Client, sourceManager *sources.Manager, gemName, version, platform, cacheDir string, verbose bool) error {
+func fetchGem(ctx context.Context, client *registry.Client, sourceManager *sources.Manager, gemName, version, platform, cacheDir string, verbose bool) error {
 	// Determine version to fetch
 	targetVersion := version
 	if targetVersion == "" {
 		if verbose {
 			fmt.Printf("🔍 Finding latest version of %s...\n", gemName)
 		}
-		versions, err := client.GetGemVersions(gemName)
+		versions, err := client.GetGemVersions(ctx, gemName)
 		if err != nil {
 			return fmt.Errorf("failed to get versions: %w", err)
 		}

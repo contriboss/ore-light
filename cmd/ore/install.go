@@ -15,10 +15,10 @@ import (
 	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/extensions"
 	"github.com/contriboss/ore-light/internal/geminstall"
+	"github.com/contriboss/ore-light/internal/registry"
 	"github.com/contriboss/ore-light/internal/resolver"
 	"github.com/contriboss/ore-light/internal/ruby"
 	"github.com/contriboss/ore-light/internal/sources"
-	rubygems "github.com/contriboss/rubygems-client-go"
 )
 
 // Ruby developers: This is like a result object from bundle install
@@ -41,11 +41,14 @@ type extensionTarget struct {
 // installBuildDependency fetches and installs a build-time dependency gem (like rake)
 // Returns error if fetch or install fails
 func installBuildDependency(ctx context.Context, gemName, cacheDir, vendorDir string, verbose bool) error {
-	// Create RubyGems client
-	client := rubygems.NewClient()
+	// Create registry client
+	client, err := registry.NewClient("https://rubygems.org", registry.ProtocolRubygems)
+	if err != nil {
+		return fmt.Errorf("failed to create registry client: %w", err)
+	}
 
 	// Get latest version
-	versions, err := client.GetGemVersions(gemName)
+	versions, err := client.GetGemVersions(ctx, gemName)
 	if err != nil {
 		return fmt.Errorf("failed to get versions for %s: %w", gemName, err)
 	}

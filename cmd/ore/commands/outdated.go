@@ -1,13 +1,14 @@
 package commands
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
-	rubygemsclient "github.com/contriboss/rubygems-client-go"
+	"github.com/contriboss/ore-light/internal/registry"
 )
 
 // RunOutdated implements the ore outdated command
@@ -52,8 +53,13 @@ func RunOutdated(args []string) error {
 		}
 	}
 
-	// Create RubyGems client
-	client := rubygemsclient.NewClient()
+	// Create registry client
+	client, err := registry.NewClient("https://rubygems.org", registry.ProtocolRubygems)
+	if err != nil {
+		return fmt.Errorf("failed to create registry client: %w", err)
+	}
+
+	ctx := context.Background()
 
 	if *verbose {
 		fmt.Println("🔍 Checking for outdated gems...")
@@ -69,7 +75,7 @@ func RunOutdated(args []string) error {
 			fmt.Printf("   Checked %d/%d gems...\n", checkedCount, len(lock.GemSpecs))
 		}
 
-		versions, err := client.GetGemVersions(spec.Name)
+		versions, err := client.GetGemVersions(ctx, spec.Name)
 		if err != nil {
 			if *verbose {
 				fmt.Fprintf(os.Stderr, "Warning: Could not fetch versions for %s: %v\n", spec.Name, err)

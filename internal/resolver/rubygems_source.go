@@ -1,11 +1,12 @@
 package resolver
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
+	"github.com/contriboss/ore-light/internal/registry"
 	"github.com/contriboss/pubgrub-go"
-	rubygemsclient "github.com/contriboss/rubygems-client-go"
 )
 
 // RubyGemsSource implements pubgrub.Source using the RubyGems.org API
@@ -15,7 +16,7 @@ import (
 // It's like ActiveSupport's Concurrent::Map but built into the language.
 // The struct is thread-safe by design - not by accident!
 type RubyGemsSource struct {
-	client    *rubygemsclient.Client
+	client    *registry.Client
 	cache     map[string]map[string][]pubgrub.Term // Nested map requires careful locking
 	mu        sync.RWMutex                         // RWMutex = Read-Write mutex for performance
 	sourceURL string                               // The source URL this client queries
@@ -28,8 +29,15 @@ func NewRubyGemsSource() *RubyGemsSource {
 
 // NewRubyGemsSourceWithURL creates a RubyGems source for a specific gem server
 func NewRubyGemsSourceWithURL(baseURL string) *RubyGemsSource {
+	// Create registry client with Rubygems protocol
+	client, err := registry.NewClient(baseURL, registry.ProtocolRubygems)
+	if err != nil {
+		// This shouldn't happen with ProtocolRubygems, but handle it gracefully
+		panic(fmt.Sprintf("failed to create registry client: %v", err))
+	}
+
 	return &RubyGemsSource{
-		client:    rubygemsclient.NewClientWithBaseURL(baseURL),
+		client:    client,
 		cache:     make(map[string]map[string][]pubgrub.Term),
 		sourceURL: baseURL,
 	}
@@ -56,7 +64,8 @@ func (s *RubyGemsSource) GetDependencies(name pubgrub.Name, version pubgrub.Vers
 	s.mu.RUnlock()
 
 	// Fetch from RubyGems API
-	info, err := s.client.GetGemInfo(gemName, versionStr)
+	ctx := context.Background()
+	info, err := s.client.GetGemInfo(ctx, gemName, versionStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gem info for %s@%s: %w", gemName, versionStr, err)
 	}
@@ -97,7 +106,8 @@ func (s *RubyGemsSource) GetDependencies(name pubgrub.Name, version pubgrub.Vers
 func (s *RubyGemsSource) GetVersions(name pubgrub.Name) ([]pubgrub.Version, error) {
 	gemName := name.Value()
 
-	versions, err := s.client.GetGemVersions(gemName)
+	ctx := context.Background()
+	versions, err := s.client.GetGemVersions(ctx, gemName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get versions for %s: %w", gemName, err)
 	}

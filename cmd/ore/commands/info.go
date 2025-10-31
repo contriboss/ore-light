@@ -1,11 +1,12 @@
 package commands
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 
-	rubygemsclient "github.com/contriboss/rubygems-client-go"
+	"github.com/contriboss/ore-light/internal/registry"
 )
 
 // RunInfo implements the ore info command
@@ -21,7 +22,12 @@ func RunInfo(args []string) error {
 		return fmt.Errorf("at least one gem name is required")
 	}
 
-	client := rubygemsclient.NewClient()
+	client, err := registry.NewClient("https://rubygems.org", registry.ProtocolRubygems)
+	if err != nil {
+		return fmt.Errorf("failed to create registry client: %w", err)
+	}
+
+	ctx := context.Background()
 
 	for _, gemName := range gems {
 		if *verbose {
@@ -29,7 +35,7 @@ func RunInfo(args []string) error {
 		}
 
 		// Get versions first
-		versions, err := client.GetGemVersions(gemName)
+		versions, err := client.GetGemVersions(ctx, gemName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Could not fetch versions for %s: %v\n", gemName, err)
 			continue
@@ -42,7 +48,7 @@ func RunInfo(args []string) error {
 
 		// Get info for latest version
 		latestVersion := versions[0]
-		info, err := client.GetGemInfo(gemName, latestVersion)
+		info, err := client.GetGemInfo(ctx, gemName, latestVersion)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Could not fetch info for %s: %v\n", gemName, err)
 			continue
