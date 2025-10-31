@@ -5,11 +5,54 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/internal/registry"
 )
+
+// versionCheckResult holds the result of checking a gem's latest version
+type versionCheckResult struct {
+	gemName       string
+	latestVersion string
+	err           error
+}
+
+// checkVersionsParallel fetches latest versions for multiple gems in parallel
+// Uses 10 concurrent workers (similar to Bundler's approach but more conservative)
+func checkVersionsParallel(ctx context.Context, client *registry.Client, gemNames []string, verbose bool) map[string]versionCheckResult {
+	results := make(map[string]versionCheckResult)
+	resultsMu := sync.Mutex{}
+
+	// Limit concurrent requests to 10 (respectful to rubygems.org)
+	semaphore := make(chan struct{}, 10)
+	var wg sync.WaitGroup
+
+	for _, gemName := range gemNames {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			versions, err := client.GetGemVersions(ctx, name)
+
+			resultsMu.Lock()
+			if err != nil {
+				results[name] = versionCheckResult{gemName: name, err: err}
+			} else if len(versions) > 0 {
+				results[name] = versionCheckResult{gemName: name, latestVersion: versions[0]}
+			}
+			resultsMu.Unlock()
+		}(gemName)
+	}
+
+	wg.Wait()
+	return results
+}
 
 // RunOutdated implements the ore outdated command
 func RunOutdated(args []string) error {
@@ -65,33 +108,33 @@ func RunOutdated(args []string) error {
 		fmt.Println("🔍 Checking for outdated gems...")
 	}
 
+	// Collect gem names
+	gemNames := make([]string, len(lock.GemSpecs))
+	for i, spec := range lock.GemSpecs {
+		gemNames[i] = spec.Name
+	}
+
+	// Check all versions in parallel
+	results := checkVersionsParallel(ctx, client, gemNames, *verbose)
+
+	// Process results and display outdated gems
 	outdatedCount := 0
-	checkedCount := 0
-
-	// Check each gem in lockfile for updates
 	for _, spec := range lock.GemSpecs {
-		checkedCount++
-		if *verbose && checkedCount%10 == 0 {
-			fmt.Printf("   Checked %d/%d gems...\n", checkedCount, len(lock.GemSpecs))
-		}
+		result := results[spec.Name]
 
-		versions, err := client.GetGemVersions(ctx, spec.Name)
-		if err != nil {
+		if result.err != nil {
 			if *verbose {
-				fmt.Fprintf(os.Stderr, "Warning: Could not fetch versions for %s: %v\n", spec.Name, err)
+				fmt.Fprintf(os.Stderr, "Warning: Could not fetch versions for %s: %v\n", spec.Name, result.err)
 			}
 			continue
 		}
 
-		if len(versions) == 0 {
+		if result.latestVersion == "" {
 			continue
 		}
 
-		// Latest version is first in the list
-		latestVersion := versions[0]
-
 		// Compare versions
-		if latestVersion != spec.Version {
+		if result.latestVersion != spec.Version {
 			outdatedCount++
 			constraint := constraints[spec.Name]
 			if constraint == "" {
@@ -99,7 +142,7 @@ func RunOutdated(args []string) error {
 			}
 
 			fmt.Printf("  * %s (newest %s, installed %s, requested %s)\n",
-				spec.Name, latestVersion, spec.Version, constraint)
+				spec.Name, result.latestVersion, spec.Version, constraint)
 		}
 	}
 
