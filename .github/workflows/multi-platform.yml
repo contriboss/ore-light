@@ -91,7 +91,7 @@ jobs:
           key: gems-prepare-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
 
       - name: Upload Gemfile, lockfile, and config
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: gemfiles
           include-hidden-files: true
