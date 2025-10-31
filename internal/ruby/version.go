@@ -9,22 +9,56 @@ import (
 	"strings"
 
 	"github.com/contriboss/gemfile-go/gemfile"
+	"github.com/pelletier/go-toml/v2"
 )
 
 // DetectRubyVersion detects the Ruby version to use for gem installation
-// Priority: 1) Gemfile.lock, 2) Gemfile, 3) defaultVersion
+// Priority:
+//  1. Environment variables (RBENV_VERSION, ASDF_RUBY_VERSION)
+//  2. Gemfile.lock RUBY VERSION
+//  3. mise.toml / .mise.toml
+//  4. .tool-versions (ASDF/Mise)
+//  5. .ruby-version (Rbenv/Mise)
+//  6. Gemfile ruby directive
+//  7. defaultVersion
 func DetectRubyVersion(lockfilePath, gemfilePath string, toMajorMinor func(string) string, defaultVersion string) string {
-	// 1. Try Gemfile.lock RUBY VERSION
+	// Get directory for version manager file search
+	projectDir := filepath.Dir(gemfilePath)
+	if projectDir == "" {
+		projectDir = "."
+	}
+
+	// 1. Check environment variables (explicit override)
+	if ver := DetectRubyVersionFromEnv(); ver != "" {
+		return toMajorMinor(ver)
+	}
+
+	// 2. Try Gemfile.lock RUBY VERSION (project-authoritative)
 	if ver := DetectRubyVersionFromLockfile(lockfilePath, toMajorMinor); ver != "" {
 		return ver
 	}
 
-	// 2. Try Gemfile ruby directive (tree-sitter)
+	// 3. Try mise.toml / .mise.toml (Mise-specific config)
+	if ver := DetectRubyVersionFromMiseToml(projectDir, toMajorMinor); ver != "" {
+		return ver
+	}
+
+	// 4. Try .tool-versions (ASDF/Mise shared format)
+	if ver := DetectRubyVersionFromToolVersions(projectDir, toMajorMinor); ver != "" {
+		return ver
+	}
+
+	// 5. Try .ruby-version (Rbenv/Mise shared format)
+	if ver := DetectRubyVersionFromRubyVersion(projectDir, toMajorMinor); ver != "" {
+		return ver
+	}
+
+	// 6. Try Gemfile ruby directive (may have constraints)
 	if ver := DetectRubyVersionFromGemfile(gemfilePath, toMajorMinor); ver != "" {
 		return ver
 	}
 
-	// 3. Fallback to default
+	// 7. Fallback to default
 	return defaultVersion
 }
 
@@ -86,6 +120,8 @@ func DetectRubyVersionFromGemfile(gemfilePath string, toMajorMinor func(string) 
 // "3.4.0" -> "3.4.0"
 // ">= 3.0.0" -> "3.0.0"
 // "~> 3.3" -> "3.3.0"
+// "3.2.2p53" -> "3.2.2" (strips patchlevel)
+// "ruby-3.2.0" -> "3.2.0" (strips prefix)
 func NormalizeRubyVersion(constraint string, toMajorMinor func(string) string) string {
 	// Remove constraint operators
 	constraint = strings.TrimSpace(constraint)
@@ -94,7 +130,156 @@ func NormalizeRubyVersion(constraint string, toMajorMinor func(string) string) s
 	constraint = strings.TrimPrefix(constraint, ">")
 	constraint = strings.TrimSpace(constraint)
 
+	// Remove ruby- prefix (e.g., "ruby-3.2.0" -> "3.2.0")
+	constraint = strings.TrimPrefix(constraint, "ruby-")
+
+	// Remove patchlevel suffix (e.g., "3.2.2p53" -> "3.2.2")
+	if idx := strings.Index(constraint, "p"); idx > 0 {
+		constraint = constraint[:idx]
+	}
+
 	return toMajorMinor(constraint)
+}
+
+// DetectRubyVersionFromEnv checks environment variables for Ruby version
+// Priority: RBENV_VERSION > ASDF_RUBY_VERSION
+func DetectRubyVersionFromEnv() string {
+	// Rbenv has highest priority
+	if ver := os.Getenv("RBENV_VERSION"); ver != "" {
+		return strings.TrimSpace(ver)
+	}
+
+	// ASDF
+	if ver := os.Getenv("ASDF_RUBY_VERSION"); ver != "" {
+		return strings.TrimSpace(ver)
+	}
+
+	return ""
+}
+
+// walkUpForFile walks up from startDir to filesystem root looking for filename
+// Returns the full path to the file if found, or empty string
+func walkUpForFile(startDir, filename string) string {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return ""
+	}
+
+	homeDir, _ := os.UserHomeDir()
+
+	for {
+		candidate := filepath.Join(dir, filename)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+
+		// Stop at filesystem root
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+
+		// Also stop at home directory to avoid scanning entire filesystem
+		if dir == homeDir {
+			break
+		}
+
+		dir = parent
+	}
+
+	return ""
+}
+
+// DetectRubyVersionFromMiseToml detects Ruby version from mise.toml or .mise.toml
+// Searches from dir upwards to filesystem root
+func DetectRubyVersionFromMiseToml(dir string, toMajorMinor func(string) string) string {
+	// Try mise.toml first, then .mise.toml
+	for _, filename := range []string{"mise.toml", ".mise.toml"} {
+		if path := walkUpForFile(dir, filename); path != "" {
+			if ver := parseMiseToml(path); ver != "" {
+				return toMajorMinor(ver)
+			}
+		}
+	}
+	return ""
+}
+
+// parseMiseToml parses mise.toml/.mise.toml and extracts ruby version
+func parseMiseToml(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	var config struct {
+		Tools map[string]interface{} `toml:"tools"`
+	}
+
+	if err := toml.Unmarshal(data, &config); err != nil {
+		return ""
+	}
+
+	if config.Tools == nil {
+		return ""
+	}
+
+	// Handle both string and other types
+	if rubyVersion, ok := config.Tools["ruby"]; ok {
+		if ver, ok := rubyVersion.(string); ok {
+			return ver
+		}
+	}
+
+	return ""
+}
+
+// DetectRubyVersionFromToolVersions detects Ruby version from .tool-versions (ASDF/Mise format)
+// Searches from dir upwards to filesystem root
+func DetectRubyVersionFromToolVersions(dir string, toMajorMinor func(string) string) string {
+	if path := walkUpForFile(dir, ".tool-versions"); path != "" {
+		if ver := parseToolVersions(path); ver != "" {
+			return toMajorMinor(ver)
+		}
+	}
+	return ""
+}
+
+// parseToolVersions parses .tool-versions file (space-separated format)
+func parseToolVersions(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "ruby" {
+			return fields[1]
+		}
+	}
+
+	return ""
+}
+
+// DetectRubyVersionFromRubyVersion detects Ruby version from .ruby-version (Rbenv/Mise format)
+// Searches from dir upwards to filesystem root
+func DetectRubyVersionFromRubyVersion(dir string, toMajorMinor func(string) string) string {
+	if path := walkUpForFile(dir, ".ruby-version"); path != "" {
+		if ver := parseRubyVersion(path); ver != "" {
+			return toMajorMinor(ver)
+		}
+	}
+	return ""
+}
+
+// parseRubyVersion parses .ruby-version file (single-line format)
+func parseRubyVersion(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(data))
 }
 
 // GetSystemGemDir returns the system gem directory without requiring Ruby
