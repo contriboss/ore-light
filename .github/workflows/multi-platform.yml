@@ -134,7 +134,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download Gemfile and lockfile
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: gemfiles
           path: test-multiplatform

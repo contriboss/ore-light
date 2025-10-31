@@ -93,25 +93,25 @@ jobs:
 
     steps:
     - name: Download Linux AMD64
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
       with:
         name: ore-linux-amd64
         path: dist
 
     - name: Download Linux ARM64
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
       with:
         name: ore-linux-arm64
         path: dist
 
     - name: Download macOS AMD64
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
       with:
         name: ore-darwin-amd64
         path: dist
 
     - name: Download macOS ARM64
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
       with:
         name: ore-darwin-arm64
         path: dist
