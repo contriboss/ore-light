@@ -85,6 +85,7 @@ Ore Light provides complete Bundler command parity with 21 commands:
 - `ore config` - Get and set Bundler configuration options (works without Ruby/Bundler installed)
 
 **Utilities:**
+- `ore self-update` - Update ore to the latest version from GitHub releases
 - `ore cache` - Inspect or prune the gem cache
 - `ore stats` - Show Ruby environment statistics
 - `ore why` - Show dependency chains for a gem
@@ -153,6 +154,48 @@ Features:
 - Platform indicators (e.g., `[arm64-darwin]`)
 - Circular dependency detection
 - Works with any TTY, falls back to plain text in pipes
+
+### Self-Update
+
+Keep ore up-to-date with built-in self-update functionality:
+
+```bash
+# Check for new versions
+ore self-update --check
+
+# Update to latest version (interactive)
+ore self-update
+
+# Update without confirmation
+ore self-update --yes
+```
+
+Features:
+- Automatic platform detection (macOS/Linux, amd64/arm64)
+- SHA256 verification of downloads
+- Atomic binary replacement with rollback support
+- Interactive confirmation prompt
+- Shows current → new version comparison
+- Works without Ruby or any external tools
+
+**Example:**
+```
+$ ore self-update
+Checking target-arch... ore-v0.6.0-darwin-arm64.tar.gz
+Checking current version... v0.5.1
+Checking latest released version... v0.6.0
+New release found! v0.5.1 --> v0.6.0
+
+ore release status:
+  * Current exe: "/usr/local/bin/ore"
+  * New exe release: "ore-v0.6.0-darwin-arm64.tar.gz"
+  * New exe download url: "https://github.com/contriboss/ore-light/releases/download/v0.6.0/ore_darwin_arm64.tar.gz"
+
+The new release will be downloaded/extracted and the existing binary will be replaced.
+Do you want to continue? [Y/n]
+```
+
+**Note:** Self-update requires ore to be installed from GitHub releases. Dev builds will show an error message.
 
 ### Security Auditing
 
