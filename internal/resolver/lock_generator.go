@@ -52,12 +52,22 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 		}
 	}
 
+	// Determine default source URL from Gemfile sources
+	// Respects configured sources, fallback to rubygems.org
+	defaultSourceURL := "https://rubygems.org"
+	for _, src := range parsed.Sources {
+		if src.Type == "rubygems" && src.URL != "" {
+			defaultSourceURL = src.URL
+			break // Use first rubygems source as default
+		}
+	}
+
 	// Create RubyGems sources for different gem servers
 	// This is like Bundler's source management (rubygems.org, custom mirrors, etc.)
 	sources := make(map[string]*RubyGemsSource)
 	getSource := func(url string) *RubyGemsSource {
 		if url == "" {
-			url = "https://rubygems.org"
+			url = defaultSourceURL
 		}
 		if src, ok := sources[url]; ok {
 			return src
@@ -68,7 +78,7 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 	}
 
 	// Default source for gems without explicit source
-	defaultSource := getSource("https://rubygems.org")
+	defaultSource := getSource(defaultSourceURL)
 
 	// Apply version pins to all sources for selective updates
 	if versionPins != nil {
@@ -191,7 +201,8 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 		}
 
 		// Determine which source URL to record for this gem
-		gemSourceURL := "https://rubygems.org/"
+		// Respect configured source, fallback to default
+		gemSourceURL := defaultSourceURL + "/"
 		if dep.Source != nil && dep.Source.Type == "rubygems" {
 			gemSourceURL = dep.Source.URL
 			if gemSourceURL != "" {
@@ -269,9 +280,9 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 		seenPackages[pkgName] = pkg.Version
 		allSolutions = append(allSolutions, pkg)
 
-		// Inherit source from dependencies
+		// Inherit source from dependencies (use default if not set)
 		if gemSources[pkgName] == "" {
-			gemSources[pkgName] = "https://rubygems.org/"
+			gemSources[pkgName] = defaultSourceURL + "/"
 		}
 	}
 
