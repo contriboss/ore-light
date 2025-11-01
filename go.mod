@@ -3,15 +3,17 @@ module github.com/contriboss/ore-light
 go 1.25.1
 
 require (
+	github.com/blang/semver v3.5.1+incompatible
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/contriboss/gemfile-go v0.5.0
+	github.com/contriboss/gemfile-go v0.5.1
 	github.com/contriboss/pubgrub-go v0.3.3
 	github.com/contriboss/ruby-extension-go v0.2.3
 	github.com/contriboss/rubygems-client-go v0.1.0
 	github.com/magefile/mage v1.15.0
 	github.com/pelletier/go-toml/v2 v2.2.4
+	github.com/rhysd/go-github-selfupdate v1.2.3
 	golang.org/x/sync v0.17.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -20,7 +22,6 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/charmbracelet/colorprofile v0.3.2 // indirect
 	github.com/charmbracelet/x/ansi v0.10.2 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
@@ -40,7 +41,6 @@ require (
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
-	github.com/rhysd/go-github-selfupdate v1.2.3 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/tcnksm/go-gitconfig v0.1.2 // indirect
