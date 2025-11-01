@@ -121,10 +121,34 @@ jobs:
         ls -la dist/
         file dist/ore-*
 
-    - name: Create checksums
+    - name: Create tar.gz archives and checksums
       run: |
         cd dist
-        sha256sum ore-* > checksums.txt
+
+        # Create tar.gz archives with go-github-selfupdate compatible naming
+        for binary in ore-*; do
+          # Extract OS and arch from filename (ore-{os}-{arch})
+          os_arch=$(echo $binary | sed 's/ore-//')
+          os=$(echo $os_arch | cut -d'-' -f1)
+          arch=$(echo $os_arch | cut -d'-' -f2)
+
+          # Create archive with naming: ore_{os}_{arch}.tar.gz
+          archive_name="ore_${os}_${arch}.tar.gz"
+          tar -czf "$archive_name" "$binary"
+
+          # Generate individual SHA256 checksum for the archive
+          sha256sum "$archive_name" | cut -d' ' -f1 > "${archive_name}.sha256"
+
+          echo "Created $archive_name and ${archive_name}.sha256"
+        done
+
+        # Create checksums.txt for all archives (backward compatibility)
+        sha256sum ore_*.tar.gz > checksums.txt
+
+        echo "=== Contents of dist/ ==="
+        ls -lh
+        echo ""
+        echo "=== checksums.txt ==="
         cat checksums.txt
 
     - name: Create Release

@@ -123,6 +123,10 @@ func main() {
 		if err := runLockCommand(args); err != nil {
 			exitWithError(err)
 		}
+	case "self-update", "selfupdate":
+		if err := commands.RunSelfUpdate(args, version, buildCommit); err != nil {
+			exitWithError(err)
+		}
 	case "fetch":
 		if err := commands.RunFetch(args); err != nil {
 			exitWithError(err)
@@ -257,6 +261,7 @@ Commands:
     update        Update gems to their latest versions within constraints
     outdated      List gems with newer versions available
     lock          Regenerate Gemfile.lock from Gemfile
+    self-update   Update ore to the latest version
     fetch         Download gems into cache (no Ruby required)
     install       Install gems from Gemfile.lock
     check         Verify all gems are installed
