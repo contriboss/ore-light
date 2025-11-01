@@ -248,6 +248,7 @@ Commands:
     platform      Display platform compatibility information
     stats         Show Ruby environment statistics
     completion    Generate shell completion scripts
+    audit         Audit dependencies for known vulnerabilities
 
 See 'ore <command> --help' for more information on a specific command.
 `)
