@@ -36,3 +36,15 @@ jobs:
       - name: Run full CI validation
         if: ${{ steps.release.outputs.release_created }}
         run: mage ci
+
+      - name: Trigger Release workflow
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Re-push the tag to trigger the Release workflow
+          # (release-please creates tags via API which doesn't fire push:tags)
+          TAG="${{ steps.release.outputs.tag_name }}"
+          git push origin ":refs/tags/$TAG" || true
+          git tag -f "$TAG"
+          git push origin "$TAG"
