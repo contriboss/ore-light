@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -181,6 +182,7 @@ func runLockCommand(args []string) error {
 	fs := flag.NewFlagSet("lock", flag.ContinueOnError)
 	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
 	verbose := fs.Bool("v", false, "Enable verbose output")
+	cpuProfile := fs.String("cpuprofile", "", "Write CPU profile to file")
 
 	// Multi-value flag for platforms (like bundle lock --add-platform)
 	var platforms []string
@@ -193,6 +195,23 @@ func runLockCommand(args []string) error {
 		return err
 	}
 
+	// Enable CPU profiling if requested
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			return fmt.Errorf("failed to create CPU profile: %w", err)
+		}
+		defer func() {
+			if cerr := f.Close(); cerr != nil && err == nil {
+				err = fmt.Errorf("failed to close CPU profile: %w", cerr)
+			}
+		}()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return fmt.Errorf("failed to start CPU profile: %w", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
 	if _, err := os.Stat(*gemfilePath); err != nil {
 		return fmt.Errorf("gemfile not found at %s", *gemfilePath)
 	}
@@ -201,8 +220,14 @@ func runLockCommand(args []string) error {
 		fmt.Printf("🔒 Resolving dependencies from %s…\n", *gemfilePath)
 	}
 
+	startTime := time.Now()
 	if err := resolver.GenerateLockfileWithPlatforms(*gemfilePath, nil, platforms); err != nil {
 		return fmt.Errorf("failed to generate lockfile: %w", err)
+	}
+	elapsed := time.Since(startTime)
+
+	if *cpuProfile != "" {
+		fmt.Printf("⏱️  Resolution took: %v\n", elapsed)
 	}
 
 	lockfilePath := *gemfilePath + ".lock"

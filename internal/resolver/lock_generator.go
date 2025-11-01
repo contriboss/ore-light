@@ -70,6 +70,13 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 	// Default source for gems without explicit source
 	defaultSource := getSource("https://rubygems.org")
 
+	// Apply version pins to all sources for selective updates
+	if versionPins != nil {
+		for _, src := range sources {
+			src.SetVersionPins(versionPins)
+		}
+	}
+
 	// Convert Gemfile dependencies to PubGrub terms
 	var allSolutions []pubgrub.NameVersion
 	seenPackages := make(map[string]pubgrub.Version)
@@ -203,17 +210,9 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 		// Convert constraints
 		var condition pubgrub.Condition
 
-		// Check if this gem has a pinned version (for selective updates)
-		if pinnedVersion, pinned := versionPins[dep.Name]; pinned {
-			// Pin to exact version
-			semverCondition, err := NewSemverCondition("= " + pinnedVersion)
-			if err != nil {
-				// If we can't parse, use any version
-				condition = NewAnyVersionCondition()
-			} else {
-				condition = semverCondition
-			}
-		} else if len(dep.Constraints) > 0 {
+		// Note: version pins are handled by RubyGemsSource.GetVersions()
+		// We don't apply them as constraints here to avoid conflicts
+		if len(dep.Constraints) > 0 {
 			// Combine multiple constraints with ", " (semver library supports compound constraints)
 			// Example: [">= 1.0", "< 2.0"] becomes ">= 1.0, < 2.0"
 			constraintStr := strings.Join(dep.Constraints, ", ")
@@ -240,7 +239,11 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 
 	// Create unified solver with root source and gem source
 	// This resolves all dependencies together with proper conflict resolution
-	unifiedSolver := pubgrub.NewSolver(rootSource, defaultSource)
+	// Enable incompatibility tracking for detailed error messages
+	unifiedSolver := pubgrub.NewSolverWithOptions(
+		[]pubgrub.Source{rootSource, defaultSource},
+		pubgrub.WithIncompatibilityTracking(true),
+	)
 
 	// Solve all dependencies at once
 	solution, err := unifiedSolver.Solve(rootSource.Term())

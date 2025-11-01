@@ -1,25 +1,20 @@
 package resolver
 
 import (
-	"context"
 	"fmt"
-	"sync"
 
-	"github.com/contriboss/ore-light/internal/registry"
 	"github.com/contriboss/pubgrub-go"
 )
 
-// RubyGemsSource implements pubgrub.Source using the RubyGems.org API
+// RubyGemsSource implements pubgrub.Source using Bundler's compact index.
 //
-// Ruby developers: This is a concurrent-safe cache using Go's sync.RWMutex.
-// Unlike Ruby's Thread::Mutex, RWMutex allows multiple readers OR one writer.
-// It's like ActiveSupport's Concurrent::Map but built into the language.
-// The struct is thread-safe by design - not by accident!
+// This now delegates to CompactIndexSource which uses Bundler's cache.
+// Kept for backward compatibility with existing code.
 type RubyGemsSource struct {
-	client    *registry.Client
-	cache     map[string]map[string][]pubgrub.Term // Nested map requires careful locking
-	mu        sync.RWMutex                         // RWMutex = Read-Write mutex for performance
-	sourceURL string                               // The source URL this client queries
+	compactSource *CompactIndexSource                  // Compact index client (Bundler-compatible)
+	cache         map[string]map[string][]pubgrub.Term // Legacy cache (unused now)
+	sourceURL     string                               // The source URL
+	versionPins   map[string]string                    // Optional version pins
 }
 
 // NewRubyGemsSource creates a new RubyGems source for dependency resolution
@@ -27,20 +22,29 @@ func NewRubyGemsSource() *RubyGemsSource {
 	return NewRubyGemsSourceWithURL("https://rubygems.org")
 }
 
-// NewRubyGemsSourceWithURL creates a RubyGems source for a specific gem server
+// NewRubyGemsSourceWithURL creates a RubyGems source for a specific gem server.
+// This now uses compact index exclusively (Bundler-compatible).
 func NewRubyGemsSourceWithURL(baseURL string) *RubyGemsSource {
-	// Create registry client with Rubygems protocol
-	client, err := registry.NewClient(baseURL, registry.ProtocolRubygems)
+	// Use compact index client (writes to Bundler's cache)
+	compactSource, err := NewCompactIndexSource(baseURL)
 	if err != nil {
-		// This shouldn't happen with ProtocolRubygems, but handle it gracefully
-		panic(fmt.Sprintf("failed to create registry client: %v", err))
+		panic(fmt.Sprintf("failed to create compact index source: %v", err))
 	}
 
+	// Wrap in RubyGemsSource for backward compatibility
 	return &RubyGemsSource{
-		client:    client,
-		cache:     make(map[string]map[string][]pubgrub.Term),
-		sourceURL: baseURL,
+		compactSource: compactSource,
+		cache:         make(map[string]map[string][]pubgrub.Term),
+		sourceURL:     baseURL,
+		versionPins:   nil,
 	}
+}
+
+// SetVersionPins sets version pins for selective updates.
+// When a gem is pinned, GetVersions will return only the pinned version.
+func (s *RubyGemsSource) SetVersionPins(pins map[string]string) {
+	s.compactSource.SetVersionPins(pins)
+	s.versionPins = pins
 }
 
 // SourceURL returns the URL of this gem source
@@ -48,80 +52,14 @@ func (s *RubyGemsSource) SourceURL() string {
 	return s.sourceURL
 }
 
-// GetDependencies returns the dependencies for a specific package version
+// GetDependencies returns the dependencies for a specific package version.
+// Delegates to compact index source.
 func (s *RubyGemsSource) GetDependencies(name pubgrub.Name, version pubgrub.Version) ([]pubgrub.Term, error) {
-	gemName := name.Value()
-	versionStr := version.String()
-
-	// Check cache first
-	s.mu.RLock()
-	if versions, ok := s.cache[gemName]; ok {
-		if deps, ok := versions[versionStr]; ok {
-			s.mu.RUnlock()
-			return deps, nil
-		}
-	}
-	s.mu.RUnlock()
-
-	// Fetch from RubyGems API
-	ctx := context.Background()
-	info, err := s.client.GetGemInfo(ctx, gemName, versionStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gem info for %s@%s: %w", gemName, versionStr, err)
-	}
-
-	// Convert runtime dependencies to PubGrub terms
-	var terms []pubgrub.Term
-	for _, dep := range info.Dependencies.Runtime {
-		// Parse version constraint
-		var condition pubgrub.Condition
-		if dep.Requirements != "" && dep.Requirements != ">= 0" {
-			semverCond, err := NewSemverCondition(dep.Requirements)
-			if err != nil {
-				// If we can't parse the constraint, use AnyVersion
-				condition = NewAnyVersionCondition()
-			} else {
-				condition = semverCond
-			}
-		} else {
-			condition = NewAnyVersionCondition()
-		}
-
-		term := pubgrub.NewTerm(pubgrub.MakeName(dep.Name), condition)
-		terms = append(terms, term)
-	}
-
-	// Cache the result
-	s.mu.Lock()
-	if _, ok := s.cache[gemName]; !ok {
-		s.cache[gemName] = make(map[string][]pubgrub.Term)
-	}
-	s.cache[gemName][versionStr] = terms
-	s.mu.Unlock()
-
-	return terms, nil
+	return s.compactSource.GetDependencies(name, version)
 }
 
-// GetVersions returns all available versions for a package
+// GetVersions returns all available versions for a package.
+// Delegates to compact index source.
 func (s *RubyGemsSource) GetVersions(name pubgrub.Name) ([]pubgrub.Version, error) {
-	gemName := name.Value()
-
-	ctx := context.Background()
-	versions, err := s.client.GetGemVersions(ctx, gemName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get versions for %s: %w", gemName, err)
-	}
-
-	// Convert to SemverVersions
-	semverVersions := make([]pubgrub.Version, 0, len(versions))
-	for _, v := range versions {
-		semverVer, err := NewSemverVersion(v)
-		if err != nil {
-			// Skip versions that can't be parsed
-			continue
-		}
-		semverVersions = append(semverVersions, semverVer)
-	}
-
-	return semverVersions, nil
+	return s.compactSource.GetVersions(name)
 }

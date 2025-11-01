@@ -26,12 +26,10 @@ github.com/clipperhouse/stringish v0.1.1 h1:+NSqMOr3GR6k1FdRhhnXrLfztGzuG+VuFDfa
 github.com/clipperhouse/stringish v0.1.1/go.mod h1:v/WhFtE1q0ovMta2+m+UbpZ+2/HEXNWYXQgCt4hdOzA=
 github.com/clipperhouse/uax29/v2 v2.3.0 h1:SNdx9DVUqMoBuBoW3iLOj4FQv3dN5mDtuqwuhIGpJy4=
 github.com/clipperhouse/uax29/v2 v2.3.0/go.mod h1:Wn1g7MK6OoeDT0vL+Q0SQLDz/KpfsVRgg6W7ihQeh4g=
-github.com/contriboss/gemfile-go v0.4.0 h1:hwms4/L42s1v3xTDMf8CmMit9NuV+PH2ihK33hld0rI=
-github.com/contriboss/gemfile-go v0.4.0/go.mod h1:LQ7Q6tAnyZRE0/jedvLxoKp2hT26Kr7JjkJYzKD1iWI=
-github.com/contriboss/pubgrub-go v0.3.0 h1:lM+4LgoCeC6pgS/2nfDzUFO3Jd2G2ooV9XwPAimG55c=
-github.com/contriboss/pubgrub-go v0.3.0/go.mod h1:GSdpaquQoqedQVXdmuy08Wdef/k108x/fKJcUFyrM+4=
-github.com/contriboss/ruby-extension-go v0.2.2 h1:Z+nrTEm9KD+WRGo/kUEq/MbZdDvWfPIBSozU2YSxhBY=
-github.com/contriboss/ruby-extension-go v0.2.2/go.mod h1:xEfGEj82FAlXS842Kf8F9mIyl0gV00puvDhjKcR5xUc=
+github.com/contriboss/gemfile-go v0.5.0 h1:4EQUcokUj1aCuj2+6AKxt9uBp4CMhhI9wm5oY2lLuTA=
+github.com/contriboss/gemfile-go v0.5.0/go.mod h1:LQ7Q6tAnyZRE0/jedvLxoKp2hT26Kr7JjkJYzKD1iWI=
+github.com/contriboss/pubgrub-go v0.3.3 h1:C9WN+rmwL1J56XtFp0SO+SMjKIdPG1Goa6drzmVQMl0=
+github.com/contriboss/pubgrub-go v0.3.3/go.mod h1:GSdpaquQoqedQVXdmuy08Wdef/k108x/fKJcUFyrM+4=
 github.com/contriboss/ruby-extension-go v0.2.3 h1:NXRuWHB7s2PL/eh8GhDZU4gkAMyvgnQfEGf4+JMn7V0=
 github.com/contriboss/ruby-extension-go v0.2.3/go.mod h1:xEfGEj82FAlXS842Kf8F9mIyl0gV00puvDhjKcR5xUc=
 github.com/contriboss/rubygems-client-go v0.1.0 h1:HGCGLaNtcD58mmTXhdLuKUgerRGQMOqE0NbKw2JCSSI=

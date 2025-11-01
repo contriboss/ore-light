@@ -19,3 +19,6 @@ go.work.sum
 # Temporary files
 /tmp/
 *.tmp
+
+# Go build cache
+.gocache/
