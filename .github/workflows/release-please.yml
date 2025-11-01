@@ -9,10 +9,17 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  packages: write
+
+env:
+  GO_VERSION: '1.25'
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -37,14 +44,184 @@ jobs:
         if: ${{ steps.release.outputs.release_created }}
         run: mage ci
 
-      - name: Trigger Release workflow
-        if: ${{ steps.release.outputs.release_created }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Re-push the tag to trigger the Release workflow
-          # (release-please creates tags via API which doesn't fire push:tags)
-          TAG="${{ steps.release.outputs.tag_name }}"
-          git push origin ":refs/tags/$TAG" || true
-          git tag -f "$TAG"
-          git push origin "$TAG"
+  build-linux:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install cross-compiler for ARM64
+      if: matrix.goarch == 'arm64'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+    - name: Build Linux ${{ matrix.goarch }}
+      run: |
+        if [ "${{ matrix.goarch }}" = "amd64" ]; then
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+            -o ore-linux-amd64 \
+            -ldflags="-s -w -X main.version=${{ needs.release-please.outputs.tag_name }} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            ./cmd/ore
+        else
+          CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc GOOS=linux GOARCH=arm64 go build \
+            -o ore-linux-arm64 \
+            -ldflags="-s -w -X main.version=${{ needs.release-please.outputs.tag_name }} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            ./cmd/ore
+        fi
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v5
+      with:
+        name: ore-linux-${{ matrix.goarch }}
+        path: ore-linux-${{ matrix.goarch }}
+        retention-days: 1
+
+  build-macos:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goarch: amd64
+          - runner: macos-15
+            goarch: arm64
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Build macOS ${{ matrix.goarch }}
+      run: |
+        CGO_ENABLED=1 GOOS=darwin GOARCH=${{ matrix.goarch }} go build \
+          -o ore-darwin-${{ matrix.goarch }} \
+          -ldflags="-s -w -X main.version=${{ needs.release-please.outputs.tag_name }} -X main.buildCommit=${GITHUB_SHA} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          ./cmd/ore
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v5
+      with:
+        name: ore-darwin-${{ matrix.goarch }}
+        path: ore-darwin-${{ matrix.goarch }}
+        retention-days: 1
+
+  upload-assets:
+    needs: [release-please, build-linux, build-macos]
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download Linux AMD64
+      uses: actions/download-artifact@v6
+      with:
+        name: ore-linux-amd64
+        path: dist
+
+    - name: Download Linux ARM64
+      uses: actions/download-artifact@v6
+      with:
+        name: ore-linux-arm64
+        path: dist
+
+    - name: Download macOS AMD64
+      uses: actions/download-artifact@v6
+      with:
+        name: ore-darwin-amd64
+        path: dist
+
+    - name: Download macOS ARM64
+      uses: actions/download-artifact@v6
+      with:
+        name: ore-darwin-arm64
+        path: dist
+
+    - name: Create tar.gz archives and checksums
+      run: |
+        cd dist
+
+        # Create tar.gz archives with go-github-selfupdate compatible naming
+        for binary in ore-*; do
+          # Extract OS and arch from filename (ore-{os}-{arch})
+          os_arch=$(echo $binary | sed 's/ore-//')
+          os=$(echo $os_arch | cut -d'-' -f1)
+          arch=$(echo $os_arch | cut -d'-' -f2)
+
+          # Create archive with naming: ore_{os}_{arch}.tar.gz
+          archive_name="ore_${os}_${arch}.tar.gz"
+          tar -czf "$archive_name" "$binary"
+
+          # Generate individual SHA256 checksum for the archive
+          sha256sum "$archive_name" | cut -d' ' -f1 > "${archive_name}.sha256"
+
+          echo "Created $archive_name and ${archive_name}.sha256"
+        done
+
+        # Create checksums.txt for all archives (backward compatibility)
+        sha256sum ore_*.tar.gz > checksums.txt
+
+        echo "=== Contents of dist/ ==="
+        ls -lh
+
+    - name: Upload release assets
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ needs.release-please.outputs.tag_name }}
+        files: dist/*
+
+  build-docker:
+    needs: [release-please, build-linux]
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.tag_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.tag_name }}
+            type=semver,pattern={{major}},value=${{ needs.release-please.outputs.tag_name }}
+            type=sha
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
