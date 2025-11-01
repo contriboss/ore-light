@@ -35,17 +35,24 @@ var (
 )
 
 type groupedGem struct {
-	name     string
-	versions []string
-	paths    []string // Paths for each version
+	name         string
+	versions     []string
+	paths        []string // Paths for each version
+	summary      string
+	dependencies []Dependency
 }
 
 type item struct {
 	gem groupedGem
 }
 
-func (i item) Title() string       { return i.gem.name }
-func (i item) Description() string { return strings.Join(i.gem.versions, ", ") }
+func (i item) Title() string { return i.gem.name }
+func (i item) Description() string {
+	if i.gem.summary != "" {
+		return i.gem.summary
+	}
+	return "No description available"
+}
 func (i item) FilterValue() string { return i.gem.name }
 
 type model struct {
@@ -54,6 +61,8 @@ type model struct {
 	groupedGems []groupedGem // Grouped by name
 	searchInput textinput.Model
 	searchMode  bool
+	detailMode  bool
+	selectedGem *groupedGem
 	width       int
 	height      int
 	message     string
@@ -137,11 +146,26 @@ func groupGemsByName(gems []GemInfo) []groupedGem {
 		if g, exists := gemMap[gem.Name]; exists {
 			g.versions = append(g.versions, gem.Version)
 			g.paths = append(g.paths, gem.Path)
+			// Merge dependencies (deduplicate)
+			for _, dep := range gem.Dependencies {
+				found := false
+				for _, existingDep := range g.dependencies {
+					if existingDep.Name == dep.Name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					g.dependencies = append(g.dependencies, dep)
+				}
+			}
 		} else {
 			gemMap[gem.Name] = &groupedGem{
-				name:     gem.Name,
-				versions: []string{gem.Version},
-				paths:    []string{gem.Path},
+				name:         gem.Name,
+				versions:     []string{gem.Version},
+				paths:        []string{gem.Path},
+				summary:      gem.Summary,
+				dependencies: gem.Dependencies,
 			}
 		}
 	}
@@ -211,6 +235,17 @@ func (m model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If in detail mode, handle escape to close
+	if m.detailMode {
+		switch {
+		case key.Matches(msg, keys.Quit), key.Matches(msg, keys.Info):
+			m.detailMode = false
+			m.selectedGem = nil
+			return m, nil
+		}
+		return m, nil
+	}
+
 	switch {
 	case key.Matches(msg, keys.Quit):
 		m.quitting = true
@@ -234,8 +269,8 @@ func (m model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, keys.Info):
 		if selected := m.getSelectedGem(); selected != nil {
-			versions := strings.Join(selected.versions, ", ")
-			m.message = fmt.Sprintf("Info for %s (%s)", selected.name, versions)
+			m.detailMode = true
+			m.selectedGem = selected
 		}
 		return m, nil
 
@@ -263,14 +298,26 @@ func (m *model) filterGems(query string) {
 		return
 	}
 
-	// Filter gems
+	// Filter gems - name matches first, then description matches
 	query = strings.ToLower(query)
-	var filtered []groupedGem
+	var nameMatches []groupedGem
+	var descMatches []groupedGem
+
 	for _, gem := range m.groupedGems {
-		if strings.Contains(strings.ToLower(gem.name), query) {
-			filtered = append(filtered, gem)
+		name := strings.ToLower(gem.name)
+		desc := strings.ToLower(gem.summary)
+
+		if strings.Contains(name, query) {
+			// Name match - priority
+			nameMatches = append(nameMatches, gem)
+		} else if strings.Contains(desc, query) {
+			// Description match - secondary
+			descMatches = append(descMatches, gem)
 		}
 	}
+
+	// Combine: name matches first, then description matches
+	filtered := append(nameMatches, descMatches...)
 
 	items := make([]list.Item, len(filtered))
 	for i, gem := range filtered {
@@ -319,20 +366,108 @@ func (m model) View() string {
 			Render(m.message))
 	}
 
-	return appStyle.Render(view.String())
+	baseView := appStyle.Render(view.String())
+
+	// Detail overlay (if active)
+	if m.detailMode && m.selectedGem != nil {
+		overlay := m.renderDetailOverlay()
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay)
+	}
+
+	return baseView
+}
+
+func (m model) renderDetailOverlay() string {
+	if m.selectedGem == nil {
+		return ""
+	}
+
+	gem := m.selectedGem
+
+	// Styles for the overlay
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("12")).
+		Padding(1, 2).
+		Width(min(80, m.width-4)).
+		MaxWidth(80)
+
+	titleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("12")).
+		Bold(true)
+
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("86")).
+		Bold(true)
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252"))
+
+	var content strings.Builder
+
+	// Title
+	content.WriteString(titleStyle.Render(gem.name))
+	content.WriteString("\n\n")
+
+	// Summary
+	if gem.summary != "" {
+		content.WriteString(labelStyle.Render("Summary:"))
+		content.WriteString("\n")
+		content.WriteString(valueStyle.Render(gem.summary))
+		content.WriteString("\n\n")
+	}
+
+	// Versions
+	content.WriteString(labelStyle.Render("Installed Versions:"))
+	content.WriteString("\n")
+	content.WriteString(valueStyle.Render(strings.Join(gem.versions, ", ")))
+	content.WriteString("\n\n")
+
+	// Runtime dependencies
+	if len(gem.dependencies) > 0 {
+		content.WriteString(labelStyle.Render("Runtime Dependencies:"))
+		content.WriteString("\n")
+		for _, dep := range gem.dependencies {
+			if dep.Type == "runtime" {
+				depStr := fmt.Sprintf("  • %s %s", dep.Name, dep.Requirements)
+				content.WriteString(valueStyle.Render(depStr))
+				content.WriteString("\n")
+			}
+		}
+	} else {
+		content.WriteString(labelStyle.Render("Runtime Dependencies:"))
+		content.WriteString("\n")
+		content.WriteString(valueStyle.Render("  None"))
+		content.WriteString("\n")
+	}
+
+	content.WriteString("\n")
+	content.WriteString(lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Render("Press i or Esc to close"))
+
+	return boxStyle.Render(content.String())
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (m model) renderStatusBar() string {
 	selected := m.getSelectedGem()
 	var selectedInfo string
 	if selected != nil {
-		versions := strings.Join(selected.versions, ", ")
-		selectedInfo = fmt.Sprintf(" %s (%s) ", selected.name, versions)
+		selectedInfo = fmt.Sprintf(" %s ", selected.name)
 	}
 
 	helpText := " / search • o open • i info • w why • q quit "
 	if m.searchMode {
 		helpText = " Type to filter • Enter to keep • Esc to clear "
+	} else if m.detailMode {
+		helpText = " i/Esc close "
 	}
 
 	width := m.width
@@ -370,6 +505,9 @@ func RunBrowse() error {
 	if len(gems) == 0 {
 		return fmt.Errorf("no gems found")
 	}
+
+	// Load metadata for all gems in a single Ruby call
+	loadAllGemMetadata(gemDir, &gems)
 
 	// Start TUI
 	p := tea.NewProgram(initialModel(gems), tea.WithAltScreen())

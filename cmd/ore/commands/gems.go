@@ -13,9 +13,18 @@ import (
 
 // GemInfo represents information about an installed gem
 type GemInfo struct {
-	Name    string
-	Version string
-	Path    string
+	Name         string
+	Version      string
+	Path         string
+	Summary      string
+	Dependencies []Dependency
+}
+
+// Dependency represents a gem dependency
+type Dependency struct {
+	Name         string
+	Requirements string
+	Type         string // "runtime" or "development"
 }
 
 // RunGems lists all installed gems in the system
@@ -211,4 +220,98 @@ func displayGems(gems []GemInfo, filter string) {
 		headerStyle.Render("Total:"),
 		len(gemNames),
 		len(gems))
+}
+
+// loadAllGemMetadata loads metadata for all gems in a single Ruby call
+func loadAllGemMetadata(gemDir string, gems *[]GemInfo) error {
+	if len(*gems) == 0 {
+		return nil
+	}
+
+	// Build list of all gemspec paths
+	var specPaths []string
+	for _, gem := range *gems {
+		specPath := filepath.Join(gemDir, "specifications", fmt.Sprintf("%s-%s.gemspec", gem.Name, gem.Version))
+		if _, err := os.Stat(specPath); err == nil {
+			specPaths = append(specPaths, specPath)
+		}
+	}
+
+	if len(specPaths) == 0 {
+		return nil
+	}
+
+	// Use Ruby to read all gemspecs at once
+	rubyScript := `
+require 'rubygems'
+
+ARGV.each do |spec_path|
+  begin
+    spec = Gem::Specification.load(spec_path)
+    next unless spec
+
+    # Output format: NAME|VERSION|SUMMARY
+    puts "GEM|#{spec.name}|#{spec.version}|#{spec.summary.to_s.gsub("\n", " ").strip}"
+
+    # Output dependencies: DEP|NAME|REQUIREMENT
+    spec.dependencies.each do |dep|
+      next unless dep.type == :runtime
+      puts "DEP|#{spec.name}|#{spec.version}|#{dep.name}|#{dep.requirement}"
+    end
+  rescue => e
+    # Skip gems that fail to load
+  end
+end
+`
+
+	args := append([]string{"-e", rubyScript}, specPaths...)
+	cmd := exec.Command("ruby", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil // Skip on error
+	}
+
+	// Parse pipe-delimited output
+	// Format: GEM|name|version|summary
+	//         DEP|name|version|dep_name|requirement
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	// Build a map for quick lookup
+	gemMap := make(map[string]*GemInfo)
+	for i := range *gems {
+		key := fmt.Sprintf("%s-%s", (*gems)[i].Name, (*gems)[i].Version)
+		gemMap[key] = &(*gems)[i]
+	}
+
+	for _, line := range lines {
+		parts := strings.Split(line, "|")
+		if len(parts) < 2 {
+			continue
+		}
+
+		switch parts[0] {
+		case "GEM":
+			if len(parts) >= 4 {
+				name, version, summary := parts[1], parts[2], parts[3]
+				key := fmt.Sprintf("%s-%s", name, version)
+				if gem, ok := gemMap[key]; ok {
+					gem.Summary = summary
+				}
+			}
+		case "DEP":
+			if len(parts) >= 5 {
+				name, version, depName, requirement := parts[1], parts[2], parts[3], parts[4]
+				key := fmt.Sprintf("%s-%s", name, version)
+				if gem, ok := gemMap[key]; ok {
+					gem.Dependencies = append(gem.Dependencies, Dependency{
+						Name:         depName,
+						Requirements: requirement,
+						Type:         "runtime",
+					})
+				}
+			}
+		}
+	}
+
+	return nil
 }
