@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/contriboss/ore-light/compare/v0.8.0...v0.9.0) (2025-11-11)
+
+
+### Features
+
+* add interactive TUI for outdated command with performance improvements ([7705ed3](https://github.com/contriboss/ore-light/commit/7705ed342dc3ae68991730c9e51f2165f99b0e00))
+* add structured logging with slog ([46b29b8](https://github.com/contriboss/ore-light/commit/46b29b847013680a357fb9588941e834e651e1a1))
+
 ## [0.8.0](https://github.com/contriboss/ore-light/compare/v0.7.3...v0.8.0) (2025-11-01)
 
 
