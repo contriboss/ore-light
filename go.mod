@@ -1,6 +1,6 @@
 module github.com/contriboss/ore-light
 
-go 1.25.4
+go 1.25
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
