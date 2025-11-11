@@ -21,6 +21,7 @@ import (
 	"github.com/contriboss/ore-light/internal/cache"
 	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/extensions"
+	"github.com/contriboss/ore-light/internal/logger"
 	"github.com/contriboss/ore-light/internal/resolver"
 	"github.com/contriboss/ore-light/internal/ruby"
 )
@@ -52,8 +53,23 @@ func main() {
 		return
 	}
 
-	cmd := os.Args[1]
-	args := os.Args[2:]
+	// Check for global --verbose flag anywhere in args and extract command
+	verbose := false
+	cmd := ""
+	args := []string{}
+
+	for _, arg := range os.Args[1:] {
+		if arg == "--verbose" {
+			verbose = true
+		} else if cmd == "" {
+			cmd = arg
+		} else {
+			args = append(args, arg)
+		}
+	}
+
+	// Setup logger with verbosity level
+	logger.SetupLogger(verbose)
 
 	// This is like Ruby's case/when, but switch in Go doesn't fall through by default!
 	// In Ruby you need 'when' to match multiple conditions; Go evaluates once and exits.

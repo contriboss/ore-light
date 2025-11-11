@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/contriboss/ore-light/internal/config"
+	"github.com/contriboss/ore-light/internal/logger"
 	"github.com/contriboss/ore-light/internal/registry"
 	"github.com/contriboss/ore-light/internal/sources"
 )
@@ -20,7 +21,6 @@ func RunFetch(args []string) error {
 	version := fs.String("version", "", "Gem version to fetch (default: latest)")
 	platform := fs.String("platform", "", "Platform to fetch (e.g., x86_64-linux, java, ruby)")
 	source := fs.String("source", "https://rubygems.org", "Gem source URL")
-	verbose := fs.Bool("v", false, "Enable verbose output")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -56,8 +56,8 @@ func RunFetch(args []string) error {
 	ctx := context.Background()
 
 	for _, gemName := range gems {
-		if err := fetchGem(ctx, client, sourceManager, gemName, *version, *platform, cacheDir, *verbose); err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching %s: %v\n", gemName, err)
+		if err := fetchGem(ctx, client, sourceManager, gemName, *version, *platform, cacheDir); err != nil {
+			logger.Error("error fetching gem", "gem", gemName, "error", err)
 			continue
 		}
 	}
@@ -65,13 +65,11 @@ func RunFetch(args []string) error {
 	return nil
 }
 
-func fetchGem(ctx context.Context, client *registry.Client, sourceManager *sources.Manager, gemName, version, platform, cacheDir string, verbose bool) error {
+func fetchGem(ctx context.Context, client *registry.Client, sourceManager *sources.Manager, gemName, version, platform, cacheDir string) error {
 	// Determine version to fetch
 	targetVersion := version
 	if targetVersion == "" {
-		if verbose {
-			fmt.Printf("🔍 Finding latest version of %s...\n", gemName)
-		}
+		logger.Debug("finding latest version", "gem", gemName)
 		versions, err := client.GetGemVersions(ctx, gemName)
 		if err != nil {
 			return fmt.Errorf("failed to get versions: %w", err)
@@ -88,9 +86,7 @@ func fetchGem(ctx context.Context, client *registry.Client, sourceManager *sourc
 		targetPlatform = detectDefaultPlatform()
 	}
 
-	if verbose {
-		fmt.Printf("📦 Fetching %s-%s (%s)...\n", gemName, targetVersion, targetPlatform)
-	}
+	logger.Info("fetching gem", "gem", gemName, "version", targetVersion, "platform", targetPlatform)
 
 	// Construct gem filename
 	gemFileName := constructGemFilename(gemName, targetVersion, targetPlatform)
@@ -115,9 +111,7 @@ func fetchGem(ctx context.Context, client *registry.Client, sourceManager *sourc
 	if err := sourceManager.DownloadGem(ctx, gemFileName, outFile); err != nil {
 		// If platform-specific download fails, try platform-independent
 		if targetPlatform != "ruby" {
-			if verbose {
-				fmt.Printf("Platform-specific gem not found, trying platform-independent...\n")
-			}
+			logger.Debug("platform-specific gem not found, trying platform-independent")
 			gemFileName = constructGemFilename(gemName, targetVersion, "ruby")
 			cachedPath = filepath.Join(cacheDir, gemFileName)
 

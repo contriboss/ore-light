@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"runtime/pprof"
-	"time"
 
+	"github.com/contriboss/ore-light/internal/logger"
 	"github.com/mattn/go-isatty"
 )
 
@@ -15,7 +15,6 @@ import (
 func RunOutdated(args []string) error {
 	fs := flag.NewFlagSet("outdated", flag.ContinueOnError)
 	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
-	verbose := fs.Bool("v", false, "Enable verbose output")
 	plainText := fs.Bool("plain", false, "Force plain text output (no TUI)")
 	cpuProfile := fs.String("cpuprofile", "", "Write CPU profile to file")
 	if err := fs.Parse(args); err != nil {
@@ -43,22 +42,16 @@ func RunOutdated(args []string) error {
 		if err := RunOutdatedTUI(*gemfilePath); err == nil {
 			return nil
 		} else {
-			fmt.Fprintf(os.Stderr, "warning: could not start interactive TUI, falling back to plain text output: %v\n", err)
+			logger.Warn("could not start interactive TUI, falling back to plain text output", "error", err)
 		}
 	} else if !*plainText && (!stdoutTTY || !stdinTTY) {
-		fmt.Fprintln(os.Stderr, "warning: interactive mode requires a TTY; falling back to plain text output")
+		logger.Debug("interactive mode requires a TTY; falling back to plain text output")
 	}
 
 	// Plain text output (for pipes, scripts, or --plain flag)
-	if *verbose {
-		fmt.Println("🔍 Checking for outdated gems...")
-	}
+	logger.Debug("checking for outdated gems...")
 
-	start := time.Now()
 	gems, err := LoadOutdatedGems(*gemfilePath)
-	if *verbose {
-		fmt.Printf("⏱️  Loaded outdated gems in %v\n", time.Since(start))
-	}
 	if err != nil {
 		return err
 	}
