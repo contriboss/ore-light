@@ -40,6 +40,13 @@ func ParseVersionsFile(path string) ([]VersionsEntry, error) {
 
 	var entries []VersionsEntry
 	scanner := bufio.NewScanner(file)
+
+	// Increase buffer size - some gem lines have hundreds of versions
+	// Default is 64KB, but popular gems like rails can exceed this
+	const maxTokenSize = 10 * 1024 * 1024 // 10MB
+	buf := make([]byte, maxTokenSize)
+	scanner.Buffer(buf, maxTokenSize)
+
 	headerPassed := false
 
 	for scanner.Scan() {

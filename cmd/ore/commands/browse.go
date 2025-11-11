@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-isatty"
 )
 
 var (
@@ -506,14 +507,23 @@ func RunBrowse() error {
 		return fmt.Errorf("no gems found")
 	}
 
-	// Load metadata for all gems in a single Ruby call
-	loadAllGemMetadata(gemDir, &gems)
+	// Load metadata for all gems in a single Ruby call (best effort)
+	_ = loadAllGemMetadata(gemDir, &gems)
+
+	// Fallback to plain output when not attached to a TTY
+	if !isatty.IsTerminal(os.Stdout.Fd()) || !isatty.IsTerminal(os.Stdin.Fd()) {
+		displayGems(gems, "")
+		fmt.Fprintln(os.Stderr, "info: run ore browse in an interactive terminal to use the TUI")
+		return nil
+	}
 
 	// Start TUI
 	p := tea.NewProgram(initialModel(gems), tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
-		return fmt.Errorf("error running TUI: %w", err)
+		fmt.Fprintf(os.Stderr, "info: could not start interactive TUI, showing plain output instead: %v\n", err)
+		displayGems(gems, "")
+		return nil
 	}
 
 	// Check if user wants to open a gem in editor

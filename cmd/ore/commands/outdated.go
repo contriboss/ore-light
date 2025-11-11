@@ -1,157 +1,86 @@
 package commands
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
-	"sync"
+	"runtime/pprof"
+	"time"
 
-	"github.com/contriboss/gemfile-go/gemfile"
-	"github.com/contriboss/gemfile-go/lockfile"
-	"github.com/contriboss/ore-light/internal/registry"
+	"github.com/mattn/go-isatty"
 )
 
-// versionCheckResult holds the result of checking a gem's latest version
-type versionCheckResult struct {
-	gemName       string
-	latestVersion string
-	err           error
-}
-
-// checkVersionsParallel fetches latest versions for multiple gems in parallel
-// Uses 10 concurrent workers (similar to Bundler's approach but more conservative)
-func checkVersionsParallel(ctx context.Context, client *registry.Client, gemNames []string, verbose bool) map[string]versionCheckResult {
-	results := make(map[string]versionCheckResult)
-	resultsMu := sync.Mutex{}
-
-	// Limit concurrent requests to 10 (respectful to rubygems.org)
-	semaphore := make(chan struct{}, 10)
-	var wg sync.WaitGroup
-
-	for _, gemName := range gemNames {
-		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
-
-			// Acquire semaphore
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			versions, err := client.GetGemVersions(ctx, name)
-
-			resultsMu.Lock()
-			if err != nil {
-				results[name] = versionCheckResult{gemName: name, err: err}
-			} else if len(versions) > 0 {
-				results[name] = versionCheckResult{gemName: name, latestVersion: versions[0]}
-			}
-			resultsMu.Unlock()
-		}(gemName)
-	}
-
-	wg.Wait()
-	return results
-}
-
 // RunOutdated implements the ore outdated command
+// Auto-detects TTY: shows TUI if interactive terminal, plain text if piped
 func RunOutdated(args []string) error {
 	fs := flag.NewFlagSet("outdated", flag.ContinueOnError)
 	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
 	verbose := fs.Bool("v", false, "Enable verbose output")
+	plainText := fs.Bool("plain", false, "Force plain text output (no TUI)")
+	cpuProfile := fs.String("cpuprofile", "", "Write CPU profile to file")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	// Find the lockfile - supports both Gemfile.lock and gems.locked
-	lockfilePath, err := findLockfilePath(*gemfilePath)
-	if err != nil {
-		return fmt.Errorf("failed to find lockfile: %w", err)
-	}
-
-	// Parse Gemfile to get constraints
-	parser := gemfile.NewGemfileParser(*gemfilePath)
-	parsed, err := parser.Parse()
-	if err != nil {
-		return fmt.Errorf("failed to parse Gemfile: %w", err)
-	}
-
-	// Parse lockfile to get current versions
-	lock, err := lockfile.ParseFile(lockfilePath)
-	if err != nil {
-		return fmt.Errorf("failed to parse lockfile: %w", err)
-	}
-
-	// Build map of gem name -> current version
-	currentVersions := make(map[string]string)
-	for _, spec := range lock.GemSpecs {
-		currentVersions[spec.Name] = spec.Version
-	}
-
-	// Build map of gem name -> constraint
-	constraints := make(map[string]string)
-	for _, dep := range parsed.Dependencies {
-		if len(dep.Constraints) > 0 {
-			constraints[dep.Name] = dep.Constraints[0]
+	// CPU profiling support
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			return fmt.Errorf("could not create CPU profile: %w", err)
 		}
+		defer func() { _ = f.Close() }()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return fmt.Errorf("could not start CPU profile: %w", err)
+		}
+		defer pprof.StopCPUProfile()
 	}
 
-	// Create registry client
-	client, err := registry.NewClient("https://rubygems.org", registry.ProtocolRubygems)
-	if err != nil {
-		return fmt.Errorf("failed to create registry client: %w", err)
+	// Auto-detect TTY: require both stdin and stdout to be terminals for the TUI
+	stdoutTTY := isatty.IsTerminal(os.Stdout.Fd())
+	stdinTTY := isatty.IsTerminal(os.Stdin.Fd())
+
+	if !*plainText && stdoutTTY && stdinTTY {
+		if err := RunOutdatedTUI(*gemfilePath); err == nil {
+			return nil
+		} else {
+			fmt.Fprintf(os.Stderr, "warning: could not start interactive TUI, falling back to plain text output: %v\n", err)
+		}
+	} else if !*plainText && (!stdoutTTY || !stdinTTY) {
+		fmt.Fprintln(os.Stderr, "warning: interactive mode requires a TTY; falling back to plain text output")
 	}
 
-	ctx := context.Background()
-
+	// Plain text output (for pipes, scripts, or --plain flag)
 	if *verbose {
 		fmt.Println("🔍 Checking for outdated gems...")
 	}
 
-	// Collect gem names
-	gemNames := make([]string, len(lock.GemSpecs))
-	for i, spec := range lock.GemSpecs {
-		gemNames[i] = spec.Name
+	start := time.Now()
+	gems, err := LoadOutdatedGems(*gemfilePath)
+	if *verbose {
+		fmt.Printf("⏱️  Loaded outdated gems in %v\n", time.Since(start))
+	}
+	if err != nil {
+		return err
 	}
 
-	// Check all versions in parallel
-	results := checkVersionsParallel(ctx, client, gemNames, *verbose)
-
-	// Process results and display outdated gems
-	outdatedCount := 0
-	for _, spec := range lock.GemSpecs {
-		result := results[spec.Name]
-
-		if result.err != nil {
-			if *verbose {
-				fmt.Fprintf(os.Stderr, "Warning: Could not fetch versions for %s: %v\n", spec.Name, result.err)
-			}
-			continue
-		}
-
-		if result.latestVersion == "" {
-			continue
-		}
-
-		// Compare versions
-		if result.latestVersion != spec.Version {
-			outdatedCount++
-			constraint := constraints[spec.Name]
-			if constraint == "" {
-				constraint = "(no constraint)"
-			}
-
-			fmt.Printf("  * %s (newest %s, installed %s, requested %s)\n",
-				spec.Name, result.latestVersion, spec.Version, constraint)
-		}
-	}
-
-	if outdatedCount == 0 {
+	if len(gems) == 0 {
 		fmt.Println("✨ All gems are up to date!")
-	} else {
-		fmt.Printf("\n%d gem(s) can be updated.\n", outdatedCount)
-		fmt.Println("Run `ore update` to update all gems, or `ore update <gem>` for specific gems.")
+		return nil
 	}
+
+	// Display outdated gems in plain text
+	for _, gem := range gems {
+		constraint := gem.Constraint
+		if constraint == "" {
+			constraint = "(no constraint)"
+		}
+
+		fmt.Printf("  * %s (newest %s, installed %s, requested %s)\n",
+			gem.Name, gem.LatestVersion, gem.CurrentVersion, constraint)
+	}
+
+	fmt.Printf("\n%d gem(s) can be updated.\n", len(gems))
+	fmt.Println("Run `ore update` to update all gems, or `ore update <gem>` for specific gems.")
 
 	return nil
 }
