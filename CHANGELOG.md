@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/contriboss/ore-light/compare/v0.9.0...v0.9.1) (2025-11-11)
+
+
+### Bug Fixes
+
+* relax Go version requirement to 1.25 ([86738e1](https://github.com/contriboss/ore-light/commit/86738e1f3f695102dc86c652bcdc0bb770243cf0))
+
 ## [0.9.0](https://github.com/contriboss/ore-light/compare/v0.8.0...v0.9.0) (2025-11-11)
 
 
