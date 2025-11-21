@@ -107,16 +107,14 @@ func detectCurrentPlatform() string {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 
-	// Map to Ruby-style platform names
+	// Map to Ruby-style platform names (Unix-only)
 	switch goos {
 	case "darwin":
 		return goarch + "-darwin"
 	case "linux":
 		return goarch + "-linux"
-	case "windows":
-		return goarch + "-mingw32"
 	default:
-		return goarch + "-" + goos
+		return "unsupported"
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/contriboss/ore-light/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,13 +31,13 @@ func DefaultDatabasePath() (string, error) {
 		return path, nil
 	}
 
-	// Default to ~/.local/share/ruby-advisory-db
-	home, err := os.UserHomeDir()
+	// Use XDG_DATA_HOME (default: ~/.local/share)
+	dataHome, err := config.GetXDGDataHome()
 	if err != nil {
 		return "", err
 	}
 
-	return filepath.Join(home, ".local", "share", "ruby-advisory-db"), nil
+	return filepath.Join(dataHome, "ruby-advisory-db"), nil
 }
 
 // NewDatabase creates a new database instance

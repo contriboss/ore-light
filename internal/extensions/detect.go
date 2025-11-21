@@ -26,9 +26,9 @@ func NeedsBuild(gemDir string, engine ruby.Engine) (bool, error) {
 }
 
 // hasCompiledArtifacts checks for compiled extension files in the gem directory.
-// It looks for .so (Linux), .bundle (macOS), .dll (Windows), .dylib (macOS), and .jar (JRuby) files.
+// It looks for .so (Linux), .bundle (macOS), .dylib (macOS), and .jar (JRuby) files.
 func hasCompiledArtifacts(gemDir string) bool {
-	extensions := []string{".so", ".bundle", ".dll", ".dylib", ".jar"}
+	extensions := []string{".so", ".bundle", ".dylib", ".jar"}
 
 	// Check lib/ directory where compiled extensions typically live
 	libDir := filepath.Join(gemDir, "lib")

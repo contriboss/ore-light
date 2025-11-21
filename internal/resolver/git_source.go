@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/contriboss/gemfile-go/gemfile"
+	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/pubgrub-go"
 )
 
@@ -245,11 +246,11 @@ func (g *GitSource) getRepoDir() string {
 
 // getGitCacheDir returns the cache directory for git repositories
 func getGitCacheDir() (string, error) {
-	home, err := os.UserHomeDir()
+	cacheHome, err := config.GetXDGCacheHome()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".cache", "ore", "git"), nil
+	return filepath.Join(cacheHome, "ore", "git"), nil
 }
 
 // CloneAtRevision clones the repository at a specific revision to a destination directory
