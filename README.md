@@ -18,6 +18,12 @@ Ore Light is the streamlined distribution of Ore – focused on fast gem install
 - **Group filtering**: Install production gems only with `--without development,test`
 - **Modular foundation**: Built on extracted libraries (`gemfile-go`, `rubygems-client-go`) with PubGrub dependency resolution
 
+## ⚠️ Platform Support
+
+**Unix systems only**: Ore Light supports macOS and Linux. **Windows is not supported** and will produce an error if you attempt to run ore on Windows.
+
+If you're upgrading from a previous version that had Windows code paths, note that all Windows-specific functionality has been removed.
+
 ## Quick Start
 
 ```bash
@@ -171,12 +177,14 @@ ore self-update --yes
 ```
 
 Features:
-- Automatic platform detection (macOS/Linux, amd64/arm64)
+- Automatic platform detection (Unix systems: macOS/Linux, amd64/arm64)
 - SHA256 verification of downloads
 - Atomic binary replacement with rollback support
 - Interactive confirmation prompt
 - Shows current → new version comparison
 - Works without Ruby or any external tools
+
+**Note:** Windows is not supported. ore-light only supports Unix-based systems (macOS and Linux).
 
 **Example:**
 ```
@@ -214,7 +222,7 @@ Features:
 - No Ruby required for scanning
 - Colorful output with severity levels (Critical/High/Medium/Low)
 - Shows CVE numbers, affected versions, and solutions
-- Database stored at `~/.local/share/ruby-advisory-db`
+- Database stored at `$XDG_DATA_HOME/ruby-advisory-db` (default: `~/.local/share/ruby-advisory-db`)
 
 **Note:** This is a Go implementation extracted from ore_reference, providing the same workflow as bundler-audit without requiring Ruby.
 
@@ -354,8 +362,16 @@ ORE_VENDOR_DIR=/tmp/gems ore install
 
 Ore loads optional TOML configuration files:
 
-- User config: `~/.config/ore/config.toml` (or `$XDG_CONFIG_HOME/ore/config.toml`)
+- User config: `$XDG_CONFIG_HOME/ore/config.toml` (default: `~/.config/ore/config.toml`)
 - Project config: `./.ore.toml`
+
+**XDG Base Directory Support:**
+
+Ore follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html):
+
+- **Config**: `$XDG_CONFIG_HOME/ore/` (default: `~/.config/ore/`)
+- **Cache**: `$XDG_CACHE_HOME/ore/` (default: `~/.cache/ore/`)
+- **Data**: `$XDG_DATA_HOME/ruby-advisory-db/` (default: `~/.local/share/ruby-advisory-db/`)
 
 Supported keys:
 
@@ -378,9 +394,18 @@ url = "https://gem.coop"  # Standalone source without fallback
 ```
 
 #### Environment Variables
+
+**XDG Base Directory Variables:**
+- `XDG_CONFIG_HOME` - Base directory for configuration files (default: `~/.config`)
+- `XDG_CACHE_HOME` - Base directory for cache files (default: `~/.cache`)
+- `XDG_DATA_HOME` - Base directory for data files (default: `~/.local/share`)
+
+**Ore-specific Variables:**
 - `ORE_SKIP_EXTENSIONS` / `ORE_LIGHT_SKIP_EXTENSIONS` - Set to `1`, `true`, or `yes` to skip native extension compilation
 - `ORE_VENDOR_DIR` / `ORE_LIGHT_VENDOR_DIR` - Override default vendor directory
 - `ORE_CACHE_DIR` / `ORE_LIGHT_CACHE_DIR` - Override default cache directory
+- `ORE_CONFIG` - Override config file path
+- `ORE_AUDIT_DB` / `BUNDLER_AUDIT_DB` - Override advisory database path
 
 ## Relationship to `ore_reference`
 
@@ -460,7 +485,7 @@ steps:
 **`setup-ore`** - Installs and caches the ore binary
 - Inputs: `version` (default: `latest`)
 - Outputs: `version`, `cache-hit`
-- Supports: Linux (amd64, arm64), macOS (amd64, arm64)
+- Supports: Unix systems only - Linux (amd64, arm64), macOS (amd64, arm64)
 
 **`ore-install`** - Installs gems with intelligent caching
 - Inputs: `working-directory`, `cache-key-prefix`, `skip-extensions`
@@ -511,7 +536,7 @@ See [.github/workflows/ore-demo.yml](.github/workflows/ore-demo.yml) for a compl
 - ⚡ **Fast**: Parallel gem downloads + intelligent caching
 - 🔄 **Compatible**: Works with existing Gemfile/Gemfile.lock
 - 🚀 **Simple**: Drop-in replacement for `ruby/setup-ruby` bundler caching
-- 🌍 **Multi-platform**: Linux and macOS support
+- 🌍 **Unix systems**: Linux and macOS support (Windows not supported)
 - 📦 **No Ruby required**: ore binary is pure Go
 
 ## Development

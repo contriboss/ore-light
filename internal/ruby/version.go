@@ -323,7 +323,7 @@ func GetSystemGemDir(detectRubyVersion func() string) string {
 	return ""
 }
 
-// GetStandardGemPaths returns OS-specific standard gem installation paths
+// GetStandardGemPaths returns OS-specific standard gem installation paths (Unix-only)
 func GetStandardGemPaths(rubyVersion string) []string {
 	var paths []string
 
@@ -340,16 +340,6 @@ func GetStandardGemPaths(rubyVersion string) []string {
 			fmt.Sprintf("/usr/lib/ruby/gems/%s", rubyVersion),
 			fmt.Sprintf("/usr/local/lib/ruby/gems/%s", rubyVersion),
 			fmt.Sprintf("/usr/lib64/ruby/gems/%s", rubyVersion),
-		}
-
-	case "windows":
-		programFiles := os.Getenv("ProgramFiles")
-		if programFiles == "" {
-			programFiles = "C:\\Program Files"
-		}
-		paths = []string{
-			fmt.Sprintf("C:\\Ruby%s\\lib\\ruby\\gems\\%s", strings.ReplaceAll(rubyVersion, ".", ""), rubyVersion),
-			fmt.Sprintf("%s\\Ruby\\lib\\ruby\\gems\\%s", programFiles, rubyVersion),
 		}
 	}
 

@@ -164,7 +164,7 @@ func detectDefaultPlatform() string {
 
 	// Fallback to Go runtime detection
 	arch := runtime.GOARCH
-	os := runtime.GOOS
+	goos := runtime.GOOS
 
 	// Map Go arch to Ruby arch
 	switch arch {
@@ -176,15 +176,15 @@ func detectDefaultPlatform() string {
 		arch = "x86"
 	}
 
-	// Map Go OS to Ruby OS
-	switch os {
+	// Map Go OS to Ruby OS (Unix-only)
+	switch goos {
 	case "darwin":
-		os = "darwin"
+		goos = "darwin"
 	case "linux":
-		os = "linux"
-	case "windows":
-		os = "mingw32"
+		goos = "linux"
+	default:
+		return ""
 	}
 
-	return fmt.Sprintf("%s-%s", arch, os)
+	return fmt.Sprintf("%s-%s", arch, goos)
 }

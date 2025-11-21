@@ -15,6 +15,32 @@ const (
 	DefaultVendorSubdir = "bundle"
 )
 
+// GetXDGCacheHome returns the XDG cache home directory
+// Falls back to ~/.cache if XDG_CACHE_HOME is not set
+func GetXDGCacheHome() (string, error) {
+	if cache := os.Getenv("XDG_CACHE_HOME"); cache != "" {
+		return cache, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine user home directory: %w", err)
+	}
+	return filepath.Join(home, ".cache"), nil
+}
+
+// GetXDGDataHome returns the XDG data home directory
+// Falls back to ~/.local/share if XDG_DATA_HOME is not set
+func GetXDGDataHome() (string, error) {
+	if data := os.Getenv("XDG_DATA_HOME"); data != "" {
+		return data, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine user home directory: %w", err)
+	}
+	return filepath.Join(home, ".local", "share"), nil
+}
+
 // Config represents the application configuration
 type Config struct {
 	VendorDir string
@@ -66,12 +92,12 @@ func DefaultCacheDir(cfg *Config) (string, error) {
 		return cfg.CacheDir, nil
 	}
 
-	home, err := os.UserHomeDir()
+	cacheHome, err := GetXDGCacheHome()
 	if err != nil {
-		return "", fmt.Errorf("failed to determine user home directory: %w", err)
+		return "", err
 	}
 
-	return filepath.Join(home, ".cache", "ore", "gems"), nil
+	return filepath.Join(cacheHome, "ore", "gems"), nil
 }
 
 // DefaultVendorDir returns the default vendor directory

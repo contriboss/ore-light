@@ -929,7 +929,7 @@ func detectCurrentPlatform() string {
 	// Fallback to Go's runtime detection
 	// Map Go's GOOS/GOARCH to RubyGems platform strings
 	arch := runtime.GOARCH
-	os := runtime.GOOS
+	goos := runtime.GOOS
 
 	// Map Go arch to Ruby arch
 	rubyArch := arch
@@ -942,15 +942,16 @@ func detectCurrentPlatform() string {
 		rubyArch = "x86"
 	}
 
-	// Map Go OS to Ruby OS
-	rubyOS := os
-	switch os {
+	// Map Go OS to Ruby OS (Unix-only)
+	rubyOS := goos
+	switch goos {
 	case "darwin":
 		rubyOS = "darwin"
 	case "linux":
 		rubyOS = "linux"
-	case "windows":
-		rubyOS = "mingw32"
+	default:
+		fmt.Fprintf(os.Stderr, "Error: %s is not supported. ore-light only supports Unix-based systems (macOS and Linux).\n", goos)
+		os.Exit(1)
 	}
 
 	return fmt.Sprintf("%s-%s", rubyArch, rubyOS)
