@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.0](https://github.com/contriboss/ore-light/compare/v0.9.1...v0.10.0) (2025-11-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* drop Windows support and implement XDG Base Directory Specification ([#19](https://github.com/contriboss/ore-light/issues/19))
+
+### Features
+
+* drop Windows support and implement XDG Base Directory Specification ([#19](https://github.com/contriboss/ore-light/issues/19)) ([a713d55](https://github.com/contriboss/ore-light/commit/a713d55425bb34e9e2cf7b55927f0e3c729944c8))
+
 ## [0.9.1](https://github.com/contriboss/ore-light/compare/v0.9.0...v0.9.1) (2025-11-11)
 
 
