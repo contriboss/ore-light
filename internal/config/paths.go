@@ -103,7 +103,7 @@ func DefaultCacheDir(cfg *Config) (string, error) {
 // DefaultVendorDir returns the default vendor directory
 // It requires Ruby detection functions which will be moved to internal/ruby
 func DefaultVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGemDir func() string) string {
-	// Priority 1: Environment variables
+	// Priority 1: Ore environment variables
 	if env := os.Getenv("ORE_VENDOR_DIR"); env != "" {
 		return env
 	}
@@ -111,12 +111,21 @@ func DefaultVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 		return env
 	}
 
-	// Priority 2: Ore config file
+	// Priority 2: Bundler environment variable (BUNDLE_PATH)
+	if bundlePath := os.Getenv("BUNDLE_PATH"); bundlePath != "" {
+		rubyVersion := detectRubyVersion()
+		if rubyVersion != "" {
+			return filepath.Join(bundlePath, "ruby", rubyVersion)
+		}
+		return bundlePath
+	}
+
+	// Priority 3: Ore config file
 	if cfg != nil && cfg.VendorDir != "" {
 		return cfg.VendorDir
 	}
 
-	// Priority 3: Bundler .bundle/config
+	// Priority 4: Bundler .bundle/config file
 	if bundlePath := ReadBundleConfigPath(); bundlePath != "" {
 		rubyVersion := detectRubyVersion()
 		if rubyVersion != "" {
@@ -125,7 +134,7 @@ func DefaultVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 		return bundlePath
 	}
 
-	// Priority 4: System gem directory (default - like `gem install`)
+	// Priority 5: System gem directory (default - like `gem install`)
 	// This makes ore behave like gem install by default (no isolation)
 	// Users can set BUNDLE_PATH or use --path flag for isolated installs
 	return getSystemGemDir()

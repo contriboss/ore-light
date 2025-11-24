@@ -99,13 +99,3 @@ func RunCheck(args []string) error {
 	fmt.Printf("✅ All gems are installed (%d total)\n", installed)
 	return nil
 }
-
-func defaultVendorDir() string {
-	if env := os.Getenv("ORE_VENDOR_DIR"); env != "" {
-		return env
-	}
-	if env := os.Getenv("ORE_LIGHT_VENDOR_DIR"); env != "" {
-		return env
-	}
-	return filepath.Join("vendor", "bundle")
-}

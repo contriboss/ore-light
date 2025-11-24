@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/contriboss/ore-light/internal/config"
+	"github.com/contriboss/ore-light/internal/ruby"
 )
 
 // defaultGemfilePath returns the path to the Gemfile to use.
@@ -68,4 +71,30 @@ func findLockfilePath(gemfilePath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no lockfile found for %s (looked for %s)", gemfilePath, lockfileName)
+}
+
+// defaultVendorDir returns the default vendor directory
+// Respects project configuration and detects version managers (mise/asdf/rbenv)
+//
+// Priority:
+// 1. ORE_VENDOR_DIR or ORE_LIGHT_VENDOR_DIR environment variable
+// 2. BUNDLE_PATH environment variable
+// 3. .bundle/config BUNDLE_PATH
+// 4. System gem directory (with version manager detection)
+func defaultVendorDir() string {
+	// Note: In the commands package, we don't have access to appConfig from main
+	// So we pass nil and let DefaultVendorDir handle env vars and .bundle/config
+	return config.DefaultVendorDir(nil, getRubyVersion, getSystemGemDir)
+}
+
+// getRubyVersion detects the Ruby version to use (wrapper for ruby package)
+func getRubyVersion() string {
+	lockfilePath := defaultGemfilePath() + ".lock"
+	gemfilePath := defaultGemfilePath()
+	return ruby.DetectRubyVersion(lockfilePath, gemfilePath, config.ToMajorMinor, "3.0")
+}
+
+// getSystemGemDir returns the system gem directory with version manager detection
+func getSystemGemDir() string {
+	return ruby.GetSystemGemDir(getRubyVersion)
 }
