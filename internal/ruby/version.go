@@ -283,7 +283,8 @@ func parseRubyVersion(path string) string {
 }
 
 // GetSystemGemDir returns the system gem directory without requiring Ruby
-// Tries: 1) GEM_HOME env, 2) Standard OS paths, 3) User gem dir, 4) gem command
+// Tries: 1) GEM_HOME env, 2) Ruby version detection, 3) Standard OS paths,
+// 4) Version manager paths (mise/asdf/rbenv), 5) User gem dir, 6) gem command
 func GetSystemGemDir(detectRubyVersion func() string) string {
 	// 1. Check GEM_HOME environment variable
 	if gemHome := os.Getenv("GEM_HOME"); gemHome != "" {
@@ -303,14 +304,22 @@ func GetSystemGemDir(detectRubyVersion func() string) string {
 		}
 	}
 
-	// 4. Try user gem directory
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		userGemDir := filepath.Join(homeDir, ".gem", "ruby", rubyVersion)
-		// Return even if doesn't exist - will be created during install
-		return userGemDir
+	// Try version manager gem directory (mise, asdf, rbenv)
+	if versionManagerDir := GetVersionManagerGemDir(rubyVersion); versionManagerDir != "" {
+		if info, err := os.Stat(versionManagerDir); err == nil && info.IsDir() {
+			return versionManagerDir
+		}
 	}
 
-	// 5. Last resort: try `gem environment gemdir` if Ruby is available
+	// Try user gem directory (only if exists)
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		userGemDir := filepath.Join(homeDir, ".gem", "ruby", rubyVersion)
+		if info, err := os.Stat(userGemDir); err == nil && info.IsDir() {
+			return userGemDir
+		}
+	}
+
+	// Last resort: try `gem environment gemdir` if Ruby is available
 	cmd := exec.Command("gem", "environment", "gemdir")
 	if output, err := cmd.Output(); err == nil {
 		gemDir := strings.TrimSpace(string(output))
@@ -344,4 +353,66 @@ func GetStandardGemPaths(rubyVersion string) []string {
 	}
 
 	return paths
+}
+
+// GetVersionManagerGemDir detects gem directory from version manager installation (mise, asdf, rbenv)
+// Derives gem path from ruby binary location for version managers
+// Returns empty string if ruby is not from a known version manager
+func GetVersionManagerGemDir(rubyVersion string) string {
+	// Find ruby binary location
+	rubyPath, err := exec.LookPath("ruby")
+	if err != nil {
+		return ""
+	}
+
+	// Resolve symlinks to get actual ruby location
+	rubyPath, err = filepath.EvalSymlinks(rubyPath)
+	if err != nil {
+		return ""
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	// Version manager patterns to check
+	// Each pattern maps to: ruby binary pattern -> gem dir derivation
+	versionManagers := []struct {
+		name       string
+		binPattern string // pattern in ruby binary path
+		gemPattern string // pattern for gem directory
+	}{
+		{
+			name:       "mise",
+			binPattern: filepath.Join(homeDir, ".local", "share", "mise", "installs", "ruby"),
+			gemPattern: filepath.Join(homeDir, ".local", "share", "mise", "installs", "ruby"),
+		},
+		{
+			name:       "asdf",
+			binPattern: filepath.Join(homeDir, ".asdf", "installs", "ruby"),
+			gemPattern: filepath.Join(homeDir, ".asdf", "installs", "ruby"),
+		},
+		{
+			name:       "rbenv",
+			binPattern: filepath.Join(homeDir, ".rbenv", "versions"),
+			gemPattern: filepath.Join(homeDir, ".rbenv", "versions"),
+		},
+	}
+
+	// Check if ruby binary matches any version manager pattern
+	for _, vm := range versionManagers {
+		if strings.HasPrefix(rubyPath, vm.binPattern) {
+			// Extract the ruby installation root from binary path
+			// e.g., ~/.local/share/mise/installs/ruby/3.4.7/bin/ruby -> ~/.local/share/mise/installs/ruby/3.4.7
+			rubyBin := filepath.Dir(rubyPath) // Remove /ruby
+			rubyRoot := filepath.Dir(rubyBin) // Remove /bin
+
+			// Construct gem directory: {ruby_root}/lib/ruby/gems/{api_version}
+			gemDir := filepath.Join(rubyRoot, "lib", "ruby", "gems", rubyVersion)
+			return gemDir
+		}
+	}
+
+	return ""
 }
