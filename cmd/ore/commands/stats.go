@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/contriboss/ore-light/internal/cache"
 )
 
 // RubyVersion represents a Ruby installation with gem count and size
@@ -530,19 +531,6 @@ func detectRubyType(version string) rubyImplementationType {
 }
 
 // humanBytes formats bytes as human-readable string
-func humanBytes(size int64) string {
-	const unit = 1024
-	if size < unit {
-		return fmt.Sprintf("%d B", size)
-	}
-	div, exp := int64(unit), 0
-	for n := size / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(size)/float64(div), "KMGTPE"[exp])
-}
-
 // renderStats renders the statistics using bubbles table
 func renderStats(manager *VersionManager, activeVersion string, versions []RubyVersion) {
 	// Define styles
@@ -650,7 +638,7 @@ func renderStats(manager *VersionManager, activeVersion string, versions []RubyV
 		// Format and pad plain text first, then apply styling
 		version := fmt.Sprintf("%-25s", v.Version)
 		gems := fmt.Sprintf("%-12s", fmt.Sprintf("%d", v.GemCount))
-		size := fmt.Sprintf("%-15s", humanBytes(v.GemSize))
+		size := fmt.Sprintf("%-15s", cache.HumanBytes(v.GemSize))
 
 		// Apply styling after padding
 		versionText := style.Render(version)

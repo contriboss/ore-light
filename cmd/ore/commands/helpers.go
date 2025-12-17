@@ -17,17 +17,7 @@ import (
 // 2. gems.rb (if exists)
 // 3. Gemfile (default)
 func defaultGemfilePath() string {
-	if env := os.Getenv("ORE_GEMFILE"); env != "" {
-		return env
-	}
-
-	// Check for gems.rb first (newer Bundler 2.0+ convention)
-	if _, err := os.Stat("gems.rb"); err == nil {
-		return "gems.rb"
-	}
-
-	// Default to Gemfile
-	return "Gemfile"
+	return config.DefaultGemfilePath(nil)
 }
 
 // findLockfilePath finds the lockfile for a given Gemfile path.
@@ -89,7 +79,7 @@ func defaultVendorDir() string {
 
 // getRubyVersion detects the Ruby version to use (wrapper for ruby package)
 func getRubyVersion() string {
-	lockfilePath := defaultGemfilePath() + ".lock"
+	lockfilePath := config.DefaultLockfilePath()
 	gemfilePath := defaultGemfilePath()
 	return ruby.DetectRubyVersion(lockfilePath, gemfilePath, config.ToMajorMinor, "3.0")
 }
