@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/contriboss/ore-light/compare/v0.10.0...v0.11.0) (2025-12-17)
+
+
+### Features
+
+* unify vendor dir detection with BUNDLE_PATH support ([6704748](https://github.com/contriboss/ore-light/commit/67047486b67df006a75bed332d2ac467b0e67cc7))
+
+
+### Bug Fixes
+
+* detect gem paths for mise/asdf/rbenv version managers ([354afb1](https://github.com/contriboss/ore-light/commit/354afb14cea325682455a1649ee23bc36b9f3bd5))
+
 ## [0.10.0](https://github.com/contriboss/ore-light/compare/v0.9.1...v0.10.0) (2025-11-21)
 
 
