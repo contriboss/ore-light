@@ -7,13 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/contriboss/ore-light/internal/sources"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
-type SourceConfig struct {
-	URL      string `toml:"url"`
-	Fallback string `toml:"fallback,omitempty"`
-}
+type SourceConfig = sources.SourceConfig
 
 type Config struct {
 	VendorDir  string         `toml:"vendor_dir"`

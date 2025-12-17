@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,18 +52,9 @@ func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *h
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	// Convert our SourceConfig to sources.SourceConfig for the manager
-	managerConfigs := make([]sources.SourceConfig, len(sourceConfigs))
-	for i, config := range sourceConfigs {
-		managerConfigs[i] = sources.SourceConfig{
-			URL:      config.URL,
-			Fallback: config.Fallback,
-		}
-	}
-
 	return &downloadManager{
 		cacheDir:      cacheDir,
-		sourceManager: sources.NewManager(managerConfigs, client),
+		sourceManager: sources.NewManager(sourceConfigs, client),
 		workers:       workers,
 	}, nil
 }
@@ -118,6 +110,7 @@ func (m *downloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSp
 
 func (m *downloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec, force bool) (bool, error) {
 	cachePath := m.cachePathFor(gem)
+	metaPath := cachePath + ".meta"
 	if !force {
 		// Check all cache locations (ore cache + system RubyGems cache)
 		if foundPath := m.findInCaches(gem); foundPath != "" {
@@ -137,6 +130,8 @@ func (m *downloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 		return false, fmt.Errorf("failed to prepare cache dir: %w", err)
 	}
 
+	existingMeta, _ := loadCacheMetadata(metaPath)
+
 	tempFile, err := os.CreateTemp(filepath.Dir(cachePath), "ore-*.gem")
 	if err != nil {
 		return false, fmt.Errorf("failed to create temp file: %w", err)
@@ -146,10 +141,24 @@ func (m *downloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 		_ = os.Remove(tempFile.Name())
 	}()
 
+	headers := map[string]string{}
+	if existingMeta != nil {
+		if existingMeta.ETag != "" {
+			headers["If-None-Match"] = existingMeta.ETag
+		}
+		if existingMeta.LastModified != "" {
+			headers["If-Modified-Since"] = existingMeta.LastModified
+		}
+	}
+
 	// Use SourceManager to download with fallback support
 	gemName := gemFileName(gem)
-	if err := m.sourceManager.DownloadGem(ctx, gemName, tempFile); err != nil {
+	status, respHeaders, err := m.sourceManager.DownloadGemWithHeaders(ctx, gemName, tempFile, headers)
+	if err != nil {
 		return false, fmt.Errorf("failed to download %s: %w", gem.FullName(), err)
+	}
+	if status == http.StatusNotModified {
+		return false, nil
 	}
 
 	if err := tempFile.Close(); err != nil {
@@ -158,6 +167,14 @@ func (m *downloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 
 	if err := os.Rename(tempFile.Name(), cachePath); err != nil {
 		return false, fmt.Errorf("failed to finalize download for %s: %w", gem.FullName(), err)
+	}
+
+	if respHeaders != nil {
+		meta := cacheMetadata{
+			ETag:         respHeaders.Get("ETag"),
+			LastModified: respHeaders.Get("Last-Modified"),
+		}
+		_ = saveCacheMetadata(metaPath, meta)
 	}
 
 	fmt.Printf("Fetched %s\n", gem.FullName())
@@ -306,4 +323,29 @@ func (m *downloadManager) CacheDir() string {
 
 func gemFileName(gem lockfile.GemSpec) string {
 	return fmt.Sprintf("%s.gem", gem.FullName())
+}
+
+type cacheMetadata struct {
+	ETag         string `json:"etag"`
+	LastModified string `json:"last_modified"`
+}
+
+func loadCacheMetadata(path string) (*cacheMetadata, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var meta cacheMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
+}
+
+func saveCacheMetadata(path string, meta cacheMetadata) error {
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }

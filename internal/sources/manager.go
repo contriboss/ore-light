@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -93,9 +94,17 @@ func NewManager(sourceConfigs []SourceConfig, client *http.Client) *Manager {
 		}
 	}
 
+	mirrors := resolveMirrorMap()
+
 	sources := make([]*Source, 0, len(sourceConfigs))
 	for _, config := range sourceConfigs {
-		sources = append(sources, NewSource(config.URL, config.Fallback))
+		primary := applyMirror(config.URL, mirrors)
+		fallback := config.Fallback
+		// If we swapped to a mirror, fall back to the original unless user provided one
+		if primary != config.URL && fallback == "" {
+			fallback = config.URL
+		}
+		sources = append(sources, NewSource(primary, fallback))
 	}
 
 	return &Manager{
@@ -107,8 +116,8 @@ func NewManager(sourceConfigs []SourceConfig, client *http.Client) *Manager {
 
 // SourceConfig represents a source configuration
 type SourceConfig struct {
-	URL      string
-	Fallback string
+	URL      string `toml:"url"`
+	Fallback string `toml:"fallback,omitempty"`
 }
 
 // CheckHealth performs pre-flight health checks on all sources
@@ -167,8 +176,15 @@ func (m *Manager) isHealthy(url string) bool {
 
 // DownloadGem downloads a gem from configured sources with fallback
 func (m *Manager) DownloadGem(ctx context.Context, gemName string, writer io.Writer) error {
+	_, _, err := m.DownloadGemWithHeaders(ctx, gemName, writer, nil)
+	return err
+}
+
+// DownloadGemWithHeaders downloads a gem and allows conditional headers.
+// Returns the HTTP status code and response headers (for caching/ETag handling).
+func (m *Manager) DownloadGemWithHeaders(ctx context.Context, gemName string, writer io.Writer, headers map[string]string) (int, http.Header, error) {
 	if len(m.sources) == 0 {
-		return errors.New("no gem sources configured")
+		return 0, nil, errors.New("no gem sources configured")
 	}
 
 	var lastErr error
@@ -176,10 +192,10 @@ func (m *Manager) DownloadGem(ctx context.Context, gemName string, writer io.Wri
 	for _, source := range m.sources {
 		// Try primary source
 		downloadURL := fmt.Sprintf("%s/downloads/%s", source.URL, gemName)
-		err := m.download(ctx, downloadURL, source.auth, writer)
+		status, respHeaders, err := m.download(ctx, downloadURL, source.auth, writer, headers)
 
 		if err == nil {
-			return nil // Success!
+			return status, respHeaders, nil // Success or not-modified
 		}
 
 		lastErr = err
@@ -189,30 +205,30 @@ func (m *Manager) DownloadGem(ctx context.Context, gemName string, writer io.Wri
 			fallbackURL := fmt.Sprintf("%s/downloads/%s", source.FallbackURL, gemName)
 			fmt.Printf("Primary source %s failed, trying fallback %s\n", source.URL, source.FallbackURL)
 
-			err = m.download(ctx, fallbackURL, source.fallbackAuth, writer)
+			status, respHeaders, err = m.download(ctx, fallbackURL, source.fallbackAuth, writer, headers)
 			if err == nil {
-				return nil // Fallback succeeded!
+				return status, respHeaders, nil // Fallback succeeded
 			}
 			lastErr = err
 		}
 
 		// If error is not retryable (404, auth failure), stop trying other sources
 		if !isRetryableError(err) {
-			return err
+			return 0, nil, err
 		}
 	}
 
 	if lastErr != nil {
-		return fmt.Errorf("all sources failed: %w", lastErr)
+		return 0, nil, fmt.Errorf("all sources failed: %w", lastErr)
 	}
 
-	return errors.New("no sources available")
+	return 0, nil, errors.New("no sources available")
 }
 
-func (m *Manager) download(ctx context.Context, url string, auth *Authentication, writer io.Writer) error {
+func (m *Manager) download(ctx context.Context, url string, auth *Authentication, writer io.Writer, headers map[string]string) (int, http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return 0, nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Add authentication if present
@@ -224,20 +240,28 @@ func (m *Manager) download(ctx context.Context, url string, auth *Authentication
 		}
 	}
 
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("network error: %w", err)
+		return 0, nil, fmt.Errorf("network error: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
+	if resp.StatusCode == http.StatusNotModified {
+		return resp.StatusCode, resp.Header.Clone(), nil
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return &HTTPError{StatusCode: resp.StatusCode, URL: url}
+		return resp.StatusCode, resp.Header.Clone(), &HTTPError{StatusCode: resp.StatusCode, URL: url}
 	}
 
 	_, err = io.Copy(writer, resp.Body)
-	return err
+	return resp.StatusCode, resp.Header.Clone(), err
 }
 
 // HTTPError represents an HTTP error response
@@ -311,4 +335,55 @@ type SourceInfo struct {
 	Fallback        string
 	Healthy         bool
 	FallbackHealthy bool
+}
+
+// resolveMirrorMap builds a map of host -> mirror URL from environment variables.
+// Supports:
+//   - ORE_LIGHT_MIRROR (applies to all sources)
+//   - BUNDLE_MIRROR__<host> (Bundler-style mirror env, where dots are written as "__")
+func resolveMirrorMap() map[string]string {
+	mirrors := make(map[string]string)
+
+	if all := strings.TrimSpace(os.Getenv("ORE_LIGHT_MIRROR")); all != "" {
+		mirrors["*"] = strings.TrimSuffix(all, "/")
+	}
+
+	for _, env := range os.Environ() {
+		if !strings.HasPrefix(env, "BUNDLE_MIRROR__") {
+			continue
+		}
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimPrefix(parts[0], "BUNDLE_MIRROR__")
+		val := strings.TrimSpace(parts[1])
+		if val == "" {
+			continue
+		}
+		host := strings.ReplaceAll(key, "__", ".")
+		mirrors[host] = strings.TrimSuffix(val, "/")
+	}
+
+	return mirrors
+}
+
+// applyMirror returns a mirrored URL if configured.
+func applyMirror(sourceURL string, mirrors map[string]string) string {
+	if len(mirrors) == 0 {
+		return sourceURL
+	}
+	if all, ok := mirrors["*"]; ok {
+		return all
+	}
+
+	parsed, err := url.Parse(sourceURL)
+	if err != nil {
+		return sourceURL
+	}
+	host := parsed.Hostname()
+	if mirror, ok := mirrors[host]; ok {
+		return mirror
+	}
+	return sourceURL
 }
