@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/contriboss/ore-light/compare/v0.11.0...v0.12.0) (2025-12-17)
+
+
+### Features
+
+* **sources:** add mirrors and conditional downloads ([b6116da](https://github.com/contriboss/ore-light/commit/b6116da233ff46e715d809b2bf4b61d94b9ee018))
+
 ## [0.11.0](https://github.com/contriboss/ore-light/compare/v0.10.0...v0.11.0) (2025-12-17)
 
 
