@@ -16,6 +16,9 @@ go.work.sum
 .vscode/
 .idea/
 
+# Linting
+.dictator/
+
 # Temporary files
 /tmp/
 *.tmp
