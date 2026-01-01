@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/contriboss/ore-light/compare/v0.13.0...v0.14.0) (2026-01-01)
+
+
+### Features
+
+* export default command wrappers via internal/runtime package ([#29](https://github.com/contriboss/ore-light/issues/29)) ([d5df403](https://github.com/contriboss/ore-light/commit/d5df40350d69e14f117d788300d50e85520971f1))
+
 ## [0.13.0](https://github.com/contriboss/ore-light/compare/v0.12.0...v0.13.0) (2026-01-01)
 
 
