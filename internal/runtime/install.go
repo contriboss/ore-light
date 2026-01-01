@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"github.com/contriboss/gemfile-go/lockfile"
-	"github.com/contriboss/ore-light/cmd/ore/commands"
 	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/extensions"
 	"github.com/contriboss/ore-light/internal/geminstall"
@@ -17,7 +16,8 @@ import (
 	"github.com/contriboss/ore-light/internal/sources"
 )
 
-type installReport struct {
+// InstallReport tracks installation progress and results
+type InstallReport struct {
 	Total             int
 	Installed         int
 	Skipped           int
@@ -32,23 +32,23 @@ type extensionTarget struct {
 }
 
 // InstallFromCache installs gems from the cache directory
-func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (commands.InstallReport, error) {
-	report := installReport{Total: len(gems)}
+func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
+	report := InstallReport{Total: len(gems)}
 
 	engine := ruby.DetectEngine()
 	engineChecker := resolver.NewEngineCompatibility(engine)
 
 	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
-		return commands.InstallReport{}, err
+		return InstallReport{}, err
 	}
 	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "cache")); err != nil {
-		return commands.InstallReport{}, err
+		return InstallReport{}, err
 	}
 	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "bin")); err != nil {
-		return commands.InstallReport{}, err
+		return InstallReport{}, err
 	}
 	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "specifications", "cache")); err != nil {
-		return commands.InstallReport{}, err
+		return InstallReport{}, err
 	}
 
 	extBuilder := extensions.NewBuilder(extConfig)
@@ -58,7 +58,7 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 	for _, gem := range gems {
 		gemPath := findGemInCaches(cacheDir, gem)
 		if gemPath == "" {
-			return commands.InstallReport{}, fmt.Errorf("gem %s is not cached; run `ore download` first", gem.FullName())
+			return InstallReport{}, fmt.Errorf("gem %s is not cached; run `ore download` first", gem.FullName())
 		}
 
 		destDir := filepath.Join(vendorDir, "gems", gem.FullName())
@@ -67,7 +67,7 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 			if buildExtensions {
 				needsBuild, err := extensions.NeedsBuild(destDir, engine)
 				if err != nil {
-					return commands.InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gem.FullName(), err)
+					return InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gem.FullName(), err)
 				}
 				if needsBuild {
 					extensionTargets = append(extensionTargets, extensionTarget{
@@ -82,7 +82,7 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 
 		metadata, err := geminstall.ExtractMetadataOnly(gemPath)
 		if err != nil {
-			return commands.InstallReport{}, fmt.Errorf("failed to extract metadata from %s: %w", gem.FullName(), err)
+			return InstallReport{}, fmt.Errorf("failed to extract metadata from %s: %w", gem.FullName(), err)
 		}
 
 		if len(metadata) > 0 {
@@ -108,26 +108,26 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 		}
 
 		if err := os.RemoveAll(destDir); err != nil {
-			return commands.InstallReport{}, fmt.Errorf("failed to clean install dir for %s: %w", gem.FullName(), err)
+			return InstallReport{}, fmt.Errorf("failed to clean install dir for %s: %w", gem.FullName(), err)
 		}
 
 		_, err = geminstall.ExtractGemContents(gemPath, destDir)
 		if err != nil {
-			return commands.InstallReport{}, fmt.Errorf("failed to extract %s: %w", gem.FullName(), err)
+			return InstallReport{}, fmt.Errorf("failed to extract %s: %w", gem.FullName(), err)
 		}
 
 		if err := geminstall.CopyGemToVendorCache(gemPath, filepath.Join(vendorDir, "cache", gemFileName(gem))); err != nil {
-			return commands.InstallReport{}, err
+			return InstallReport{}, err
 		}
 
 		if len(metadata) > 0 {
 			if err := geminstall.WriteGemSpecification(vendorDir, gem, metadata); err != nil {
-				return commands.InstallReport{}, err
+				return InstallReport{}, err
 			}
 		}
 
 		if err := geminstall.LinkGemBinaries(destDir, filepath.Join(vendorDir, "bin")); err != nil {
-			return commands.InstallReport{}, err
+			return InstallReport{}, err
 		}
 
 		extensionTargets = append(extensionTargets, extensionTarget{
@@ -143,7 +143,7 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 	}
 	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig, cacheDir, vendorDir)
 
-	return commands.InstallReport{
+	return InstallReport{
 		Installed:        report.Installed,
 		Skipped:          report.Skipped,
 		ExtensionsBuilt:  report.ExtensionsBuilt,
@@ -152,13 +152,13 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 }
 
 // InstallGitGems installs gems from git sources
-func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (commands.InstallReport, error) {
-	report := installReport{Total: len(gitSpecs)}
+func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
+	report := InstallReport{Total: len(gitSpecs)}
 
 	engine := ruby.DetectEngine()
 
 	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
-		return commands.InstallReport{}, err
+		return InstallReport{}, err
 	}
 
 	extBuilder := extensions.NewBuilder(extConfig)
@@ -173,7 +173,7 @@ func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 			if buildExtensions {
 				needsBuild, err := extensions.NeedsBuild(destDir, engine)
 				if err != nil {
-					return commands.InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
+					return InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
 				}
 				if needsBuild {
 					extensionTargets = append(extensionTargets, extensionTarget{
@@ -187,15 +187,15 @@ func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 		}
 
 		if err := os.RemoveAll(destDir); err != nil {
-			return commands.InstallReport{}, fmt.Errorf("failed to clean install dir for %s: %w", gemName, err)
+			return InstallReport{}, fmt.Errorf("failed to clean install dir for %s: %w", gemName, err)
 		}
 
 		if err := cloneGitGem(spec, destDir); err != nil {
-			return commands.InstallReport{}, fmt.Errorf("failed to clone git gem %s: %w", spec.Name, err)
+			return InstallReport{}, fmt.Errorf("failed to clone git gem %s: %w", spec.Name, err)
 		}
 
 		if err := geminstall.LinkGemBinaries(destDir, filepath.Join(vendorDir, "bin")); err != nil {
-			return commands.InstallReport{}, err
+			return InstallReport{}, err
 		}
 
 		extensionTargets = append(extensionTargets, extensionTarget{
@@ -208,7 +208,7 @@ func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 
 	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig, "", vendorDir)
 
-	return commands.InstallReport{
+	return InstallReport{
 		Installed:        report.Installed,
 		Skipped:          report.Skipped,
 		ExtensionsBuilt:  report.ExtensionsBuilt,
@@ -217,13 +217,13 @@ func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 }
 
 // InstallPathGems installs gems from local paths
-func InstallPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (commands.InstallReport, error) {
-	report := installReport{Total: len(pathSpecs)}
+func InstallPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
+	report := InstallReport{Total: len(pathSpecs)}
 
 	engine := ruby.DetectEngine()
 
 	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
-		return commands.InstallReport{}, err
+		return InstallReport{}, err
 	}
 
 	extBuilder := extensions.NewBuilder(extConfig)
@@ -238,7 +238,7 @@ func InstallPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile
 			if buildExtensions {
 				needsBuild, err := extensions.NeedsBuild(destDir, engine)
 				if err != nil {
-					return commands.InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
+					return InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
 				}
 				if needsBuild {
 					extensionTargets = append(extensionTargets, extensionTarget{
@@ -252,15 +252,15 @@ func InstallPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile
 		}
 
 		if err := os.RemoveAll(destDir); err != nil {
-			return commands.InstallReport{}, fmt.Errorf("failed to clean install dir for %s: %w", gemName, err)
+			return InstallReport{}, fmt.Errorf("failed to clean install dir for %s: %w", gemName, err)
 		}
 
 		if err := copyPathGem(spec, destDir); err != nil {
-			return commands.InstallReport{}, fmt.Errorf("failed to copy path gem %s: %w", spec.Name, err)
+			return InstallReport{}, fmt.Errorf("failed to copy path gem %s: %w", spec.Name, err)
 		}
 
 		if err := geminstall.LinkGemBinaries(destDir, filepath.Join(vendorDir, "bin")); err != nil {
-			return commands.InstallReport{}, err
+			return InstallReport{}, err
 		}
 
 		extensionTargets = append(extensionTargets, extensionTarget{
@@ -273,7 +273,7 @@ func InstallPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile
 
 	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig, "", vendorDir)
 
-	return commands.InstallReport{
+	return InstallReport{
 		Installed:        report.Installed,
 		Skipped:          report.Skipped,
 		ExtensionsBuilt:  report.ExtensionsBuilt,
@@ -281,7 +281,7 @@ func InstallPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile
 	}, nil
 }
 
-func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder, engine ruby.Engine, targets []extensionTarget, report *installReport, extConfig *extensions.BuildConfig, cacheDir, vendorDir string) {
+func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder, engine ruby.Engine, targets []extensionTarget, report *InstallReport, extConfig *extensions.BuildConfig, cacheDir, vendorDir string) {
 	if extConfig == nil || extConfig.SkipExtensions {
 		return
 	}

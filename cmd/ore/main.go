@@ -13,7 +13,6 @@ import (
 	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/logger"
 	"github.com/contriboss/ore-light/internal/ruby"
-	"github.com/contriboss/ore-light/internal/runtime"
 )
 
 var (
@@ -138,7 +137,7 @@ func main() {
 			exitWithError(err)
 		}
 	case "install":
-		if err := runtime.RunInstallDefault(args); err != nil {
+		if err := commands.RunInstallDefault(args); err != nil {
 			exitWithError(err)
 		}
 	case "cache":
@@ -150,7 +149,7 @@ func main() {
 			exitWithError(err)
 		}
 	case "exec":
-		if err := runtime.RunExecDefault(args); err != nil {
+		if err := commands.RunExecDefault(args); err != nil {
 			exitWithError(err)
 		}
 	case "tree":
@@ -170,7 +169,7 @@ func main() {
 			exitWithError(err)
 		}
 	case "search":
-		if err := runtime.RunSearchDefault(args); err != nil {
+		if err := commands.RunSearchDefault(args); err != nil {
 			exitWithError(err)
 		}
 	case "gems":

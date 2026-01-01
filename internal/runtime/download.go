@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/contriboss/gemfile-go/lockfile"
-	"github.com/contriboss/ore-light/cmd/ore/commands"
 	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/ruby"
 	"github.com/contriboss/ore-light/internal/sources"
@@ -26,20 +25,20 @@ const (
 	DEFAULT_RUBY_VERSION = "3.4.8"
 )
 
-type downloadManager struct {
+type DownloadManager struct {
 	cacheDir      string
 	sourceManager *sources.Manager
 	workers       int
 }
 
-type downloadReport struct {
+type DownloadReport struct {
 	Total      int
 	Downloaded int
 	Skipped    int
 	mu         sync.Mutex
 }
 
-func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *http.Client, workers int) (*downloadManager, error) {
+func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *http.Client, workers int) (*DownloadManager, error) {
 	if cacheDir == "" {
 		return nil, fmt.Errorf("cache directory must be provided")
 	}
@@ -57,15 +56,15 @@ func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *h
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &downloadManager{
+	return &DownloadManager{
 		cacheDir:      cacheDir,
 		sourceManager: sources.NewManager(sourceConfigs, client),
 		workers:       workers,
 	}, nil
 }
 
-func (m *downloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSpec, force bool) (*downloadReport, error) {
-	report := &downloadReport{}
+func (m *DownloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSpec, force bool) (*DownloadReport, error) {
+	report := &DownloadReport{}
 	report.Total = len(gems)
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -102,7 +101,7 @@ func (m *downloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSp
 	return report, err
 }
 
-func (m *downloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec, force bool) (bool, error) {
+func (m *DownloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec, force bool) (bool, error) {
 	cachePath := m.cachePathFor(gem)
 	metaPath := cachePath + ".meta"
 	if !force {
@@ -170,11 +169,11 @@ func (m *downloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 	return true, nil
 }
 
-func (m *downloadManager) cachePathFor(gem lockfile.GemSpec) string {
+func (m *DownloadManager) cachePathFor(gem lockfile.GemSpec) string {
 	return filepath.Join(m.cacheDir, gemFileName(gem))
 }
 
-func (m *downloadManager) CheckSourceHealth(ctx context.Context) {
+func (m *DownloadManager) CheckSourceHealth(ctx context.Context) {
 	fmt.Println("Checking gem source availability...")
 	m.sourceManager.CheckHealth(ctx)
 
@@ -195,7 +194,7 @@ func (m *downloadManager) CheckSourceHealth(ctx context.Context) {
 	}
 }
 
-func (m *downloadManager) cacheLocations() []string {
+func (m *DownloadManager) cacheLocations() []string {
 	locations := []string{m.cacheDir}
 
 	if gemPaths := tryGetGemPaths(); len(gemPaths) > 0 {
@@ -255,7 +254,7 @@ func tryGetGemPaths() []string {
 	return defaultPaths
 }
 
-func (m *downloadManager) findInCaches(gem lockfile.GemSpec) string {
+func (m *DownloadManager) findInCaches(gem lockfile.GemSpec) string {
 	fileName := gemFileName(gem)
 	for _, cacheDir := range m.cacheLocations() {
 		path := filepath.Join(cacheDir, fileName)
@@ -294,7 +293,7 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-func (m *downloadManager) CacheDir() string {
+func (m *DownloadManager) CacheDir() string {
 	return m.cacheDir
 }
 
@@ -331,32 +330,8 @@ func defaultHTTPClient() *http.Client {
 	return &http.Client{Timeout: 60 * time.Second}
 }
 
-// downloadManagerAdapter adapts runtime downloadManager to commands.DownloadManager interface
-type downloadManagerAdapter struct {
-	dm *downloadManager
-}
-
-func (a *downloadManagerAdapter) CheckSourceHealth(ctx context.Context) {
-	a.dm.CheckSourceHealth(ctx)
-}
-
-func (a *downloadManagerAdapter) DownloadAll(ctx context.Context, gems []lockfile.GemSpec, force bool) (commands.DownloadReport, error) {
-	report, err := a.dm.DownloadAll(ctx, gems, force)
-	if err != nil {
-		return commands.DownloadReport{}, err
-	}
-	return commands.DownloadReport{
-		Downloaded: report.Downloaded,
-		Skipped:    report.Skipped,
-	}, nil
-}
-
-func (a *downloadManagerAdapter) CacheDir() string {
-	return a.dm.CacheDir()
-}
-
 // NewDownloadManager creates a download manager with configured sources
-func NewDownloadManager(cfg *Config, workers int) (commands.DownloadManager, error) {
+func NewDownloadManager(cfg *Config, workers int) (*DownloadManager, error) {
 	cacheDir, err := config.DefaultCacheDir(configAdapter(cfg))
 	if err != nil {
 		return nil, err
@@ -365,12 +340,7 @@ func NewDownloadManager(cfg *Config, workers int) (commands.DownloadManager, err
 	sourceConfigs := getGemSources(cfg)
 	client := defaultHTTPClient()
 
-	dm, err := newDownloadManager(cacheDir, sourceConfigs, client, workers)
-	if err != nil {
-		return nil, err
-	}
-
-	return &downloadManagerAdapter{dm: dm}, nil
+	return newDownloadManager(cacheDir, sourceConfigs, client, workers)
 }
 
 func getGemSources(cfg *Config) []SourceConfig {
