@@ -12,6 +12,7 @@ import (
 
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
+	"github.com/contriboss/ore-light/cmd/ore/commands"
 	"github.com/contriboss/ore-light/internal/extensions"
 )
 
@@ -143,7 +144,7 @@ func TestRunLockCommandMissingGemfile(t *testing.T) {
 	tmp := t.TempDir()
 	missing := filepath.Join(tmp, "Gemfile")
 
-	err := runLockCommand([]string{"--gemfile", missing})
+	err := commands.RunLock([]string{"--gemfile", missing})
 	if err == nil || !strings.Contains(err.Error(), "gemfile not found") {
 		t.Fatalf("expected missing gemfile error, got %v", err)
 	}

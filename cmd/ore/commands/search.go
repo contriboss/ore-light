@@ -2,6 +2,7 @@ package commands
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -26,8 +27,49 @@ type SearchResult struct {
 	Source           string   `json:"-"` // Not from API, we add this
 }
 
-// Search searches for gems across all configured gem sources
-func Search(query string, limit int, sources []string) error {
+// RunSearch implements the ore search command
+func RunSearch(args []string, getSearchSources func() []string) error {
+	// Separate query from flags
+	// Accept: ore search rails --limit 3  OR  ore search --limit 3 rails
+	var query string
+	var flagArgs []string
+
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--limit" || args[i] == "-limit" {
+			// Skip flag and its value
+			if i+1 < len(args) {
+				flagArgs = append(flagArgs, args[i], args[i+1])
+				i++ // Skip the value
+			}
+		} else if strings.HasPrefix(args[i], "--limit=") || strings.HasPrefix(args[i], "-limit=") {
+			flagArgs = append(flagArgs, args[i])
+		} else if !strings.HasPrefix(args[i], "-") {
+			// This is the query
+			if query == "" {
+				query = args[i]
+			}
+		}
+	}
+
+	if query == "" {
+		return fmt.Errorf("usage: ore search <query> [--limit N]")
+	}
+
+	// Parse flags
+	fs := flag.NewFlagSet("search", flag.ContinueOnError)
+	limit := fs.Int("limit", 10, "Maximum number of results to display")
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+
+	// Get gem sources from config
+	sources := getSearchSources()
+
+	return search(query, *limit, sources)
+}
+
+// search searches for gems across all configured gem sources
+func search(query string, limit int, sources []string) error {
 	if len(sources) == 0 {
 		// Default to rubygems.org if no sources configured
 		sources = []string{"https://rubygems.org"}

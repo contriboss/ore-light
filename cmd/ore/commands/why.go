@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"flag"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,8 +10,23 @@ import (
 	"github.com/contriboss/gemfile-go/lockfile"
 )
 
-// Why shows why a gem is in the bundle by displaying dependency chains
-func Why(gemName string) error {
+// RunWhy implements the ore why command
+func RunWhy(args []string) error {
+	fs := flag.NewFlagSet("why", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if len(fs.Args()) == 0 {
+		return fmt.Errorf("usage: ore why <gem>")
+	}
+
+	gemName := fs.Args()[0]
+	return why(gemName)
+}
+
+// why shows why a gem is in the bundle by displaying dependency chains
+func why(gemName string) error {
 	// Parse lockfile
 	lock, err := lockfile.ParseFile("Gemfile.lock")
 	if err != nil {

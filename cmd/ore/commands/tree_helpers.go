@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"fmt"
@@ -70,8 +70,8 @@ var (
 			Foreground(lipgloss.Color("86")). // Cyan
 			Bold(true)
 
-	versionStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("242")) // Gray
+	treeVersionStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("242")) // Gray
 
 	platformStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("214")). // Orange
@@ -96,8 +96,8 @@ func renderTree(node *TreeNode, prefix string, isLast bool, visited map[string]b
 			prefix,
 			treeCharStyle.Render(connector),
 			gemNameStyle.Render(node.Gem.Name),
-			versionStyle.Render(node.Gem.Version),
-			versionStyle.Render("(already shown)"),
+			treeVersionStyle.Render(node.Gem.Version),
+			treeVersionStyle.Render("(already shown)"),
 		)
 		return
 	}
@@ -115,7 +115,7 @@ func renderTree(node *TreeNode, prefix string, isLast bool, visited map[string]b
 	// Gem info
 	gemInfo := fmt.Sprintf("%s %s",
 		gemNameStyle.Render(node.Gem.Name),
-		versionStyle.Render(node.Gem.Version),
+		treeVersionStyle.Render(node.Gem.Version),
 	)
 
 	// Add platform if present
@@ -168,7 +168,7 @@ func printDependencyTree(specs []lockfile.GemSpec) {
 			// Root level formatting
 			gemInfo := fmt.Sprintf("%s %s",
 				gemNameStyle.Render(root.Name),
-				versionStyle.Render(root.Version),
+				treeVersionStyle.Render(root.Version),
 			)
 
 			if root.Platform != "" {
