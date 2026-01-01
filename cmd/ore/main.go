@@ -11,9 +11,9 @@ import (
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/cmd/ore/commands"
 	"github.com/contriboss/ore-light/internal/config"
-	"github.com/contriboss/ore-light/internal/extensions"
 	"github.com/contriboss/ore-light/internal/logger"
 	"github.com/contriboss/ore-light/internal/ruby"
+	"github.com/contriboss/ore-light/internal/runtime"
 )
 
 var (
@@ -138,14 +138,7 @@ func main() {
 			exitWithError(err)
 		}
 	case "install":
-		callbacks := commands.InstallCallbacks{
-			GetDownloadManager:  newDefaultDownloadManagerAdapter,
-			GetDefaultVendorDir: defaultVendorDir,
-			InstallFromCache:    installFromCacheAdapter,
-			InstallGitGems:      installGitGemsAdapter,
-			InstallPathGems:     installPathGemsAdapter,
-		}
-		if err := commands.RunInstall(args, callbacks); err != nil {
+		if err := runtime.RunInstallDefault(args); err != nil {
 			exitWithError(err)
 		}
 	case "cache":
@@ -157,7 +150,7 @@ func main() {
 			exitWithError(err)
 		}
 	case "exec":
-		if err := commands.RunExec(args, buildExecutionEnv); err != nil {
+		if err := runtime.RunExecDefault(args); err != nil {
 			exitWithError(err)
 		}
 	case "tree":
@@ -177,7 +170,7 @@ func main() {
 			exitWithError(err)
 		}
 	case "search":
-		if err := commands.RunSearch(args, getSearchSources); err != nil {
+		if err := runtime.RunSearchDefault(args); err != nil {
 			exitWithError(err)
 		}
 	case "gems":
@@ -382,62 +375,6 @@ func (a *downloadManagerAdapter) CacheDir() string {
 	return a.dm.CacheDir()
 }
 
-func newDefaultDownloadManagerAdapter(workers int) (commands.DownloadManager, error) {
-	cacheDir, err := defaultCacheDir()
-	if err != nil {
-		return nil, err
-	}
-
-	sourceConfigs := getGemSources()
-	client := defaultHTTPClient()
-
-	dm, err := newDownloadManager(cacheDir, sourceConfigs, client, workers)
-	if err != nil {
-		return nil, err
-	}
-
-	return &downloadManagerAdapter{dm: dm}, nil
-}
-
-func installFromCacheAdapter(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (commands.InstallReport, error) {
-	report, err := installFromCache(ctx, cacheDir, vendorDir, gems, force, buildExtensions, extConfig)
-	if err != nil {
-		return commands.InstallReport{}, err
-	}
-	return commands.InstallReport{
-		Installed:        report.Installed,
-		Skipped:          report.Skipped,
-		ExtensionsBuilt:  report.ExtensionsBuilt,
-		ExtensionsFailed: report.ExtensionsFailed,
-	}, nil
-}
-
-func installGitGemsAdapter(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (commands.InstallReport, error) {
-	report, err := installGitGems(ctx, vendorDir, gitSpecs, force, buildExtensions, extConfig)
-	if err != nil {
-		return commands.InstallReport{}, err
-	}
-	return commands.InstallReport{
-		Installed:        report.Installed,
-		Skipped:          report.Skipped,
-		ExtensionsBuilt:  report.ExtensionsBuilt,
-		ExtensionsFailed: report.ExtensionsFailed,
-	}, nil
-}
-
-func installPathGemsAdapter(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (commands.InstallReport, error) {
-	report, err := installPathGems(ctx, vendorDir, pathSpecs, force, buildExtensions, extConfig)
-	if err != nil {
-		return commands.InstallReport{}, err
-	}
-	return commands.InstallReport{
-		Installed:        report.Installed,
-		Skipped:          report.Skipped,
-		ExtensionsBuilt:  report.ExtensionsBuilt,
-		ExtensionsFailed: report.ExtensionsFailed,
-	}, nil
-}
-
 func defaultHTTPClient() *http.Client {
 	return &http.Client{Timeout: 60 * time.Second}
 }
@@ -455,19 +392,4 @@ func getGemSources() []SourceConfig {
 			Fallback: "",
 		},
 	}
-}
-
-// getSearchSources returns the list of gem source URLs to search
-func getSearchSources() []string {
-	// Check if user has configured sources
-	if appConfig != nil && len(appConfig.GemSources) > 0 {
-		sources := make([]string, 0, len(appConfig.GemSources))
-		for _, src := range appConfig.GemSources {
-			sources = append(sources, src.URL)
-		}
-		return sources
-	}
-
-	// Default to rubygems.org
-	return []string{"https://rubygems.org"}
 }
