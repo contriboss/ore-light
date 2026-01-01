@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,17 +12,35 @@ import (
 	"github.com/contriboss/ore-light/internal/geminstall"
 )
 
-// Pristine restores gems to their pristine condition using pure Go
-func Pristine(gemNames []string, lockfilePath, cacheDir, vendorDir string) error {
+// RunPristine implements the ore pristine command
+func RunPristine(args []string) error {
+	fs := flag.NewFlagSet("pristine", flag.ContinueOnError)
+	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
+	vendorDir := fs.String("vendor", defaultVendorDir(), "Path to installed gems")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cacheDir, err := defaultCacheDir()
+	if err != nil {
+		return err
+	}
+
+	gemNames := fs.Args()
+	return pristine(gemNames, *lockfilePath, cacheDir, *vendorDir)
+}
+
+// pristine restores gems to their pristine condition using pure Go
+func pristine(gemNames []string, lockfilePath, cacheDir, vendorDir string) error {
+	// If no gems specified, require explicit gem names (like Bundler does)
+	if len(gemNames) == 0 {
+		return fmt.Errorf("usage: ore pristine <gem> [<gem>...]\n\nRestores specified gems to pristine condition")
+	}
+
 	// Parse lockfile to get gem info
 	lock, err := lockfile.ParseFile(lockfilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse Gemfile.lock: %w", err)
-	}
-
-	// If no gems specified, require explicit gem names (like Bundler does)
-	if len(gemNames) == 0 {
-		return fmt.Errorf("usage: ore pristine <gem> [<gem>...]\n\nRestores specified gems to pristine condition")
 	}
 
 	// Build map of available gems

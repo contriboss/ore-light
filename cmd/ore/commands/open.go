@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,8 +11,24 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Open opens a gem's source directory in the user's editor
-func Open(gemName, vendorDir string) error {
+// RunOpen implements the ore open command
+func RunOpen(args []string) error {
+	fs := flag.NewFlagSet("open", flag.ContinueOnError)
+	vendorDir := fs.String("vendor", defaultVendorDir(), "Path to installed gems")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if len(fs.Args()) == 0 {
+		return fmt.Errorf("usage: ore open <gem>")
+	}
+
+	gemName := fs.Args()[0]
+	return open(gemName, *vendorDir)
+}
+
+// open opens a gem's source directory in the user's editor
+func open(gemName, vendorDir string) error {
 	if gemName == "" {
 		return fmt.Errorf("gem name is required")
 	}

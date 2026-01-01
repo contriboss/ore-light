@@ -6,23 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"runtime/pprof"
-	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/cmd/ore/commands"
-	"github.com/contriboss/ore-light/internal/audit"
-	"github.com/contriboss/ore-light/internal/cache"
 	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/extensions"
 	"github.com/contriboss/ore-light/internal/logger"
-	"github.com/contriboss/ore-light/internal/resolver"
 	"github.com/contriboss/ore-light/internal/ruby"
 )
 
@@ -116,7 +106,7 @@ func main() {
 			exitWithError(err)
 		}
 	case "open":
-		if err := runOpenCommand(args); err != nil {
+		if err := commands.RunOpen(args); err != nil {
 			exitWithError(err)
 		}
 	case "show":
@@ -128,7 +118,7 @@ func main() {
 			exitWithError(err)
 		}
 	case "pristine":
-		if err := runPristineCommand(args); err != nil {
+		if err := commands.RunPristine(args); err != nil {
 			exitWithError(err)
 		}
 	case "config":
@@ -136,7 +126,7 @@ func main() {
 			exitWithError(err)
 		}
 	case "lock":
-		if err := runLockCommand(args); err != nil {
+		if err := commands.RunLock(args); err != nil {
 			exitWithError(err)
 		}
 	case "self-update", "selfupdate":
@@ -148,11 +138,18 @@ func main() {
 			exitWithError(err)
 		}
 	case "install":
-		if err := runInstallCommand(args); err != nil {
+		callbacks := commands.InstallCallbacks{
+			GetDownloadManager:  newDefaultDownloadManagerAdapter,
+			GetDefaultVendorDir: defaultVendorDir,
+			InstallFromCache:    installFromCacheAdapter,
+			InstallGitGems:      installGitGemsAdapter,
+			InstallPathGems:     installPathGemsAdapter,
+		}
+		if err := commands.RunInstall(args, callbacks); err != nil {
 			exitWithError(err)
 		}
 	case "cache":
-		if err := runCacheCommand(args); err != nil {
+		if err := commands.RunCache(args); err != nil {
 			exitWithError(err)
 		}
 	case "completion":
@@ -160,15 +157,15 @@ func main() {
 			exitWithError(err)
 		}
 	case "exec":
-		if err := runExecCommand(args); err != nil {
+		if err := commands.RunExec(args, buildExecutionEnv); err != nil {
 			exitWithError(err)
 		}
 	case "tree":
-		if err := runTreeCommand(args); err != nil {
+		if err := commands.RunTree(args); err != nil {
 			exitWithError(err)
 		}
 	case "audit":
-		if err := runAuditCommand(args); err != nil {
+		if err := commands.RunAudit(args); err != nil {
 			exitWithError(err)
 		}
 	case "stats":
@@ -176,15 +173,20 @@ func main() {
 			exitWithError(err)
 		}
 	case "why":
-		if err := runWhyCommand(args); err != nil {
+		if err := commands.RunWhy(args); err != nil {
 			exitWithError(err)
 		}
 	case "search":
-		if err := runSearchCommand(args); err != nil {
+		if err := commands.RunSearch(args, getSearchSources); err != nil {
 			exitWithError(err)
 		}
 	case "gems":
-		if err := runGemsCommand(args); err != nil {
+		fs := flag.NewFlagSet("gems", flag.ContinueOnError)
+		filter := fs.String("filter", "", "Filter gems by name")
+		if err := fs.Parse(args); err != nil {
+			exitWithError(err)
+		}
+		if err := commands.RunGems(*filter); err != nil {
 			exitWithError(err)
 		}
 	case "browse":
@@ -196,69 +198,6 @@ func main() {
 		printHelp()
 		os.Exit(1)
 	}
-}
-
-func runLockCommand(args []string) error {
-	fs := flag.NewFlagSet("lock", flag.ContinueOnError)
-	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
-	verbose := fs.Bool("v", false, "Enable verbose output")
-	cpuProfile := fs.String("cpuprofile", "", "Write CPU profile to file")
-
-	// Multi-value flag for platforms (like bundle lock --add-platform)
-	var platforms []string
-	fs.Func("add-platform", "Add a platform to the lockfile (can be repeated)", func(s string) error {
-		platforms = append(platforms, s)
-		return nil
-	})
-
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	// Enable CPU profiling if requested
-	if *cpuProfile != "" {
-		f, err := os.Create(*cpuProfile)
-		if err != nil {
-			return fmt.Errorf("failed to create CPU profile: %w", err)
-		}
-		defer func() {
-			if cerr := f.Close(); cerr != nil && err == nil {
-				err = fmt.Errorf("failed to close CPU profile: %w", cerr)
-			}
-		}()
-		if err := pprof.StartCPUProfile(f); err != nil {
-			return fmt.Errorf("failed to start CPU profile: %w", err)
-		}
-		defer pprof.StopCPUProfile()
-	}
-
-	if _, err := os.Stat(*gemfilePath); err != nil {
-		return fmt.Errorf("gemfile not found at %s", *gemfilePath)
-	}
-
-	if *verbose {
-		fmt.Printf("🔒 Resolving dependencies from %s…\n", *gemfilePath)
-	}
-
-	startTime := time.Now()
-	if err := resolver.GenerateLockfileWithPlatforms(*gemfilePath, nil, platforms); err != nil {
-		return fmt.Errorf("failed to generate lockfile: %w", err)
-	}
-	elapsed := time.Since(startTime)
-
-	if *cpuProfile != "" {
-		fmt.Printf("⏱️  Resolution took: %v\n", elapsed)
-	}
-
-	lockfilePath := *gemfilePath + ".lock"
-	if *verbose {
-		fmt.Printf("✅ Updated %s\n", lockfilePath)
-	} else {
-		fmt.Printf("✨ Wrote %s\n", lockfilePath)
-	}
-
-	fmt.Println("💡 Run `ore install` to fetch the resolved gems.")
-	return nil
 }
 
 func printHelp() {
@@ -323,319 +262,13 @@ func exitWithError(err error) {
 	os.Exit(1)
 }
 
-func runInstallCommand(args []string) error {
-	startTime := time.Now()
-
-	fs := flag.NewFlagSet("install", flag.ContinueOnError)
-	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
-	workers := fs.Int("workers", runtime.NumCPU(), "Number of concurrent downloads")
-	force := fs.Bool("force", false, "Re-download or reinstall even if artifacts exist")
-	vendorDir := fs.String("vendor", defaultVendorDir(), "Destination directory for installed gems")
-	skipExtensions := fs.Bool("skip-extensions", false, "Skip building native extensions")
-	buildExtensions := fs.Bool("build-extensions", false, "Force building native extensions even for already-installed gems")
-	verbose := fs.Bool("verbose", false, "Enable verbose output including extension build logs")
-	without := fs.String("without", "", "Comma-separated list of groups to exclude (e.g., development,test)")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	dm, err := newDefaultDownloadManager(*workers)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Perform pre-flight health checks on gem sources
-	dm.CheckSourceHealth(ctx)
-
-	// Load both regular gems and git gems from lockfile
-	parsed, err := loadLockfile(*lockfilePath)
-	if err != nil {
-		return err
-	}
-
-	if len(parsed.GemSpecs) == 0 && len(parsed.GitSpecs) == 0 {
-		fmt.Println("No gems found in lockfile.")
-		return nil
-	}
-
-	// Parse excluded groups from --without flag
-	var excludeGroups []string
-	if *without != "" {
-		excludeGroups = parseGroupList(*without)
-		if *verbose {
-			fmt.Printf("Excluding groups: %v\n", excludeGroups)
-		}
-
-		// If filtering by groups, we need to load the Gemfile to get group information
-		gemfilePath := detectGemfileFromLock(*lockfilePath)
-		if gemfilePath == "" {
-			gemfilePath = "Gemfile"
-		}
-
-		if err := enrichGemsWithGroups(gemfilePath, parsed); err != nil {
-			if *verbose {
-				fmt.Fprintf(os.Stderr, "Warning: could not load Gemfile for group filtering: %v\n", err)
-				fmt.Fprintf(os.Stderr, "Proceeding without group filtering.\n")
-			}
-			excludeGroups = nil // Disable filtering if we can't read the Gemfile
-		}
-	}
-
-	// Filter and deduplicate GemSpecs
-	gems := deduplicateGemSpecs(parsed.GemSpecs)
-	if len(excludeGroups) > 0 {
-		// Filter by groups - only keep direct dependencies with allowed groups
-		gems = filterGemsByGroupsAndDependencies(gems, parsed.GemSpecs, excludeGroups)
-	}
-
-	// Filter by current platform
-	gems = filterGemsByPlatform(gems)
-
-	// Download regular gems from rubygems.org
-	// Note: Engine compatibility filtering happens during installation
-	// after extracting metadata (which contains extension info)
-	if len(gems) > 0 {
-		downloadReport, err := dm.DownloadAll(ctx, gems, *force)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Cache ready. %d fetched, %d reused.\n", downloadReport.Downloaded, downloadReport.Skipped)
-	}
-
-	// Import the extensions package for config
-	extConfig := buildExtensionConfig(*skipExtensions, *verbose, *vendorDir)
-
-	// Install regular gems
-	var totalInstalled, totalSkipped, totalExtBuilt, totalExtFailed int
-	if len(gems) > 0 {
-		installReport, err := installFromCache(ctx, dm.CacheDir(), *vendorDir, gems, *force, *buildExtensions, extConfig)
-		if err != nil {
-			return err
-		}
-		totalInstalled += installReport.Installed
-		totalSkipped += installReport.Skipped
-		totalExtBuilt += installReport.ExtensionsBuilt
-		totalExtFailed += installReport.ExtensionsFailed
-	}
-
-	// Filter and install git gems
-	gitSpecs := parsed.GitSpecs
-	if len(excludeGroups) > 0 {
-		gitSpecs = filterGitGemsByGroups(gitSpecs, excludeGroups)
-	}
-	if len(gitSpecs) > 0 {
-		fmt.Printf("Installing %d git gem(s)...\n", len(gitSpecs))
-		gitReport, err := installGitGems(ctx, *vendorDir, gitSpecs, *force, *buildExtensions, extConfig)
-		if err != nil {
-			return err
-		}
-		totalInstalled += gitReport.Installed
-		totalSkipped += gitReport.Skipped
-		totalExtBuilt += gitReport.ExtensionsBuilt
-		totalExtFailed += gitReport.ExtensionsFailed
-	}
-
-	// Filter and install path gems
-	pathSpecs := parsed.PathSpecs
-	if len(excludeGroups) > 0 {
-		pathSpecs = filterPathGemsByGroups(pathSpecs, excludeGroups)
-	}
-	if len(pathSpecs) > 0 {
-		fmt.Printf("Installing %d path gem(s)...\n", len(pathSpecs))
-		pathReport, err := installPathGems(ctx, *vendorDir, pathSpecs, *force, *buildExtensions, extConfig)
-		if err != nil {
-			return err
-		}
-		totalInstalled += pathReport.Installed
-		totalSkipped += pathReport.Skipped
-		totalExtBuilt += pathReport.ExtensionsBuilt
-		totalExtFailed += pathReport.ExtensionsFailed
-	}
-
-	elapsed := time.Since(startTime)
-
-	// Simplify vendor dir display for common paths
-	vendorDisplay := *vendorDir
-	if home, err := os.UserHomeDir(); err == nil {
-		vendorDisplay = strings.Replace(vendorDisplay, home, "~", 1)
-	}
-	if cwd, err := os.Getwd(); err == nil {
-		if rel, err := filepath.Rel(cwd, *vendorDir); err == nil && !strings.HasPrefix(rel, "..") {
-			vendorDisplay = rel
-		}
-	}
-
-	fmt.Printf("Installed %d gems (%d skipped) into %s in %s.\n", totalInstalled, totalSkipped, vendorDisplay, elapsed.Round(time.Millisecond))
-
-	if totalExtBuilt > 0 {
-		fmt.Printf("Built %d native extension(s).\n", totalExtBuilt)
-	}
-	if totalExtFailed > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: %d extension(s) failed to build.\n", totalExtFailed)
-	}
-
-	// Display post-install messages
-	if totalInstalled > 0 {
-		if messages, err := commands.ReadPostInstallMessages(*vendorDir); err == nil {
-			commands.DisplayPostInstallMessages(messages)
-		}
-	}
-
-	// Build simplified exec command suggestion
-	execCmd := "ore exec"
-
-	// Only include --lockfile if non-default
-	defaultLock := defaultLockfilePath()
-	if *lockfilePath != defaultLock {
-		// Simplify lockfile path
-		lockDisplay := *lockfilePath
-		if cwd, err := os.Getwd(); err == nil {
-			if rel, err := filepath.Rel(cwd, *lockfilePath); err == nil && !strings.HasPrefix(rel, "..") {
-				lockDisplay = rel
-			}
-		}
-		execCmd += fmt.Sprintf(" --lockfile=%s", lockDisplay)
-	}
-
-	// Only include --vendor if non-default
-	defaultVendor := defaultVendorDir()
-	if *vendorDir != defaultVendor {
-		execCmd += fmt.Sprintf(" --vendor=%s", vendorDisplay)
-	}
-
-	execCmd += " <command>"
-
-	fmt.Printf("Use `%s` to run commands with this environment.\n", execCmd)
-	return nil
-}
-
-func runCacheCommand(args []string) error {
-	if len(args) == 0 {
-		printCacheHelp()
-		return nil
-	}
-
-	switch args[0] {
-	case "info":
-		return runCacheInfo(args[1:])
-	case "prune":
-		return runCachePrune(args[1:])
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown cache subcommand %q\n\n", args[0])
-		printCacheHelp()
-		return nil
-	}
-}
-
-func printCacheHelp() {
-	fmt.Print(`Usage: ore cache <subcommand>
-
-Subcommands:
-  info         Show cache location, size, and gem count
-  prune        Remove all cached gems
-`)
-}
-
-func runCacheInfo(args []string) error {
-	fs := flag.NewFlagSet("cache info", flag.ContinueOnError)
-	workers := fs.Int("workers", runtime.NumCPU(), "Number of concurrent operations (unused but reserved)")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	_ = workers // Reserved for future use
-
-	cacheDir, err := defaultCacheDir()
-	if err != nil {
-		return err
-	}
-
-	stats, err := collectCacheStats(cacheDir)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Cache directory: %s\n", cacheDir)
-	fmt.Printf("Cached gems:    %d\n", stats.Files)
-	fmt.Printf("Total size:     %s\n", humanBytes(stats.TotalSize))
-	return nil
-}
-
-func runCachePrune(args []string) error {
-	fs := flag.NewFlagSet("cache prune", flag.ContinueOnError)
-	dryRun := fs.Bool("dry-run", false, "Show what would be removed without deleting files")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	cacheDir, err := defaultCacheDir()
-	if err != nil {
-		return err
-	}
-
-	if *dryRun {
-		stats, err := collectCacheStats(cacheDir)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("[dry-run] Would remove %d files (%s) from %s\n", stats.Files, humanBytes(stats.TotalSize), cacheDir)
-		return nil
-	}
-
-	if err := os.RemoveAll(cacheDir); err != nil {
-		return fmt.Errorf("failed to prune cache: %w", err)
-	}
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		return fmt.Errorf("failed to recreate cache dir: %w", err)
-	}
-
-	fmt.Printf("Cache cleared: %s\n", cacheDir)
-	return nil
-}
-
-func runExecCommand(args []string) error {
-	fs := flag.NewFlagSet("exec", flag.ContinueOnError)
-	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
-	vendorDir := fs.String("vendor", defaultVendorDir(), "Path to installed gems (created by ore install)")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	cmdArgs := fs.Args()
-	if len(cmdArgs) == 0 {
-		return fmt.Errorf("no command provided; usage: ore exec [options] -- <command> [args...]")
-	}
-
-	gems, err := loadGemSpecs(*lockfilePath)
-	if err != nil {
-		return err
-	}
-
-	env, err := buildExecutionEnv(*vendorDir, gems)
-	if err != nil {
-		return err
-	}
-
-	// When using system gems, run command directly (not via bundle exec)
-	// Bundler's auto-load in Ruby 3.4+ handles gem activation automatically
-	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
-	cmd.Env = env
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	return cmd.Run()
+func defaultVendorDir() string {
+	cfg := configAdapter(appConfig)
+	return config.DefaultVendorDir(cfg, detectRubyVersion, getSystemGemDir)
 }
 
 func defaultLockfilePath() string {
 	return config.DefaultLockfilePath()
-}
-
-func defaultVendorDir() string {
-	cfg := configAdapter(appConfig)
-	return config.DefaultVendorDir(cfg, detectRubyVersion, getSystemGemDir)
 }
 
 // configAdapter converts main.Config to internal/config.Config
@@ -721,21 +354,35 @@ func deduplicateGemSpecs(specs []lockfile.GemSpec) []lockfile.GemSpec {
 	return result
 }
 
-func humanBytes(size int64) string {
-	return cache.HumanBytes(size)
-}
-
 func defaultCacheDir() (string, error) {
 	return config.DefaultCacheDir(configAdapter(appConfig))
 }
 
-type cacheStats = cache.Stats
-
-func collectCacheStats(cacheDir string) (cacheStats, error) {
-	return cache.CollectStats(cacheDir)
+// downloadManagerAdapter adapts main's downloadManager to commands.DownloadManager interface
+type downloadManagerAdapter struct {
+	dm *downloadManager
 }
 
-func newDefaultDownloadManager(workers int) (*downloadManager, error) {
+func (a *downloadManagerAdapter) CheckSourceHealth(ctx context.Context) {
+	a.dm.CheckSourceHealth(ctx)
+}
+
+func (a *downloadManagerAdapter) DownloadAll(ctx context.Context, gems []lockfile.GemSpec, force bool) (commands.DownloadReport, error) {
+	report, err := a.dm.DownloadAll(ctx, gems, force)
+	if err != nil {
+		return commands.DownloadReport{}, err
+	}
+	return commands.DownloadReport{
+		Downloaded: report.Downloaded,
+		Skipped:    report.Skipped,
+	}, nil
+}
+
+func (a *downloadManagerAdapter) CacheDir() string {
+	return a.dm.CacheDir()
+}
+
+func newDefaultDownloadManagerAdapter(workers int) (commands.DownloadManager, error) {
 	cacheDir, err := defaultCacheDir()
 	if err != nil {
 		return nil, err
@@ -744,7 +391,51 @@ func newDefaultDownloadManager(workers int) (*downloadManager, error) {
 	sourceConfigs := getGemSources()
 	client := defaultHTTPClient()
 
-	return newDownloadManager(cacheDir, sourceConfigs, client, workers)
+	dm, err := newDownloadManager(cacheDir, sourceConfigs, client, workers)
+	if err != nil {
+		return nil, err
+	}
+
+	return &downloadManagerAdapter{dm: dm}, nil
+}
+
+func installFromCacheAdapter(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (commands.InstallReport, error) {
+	report, err := installFromCache(ctx, cacheDir, vendorDir, gems, force, buildExtensions, extConfig)
+	if err != nil {
+		return commands.InstallReport{}, err
+	}
+	return commands.InstallReport{
+		Installed:        report.Installed,
+		Skipped:          report.Skipped,
+		ExtensionsBuilt:  report.ExtensionsBuilt,
+		ExtensionsFailed: report.ExtensionsFailed,
+	}, nil
+}
+
+func installGitGemsAdapter(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (commands.InstallReport, error) {
+	report, err := installGitGems(ctx, vendorDir, gitSpecs, force, buildExtensions, extConfig)
+	if err != nil {
+		return commands.InstallReport{}, err
+	}
+	return commands.InstallReport{
+		Installed:        report.Installed,
+		Skipped:          report.Skipped,
+		ExtensionsBuilt:  report.ExtensionsBuilt,
+		ExtensionsFailed: report.ExtensionsFailed,
+	}, nil
+}
+
+func installPathGemsAdapter(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (commands.InstallReport, error) {
+	report, err := installPathGems(ctx, vendorDir, pathSpecs, force, buildExtensions, extConfig)
+	if err != nil {
+		return commands.InstallReport{}, err
+	}
+	return commands.InstallReport{
+		Installed:        report.Installed,
+		Skipped:          report.Skipped,
+		ExtensionsBuilt:  report.ExtensionsBuilt,
+		ExtensionsFailed: report.ExtensionsFailed,
+	}, nil
 }
 
 func defaultHTTPClient() *http.Client {
@@ -766,599 +457,6 @@ func getGemSources() []SourceConfig {
 	}
 }
 
-func detectGemfileFromLock(lockfilePath string) string {
-	if lockfilePath == "" {
-		lockfilePath = "Gemfile.lock"
-	}
-
-	// Handle gems.locked -> gems.rb
-	if strings.HasSuffix(lockfilePath, "gems.locked") {
-		candidate := strings.TrimSuffix(lockfilePath, ".locked") + ".rb"
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-		return ""
-	}
-
-	// Handle Gemfile.lock -> Gemfile (and other .lock files)
-	if !strings.HasSuffix(lockfilePath, ".lock") {
-		return ""
-	}
-	candidate := strings.TrimSuffix(lockfilePath, ".lock")
-	if _, err := os.Stat(candidate); err == nil {
-		return candidate
-	}
-	return ""
-}
-
-func buildExtensionConfig(skipExtensions, verbose bool, vendorDir string) *extensions.BuildConfig {
-	// Check environment variable override
-	if extensions.ShouldSkipExtensions() {
-		skipExtensions = true
-	}
-
-	config := &extensions.BuildConfig{
-		SkipExtensions: skipExtensions,
-		Verbose:        verbose,
-		Parallel:       runtime.NumCPU(),
-		VendorDir:      vendorDir,
-	}
-
-	// Check if Ruby is available
-	if !skipExtensions && !extensions.IsRubyAvailable() {
-		fmt.Fprintf(os.Stderr, "Warning: Ruby not found in PATH. Native extensions will be skipped.\n")
-		fmt.Fprintf(os.Stderr, "Install Ruby or use --skip-extensions to suppress this warning.\n")
-		config.SkipExtensions = true
-	}
-
-	return config
-}
-
-// parseGroupList parses a comma-separated list of groups
-func parseGroupList(groupsStr string) []string {
-	if groupsStr == "" {
-		return nil
-	}
-
-	groups := strings.Split(groupsStr, ",")
-	result := make([]string, 0, len(groups))
-	for _, g := range groups {
-		g = strings.TrimSpace(g)
-		if g != "" {
-			result = append(result, g)
-		}
-	}
-	return result
-}
-
-// filterGemsByGroupsAndDependencies filters gems by groups and includes transitive dependencies
-func filterGemsByGroupsAndDependencies(gems []lockfile.GemSpec, allGems []lockfile.GemSpec, excludeGroups []string) []lockfile.GemSpec {
-	// Create a map of all gems for lookup
-	gemMap := make(map[string]lockfile.GemSpec)
-	for _, gem := range allGems {
-		gemMap[gem.Name] = gem
-	}
-
-	// Identify gems that should be kept (have groups and are not excluded)
-	// Gems with empty groups are transitive deps, we'll handle them later
-	rootGems := make(map[string]bool)
-	for _, gem := range gems {
-		if len(gem.Groups) > 0 {
-			// This is a direct dependency from Gemfile
-			excluded := false
-			for _, gemGroup := range gem.Groups {
-				for _, excludeGroup := range excludeGroups {
-					if gemGroup == excludeGroup {
-						excluded = true
-						break
-					}
-				}
-				if excluded {
-					break
-				}
-			}
-			if !excluded {
-				rootGems[gem.Name] = true
-			}
-		}
-	}
-
-	// Perform depth-first traversal to find all needed dependencies
-	neededGems := make(map[string]bool)
-	var collectDependencies func(gemName string)
-	collectDependencies = func(gemName string) {
-		if neededGems[gemName] {
-			return // Already processed
-		}
-		neededGems[gemName] = true
-
-		if gem, found := gemMap[gemName]; found {
-			for _, dep := range gem.Dependencies {
-				collectDependencies(dep.Name)
-			}
-		}
-	}
-
-	// Collect all dependencies of root gems
-	for gemName := range rootGems {
-		collectDependencies(gemName)
-	}
-
-	// Build final result with only needed gems
-	var result []lockfile.GemSpec
-	for _, gem := range allGems {
-		if neededGems[gem.Name] {
-			result = append(result, gem)
-		}
-	}
-
-	return result
-}
-
-// filterGemsByPlatform filters gems to only include compatible platforms
-func filterGemsByPlatform(gems []lockfile.GemSpec) []lockfile.GemSpec {
-	currentPlatform := detectCurrentPlatform()
-
-	var filtered []lockfile.GemSpec
-	for _, gem := range gems {
-		// Keep pure Ruby gems (no platform constraint)
-		if gem.Platform == "" {
-			filtered = append(filtered, gem)
-			continue
-		}
-
-		// Keep gems matching current platform
-		if platformMatches(gem.Platform, currentPlatform) {
-			filtered = append(filtered, gem)
-		}
-	}
-	return filtered
-}
-
-// detectCurrentPlatform returns the current platform string compatible with RubyGems
-func detectCurrentPlatform() string {
-	// Try using Ruby to get the exact platform if available
-	cmd := exec.Command("ruby", "-e", "require 'rbconfig'; puts RbConfig::CONFIG['arch']")
-	if output, err := cmd.Output(); err == nil {
-		platform := strings.TrimSpace(string(output))
-		if platform != "" {
-			return platform
-		}
-	}
-
-	// Fallback to Go's runtime detection
-	// Map Go's GOOS/GOARCH to RubyGems platform strings
-	arch := runtime.GOARCH
-	goos := runtime.GOOS
-
-	// Map Go arch to Ruby arch
-	rubyArch := arch
-	switch arch {
-	case "amd64":
-		rubyArch = "x86_64"
-	case "arm64":
-		rubyArch = "arm64"
-	case "386":
-		rubyArch = "x86"
-	}
-
-	// Map Go OS to Ruby OS (Unix-only)
-	rubyOS := goos
-	switch goos {
-	case "darwin":
-		rubyOS = "darwin"
-	case "linux":
-		rubyOS = "linux"
-	default:
-		fmt.Fprintf(os.Stderr, "Error: %s is not supported. ore-light only supports Unix-based systems (macOS and Linux).\n", goos)
-		os.Exit(1)
-	}
-
-	return fmt.Sprintf("%s-%s", rubyArch, rubyOS)
-}
-
-// platformMatches checks if a gem platform matches the current platform
-func platformMatches(gemPlatform, currentPlatform string) bool {
-	// Exact match
-	if gemPlatform == currentPlatform {
-		return true
-	}
-
-	// Platform variants - extract base platform components
-	// Examples: arm64-darwin-24 matches arm64-darwin
-	//           x86_64-linux-gnu matches x86_64-linux
-	gemParts := strings.Split(gemPlatform, "-")
-	currentParts := strings.Split(currentPlatform, "-")
-
-	// Need at least arch-os
-	if len(gemParts) < 2 || len(currentParts) < 2 {
-		return false
-	}
-
-	// Match arch and os (first two components)
-	return gemParts[0] == currentParts[0] && gemParts[1] == currentParts[1]
-}
-
-// filterGitGemsByGroups filters git gems by excluding specified groups
-func filterGitGemsByGroups(gitSpecs []lockfile.GitGemSpec, excludeGroups []string) []lockfile.GitGemSpec {
-	var result []lockfile.GitGemSpec
-	for _, gem := range gitSpecs {
-		if len(gem.Groups) == 0 {
-			// No group info means it's not in the Gemfile, skip it
-			continue
-		}
-
-		excluded := false
-		for _, gemGroup := range gem.Groups {
-			for _, excludeGroup := range excludeGroups {
-				if gemGroup == excludeGroup {
-					excluded = true
-					break
-				}
-			}
-			if excluded {
-				break
-			}
-		}
-
-		if !excluded {
-			result = append(result, gem)
-		}
-	}
-	return result
-}
-
-// filterPathGemsByGroups filters path gems by excluding specified groups
-func filterPathGemsByGroups(pathSpecs []lockfile.PathGemSpec, excludeGroups []string) []lockfile.PathGemSpec {
-	var result []lockfile.PathGemSpec
-	for _, gem := range pathSpecs {
-		if len(gem.Groups) == 0 {
-			// No group info means it's not in the Gemfile, skip it
-			continue
-		}
-
-		excluded := false
-		for _, gemGroup := range gem.Groups {
-			for _, excludeGroup := range excludeGroups {
-				if gemGroup == excludeGroup {
-					excluded = true
-					break
-				}
-			}
-			if excluded {
-				break
-			}
-		}
-
-		if !excluded {
-			result = append(result, gem)
-		}
-	}
-	return result
-}
-
-// enrichGemsWithGroups reads the Gemfile and enriches lockfile gems with group information
-func enrichGemsWithGroups(gemfilePath string, parsed *lockfile.Lockfile) error {
-	parser := gemfile.NewGemfileParser(gemfilePath)
-	parsedGemfile, err := parser.Parse()
-	if err != nil {
-		return fmt.Errorf("failed to parse Gemfile: %w", err)
-	}
-
-	// Create a map of gem name -> groups from the Gemfile
-	gemGroups := make(map[string][]string)
-	for _, dep := range parsedGemfile.Dependencies {
-		if len(dep.Groups) > 0 {
-			gemGroups[dep.Name] = dep.Groups
-		} else {
-			gemGroups[dep.Name] = []string{"default"}
-		}
-	}
-
-	// Enrich GemSpecs with group information
-	for i := range parsed.GemSpecs {
-		if groups, found := gemGroups[parsed.GemSpecs[i].Name]; found {
-			parsed.GemSpecs[i].Groups = groups
-		}
-	}
-
-	// Enrich GitGemSpecs with group information
-	for i := range parsed.GitSpecs {
-		if groups, found := gemGroups[parsed.GitSpecs[i].Name]; found {
-			parsed.GitSpecs[i].Groups = groups
-		}
-	}
-
-	// Enrich PathGemSpecs with group information
-	for i := range parsed.PathSpecs {
-		if groups, found := gemGroups[parsed.PathSpecs[i].Name]; found {
-			parsed.PathSpecs[i].Groups = groups
-		}
-	}
-
-	return nil
-}
-
-func runTreeCommand(args []string) error {
-	fs := flag.NewFlagSet("tree", flag.ContinueOnError)
-	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	parsed, err := loadLockfile(*lockfilePath)
-	if err != nil {
-		return err
-	}
-
-	// Enrich with group information from Gemfile
-	gemfilePath := detectGemfileFromLock(*lockfilePath)
-	if gemfilePath != "" {
-		if err := enrichGemsWithGroups(gemfilePath, parsed); err != nil {
-			// Non-fatal: continue without group info
-			fmt.Fprintf(os.Stderr, "Warning: could not read Gemfile groups: %v\n", err)
-		}
-	}
-
-	// Print tree with colors if TTY, plain if not
-	if isTTY() {
-		printDependencyTree(parsed.GemSpecs)
-	} else {
-		printDependencyTreePlain(parsed.GemSpecs)
-	}
-
-	return nil
-}
-
-func runAuditCommand(args []string) error {
-	if len(args) > 0 && args[0] == "licenses" {
-		return runAuditLicenses(args[1:])
-	}
-	if len(args) > 0 && args[0] == "update" {
-		return runAuditUpdate(args[1:])
-	}
-
-	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
-	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	// Load lockfile
-	parsed, err := loadLockfile(*lockfilePath)
-	if err != nil {
-		return err
-	}
-
-	// Initialize database
-	db, err := audit.NewDatabase("")
-	if err != nil {
-		return err
-	}
-
-	if !db.Exists() {
-		fmt.Println("Advisory database not found. Run `ore audit update` to download it.")
-		return fmt.Errorf("advisory database not found")
-	}
-
-	// Create scanner and scan
-	scanner := audit.NewScanner(db)
-	result, err := scanner.ScanWithReport(parsed.GemSpecs)
-	if err != nil {
-		return err
-	}
-
-	// Print results
-	printAuditResults(result)
-
-	if result.HasVulnerabilities() {
-		return fmt.Errorf("vulnerabilities found")
-	}
-
-	return nil
-}
-
-func runAuditUpdate(args []string) error {
-	fs := flag.NewFlagSet("audit update", flag.ContinueOnError)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	db, err := audit.NewDatabase("")
-	if err != nil {
-		return err
-	}
-
-	return db.Update()
-}
-
-func runAuditLicenses(args []string) error {
-	fs := flag.NewFlagSet("audit licenses", flag.ContinueOnError)
-	vendorDir := fs.String("vendor", defaultVendorDir(), "Path to installed gems")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	// Scan for licenses
-	report, err := audit.ScanLicenses(*vendorDir)
-	if err != nil {
-		return err
-	}
-
-	// Print the report
-	audit.PrintLicenseReport(report)
-
-	return nil
-}
-
-func printAuditResults(result *audit.ScanResult) {
-	if !result.HasVulnerabilities() {
-		successStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("10")). // Green
-			Bold(true)
-		fmt.Println(successStyle.Render("✓ No vulnerabilities found."))
-		return
-	}
-
-	// Header style
-	headerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("9")). // Red
-		Bold(true)
-
-	fmt.Printf("%s\n\n", headerStyle.Render(fmt.Sprintf("Found %d vulnerabilities in %d gems:", result.VulnerabilityCount(), result.VulnerableGemCount())))
-
-	for _, vuln := range result.Vulnerabilities {
-		printVulnerability(vuln)
-	}
-}
-
-func printVulnerability(vuln audit.Vulnerability) {
-	// Styles
-	labelStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8")). // Gray
-		Bold(true)
-
-	nameStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("13")). // Magenta
-		Bold(true)
-
-	versionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("11")) // Yellow
-
-	advisoryStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("12")) // Blue
-
-	urlStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("14")). // Cyan
-		Underline(true)
-
-	titleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("15")) // White
-
-	solutionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("10")) // Green
-
-	// Get severity color
-	severityStyle := lipgloss.NewStyle()
-	severity := vuln.Advisory.Severity()
-	switch strings.ToLower(severity) {
-	case "critical":
-		severityStyle = severityStyle.Foreground(lipgloss.Color("9")).Bold(true) // Red
-	case "high":
-		severityStyle = severityStyle.Foreground(lipgloss.Color("208")) // Orange
-	case "medium":
-		severityStyle = severityStyle.Foreground(lipgloss.Color("11")) // Yellow
-	case "low":
-		severityStyle = severityStyle.Foreground(lipgloss.Color("12")) // Blue
-	default:
-		severityStyle = severityStyle.Foreground(lipgloss.Color("8")) // Gray
-	}
-
-	// Print vulnerability info
-	fmt.Printf("%s %s\n", labelStyle.Render("Name:"), nameStyle.Render(vuln.Gem.Name))
-	fmt.Printf("%s %s\n", labelStyle.Render("Version:"), versionStyle.Render(vuln.Gem.Version))
-	fmt.Printf("%s %s\n", labelStyle.Render("Advisory:"), advisoryStyle.Render(vuln.Advisory.ID()))
-
-	if severity != "Unknown" {
-		fmt.Printf("%s %s\n", labelStyle.Render("Criticality:"), severityStyle.Render(severity))
-	}
-
-	fmt.Printf("%s %s\n", labelStyle.Render("URL:"), urlStyle.Render(vuln.Advisory.URL))
-	fmt.Printf("%s %s\n", labelStyle.Render("Title:"), titleStyle.Render(vuln.Advisory.Title))
-
-	if len(vuln.Advisory.PatchedVersions) > 0 {
-		fmt.Printf("%s %s\n", labelStyle.Render("Solution:"), solutionStyle.Render("update to "+strings.Join(vuln.Advisory.PatchedVersions, " or ")))
-	}
-
-	fmt.Println()
-}
-
-func runWhyCommand(args []string) error {
-	fs := flag.NewFlagSet("why", flag.ContinueOnError)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	if len(fs.Args()) == 0 {
-		return fmt.Errorf("usage: ore why <gem>")
-	}
-
-	gemName := fs.Args()[0]
-	return commands.Why(gemName)
-}
-
-func runOpenCommand(args []string) error {
-	fs := flag.NewFlagSet("open", flag.ContinueOnError)
-	vendorDir := fs.String("vendor", defaultVendorDir(), "Path to installed gems")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	if len(fs.Args()) == 0 {
-		return fmt.Errorf("usage: ore open <gem>")
-	}
-
-	gemName := fs.Args()[0]
-	return commands.Open(gemName, *vendorDir)
-}
-
-func runPristineCommand(args []string) error {
-	fs := flag.NewFlagSet("pristine", flag.ContinueOnError)
-	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
-	vendorDir := fs.String("vendor", defaultVendorDir(), "Path to installed gems")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	cacheDir, err := defaultCacheDir()
-	if err != nil {
-		return err
-	}
-
-	gemNames := fs.Args()
-	return commands.Pristine(gemNames, *lockfilePath, cacheDir, *vendorDir)
-}
-
-func runSearchCommand(args []string) error {
-	// Separate query from flags
-	// Accept: ore search rails --limit 3  OR  ore search --limit 3 rails
-	var query string
-	var flagArgs []string
-
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--limit" || args[i] == "-limit" {
-			// Skip flag and its value
-			if i+1 < len(args) {
-				flagArgs = append(flagArgs, args[i], args[i+1])
-				i++ // Skip the value
-			}
-		} else if strings.HasPrefix(args[i], "--limit=") || strings.HasPrefix(args[i], "-limit=") {
-			flagArgs = append(flagArgs, args[i])
-		} else if !strings.HasPrefix(args[i], "-") {
-			// This is the query
-			if query == "" {
-				query = args[i]
-			}
-		}
-	}
-
-	if query == "" {
-		return fmt.Errorf("usage: ore search <query> [--limit N]")
-	}
-
-	// Parse flags
-	fs := flag.NewFlagSet("search", flag.ContinueOnError)
-	limit := fs.Int("limit", 10, "Maximum number of results to display")
-	if err := fs.Parse(flagArgs); err != nil {
-		return err
-	}
-
-	// Get gem sources from config
-	sources := getSearchSources()
-
-	return commands.Search(query, *limit, sources)
-}
-
 // getSearchSources returns the list of gem source URLs to search
 func getSearchSources() []string {
 	// Check if user has configured sources
@@ -1372,14 +470,4 @@ func getSearchSources() []string {
 
 	// Default to rubygems.org
 	return []string{"https://rubygems.org"}
-}
-
-func runGemsCommand(args []string) error {
-	fs := flag.NewFlagSet("gems", flag.ContinueOnError)
-	filter := fs.String("filter", "", "Filter gems by name")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	return commands.RunGems(*filter)
 }
