@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/contriboss/ore-light/compare/v0.12.0...v0.13.0) (2026-01-01)
+
+
+### Features
+
+* refactor all command handlers into commands package ([#27](https://github.com/contriboss/ore-light/issues/27)) ([b13dce9](https://github.com/contriboss/ore-light/commit/b13dce964fca6e962f28c915af4a794de36f15db))
+
 ## [0.12.0](https://github.com/contriboss/ore-light/compare/v0.11.0...v0.12.0) (2025-12-17)
 
 
