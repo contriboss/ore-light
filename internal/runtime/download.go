@@ -21,6 +21,11 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const (
+	// DEFAULT_RUBY_VERSION is the fallback Ruby version when detection fails
+	DEFAULT_RUBY_VERSION = "3.4.8"
+)
+
 type downloadManager struct {
 	cacheDir      string
 	sourceManager *sources.Manager
@@ -393,7 +398,7 @@ func configAdapter(c *Config) *config.Config {
 }
 
 func detectRubyVersion() string {
-	return ruby.DetectRubyVersion(defaultLockfilePath(), defaultGemfilePath(), config.ToMajorMinor, "3.4.7")
+	return ruby.DetectRubyVersion(defaultLockfilePath(), defaultGemfilePath(), config.ToMajorMinor, DEFAULT_RUBY_VERSION)
 }
 
 func defaultLockfilePath() string {

@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/cmd/ore/commands"
@@ -381,7 +379,7 @@ func installBuildDependency(ctx context.Context, gemName, cacheDir, vendorDir st
 			fmt.Printf("📦 Fetching build dependency %s-%s...\n", gemName, targetVersion)
 		}
 
-		sourceManager := sources.NewManager([]sources.SourceConfig{
+		sourceManager := sources.NewManager([]SourceConfig{
 			{URL: "https://rubygems.org", Fallback: ""},
 		}, nil)
 
@@ -434,7 +432,7 @@ func findGemInCaches(primaryCache string, gem lockfile.GemSpec) string {
 		return path
 	}
 
-	if gemPaths := tryGetGemPathsForInstall(); len(gemPaths) > 0 {
+	if gemPaths := tryGetGemPaths(); len(gemPaths) > 0 {
 		for _, gemPath := range gemPaths {
 			systemCache := filepath.Join(gemPath, "cache", fileName)
 			if _, err := os.Stat(systemCache); err == nil {
@@ -444,53 +442,6 @@ func findGemInCaches(primaryCache string, gem lockfile.GemSpec) string {
 	}
 
 	return ""
-}
-
-func tryGetGemPathsForInstall() []string {
-	cmd := exec.Command("gem", "environment", "gempath")
-	output, err := cmd.Output()
-	if err == nil {
-		pathsStr := strings.TrimSpace(string(output))
-		if pathsStr != "" {
-			return strings.Split(pathsStr, string(filepath.ListSeparator))
-		}
-	}
-
-	var defaultPaths []string
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return defaultPaths
-	}
-
-	rubyVer := detectRubyVersion()
-	if rubyVer == "" {
-		return defaultPaths
-	}
-
-	commonLocations := []string{
-		filepath.Join(home, ".gem", "ruby", rubyVer),
-		filepath.Join(home, ".local", "share", "gem", "ruby", rubyVer),
-	}
-
-	globPatterns := []string{
-		filepath.Join(home, ".rbenv", "versions", "*", "lib", "ruby", "gems", rubyVer),
-		filepath.Join(home, ".asdf", "installs", "ruby", "*", "lib", "ruby", "gems", rubyVer),
-		filepath.Join(home, ".local", "share", "mise", "installs", "ruby", "*", "lib", "ruby", "gems", rubyVer),
-	}
-
-	for _, pattern := range globPatterns {
-		if matches, err := filepath.Glob(pattern); err == nil {
-			defaultPaths = append(defaultPaths, matches...)
-		}
-	}
-
-	for _, location := range commonLocations {
-		if _, err := os.Stat(location); err == nil {
-			defaultPaths = append(defaultPaths, location)
-		}
-	}
-
-	return defaultPaths
 }
 
 func cloneGitGem(spec lockfile.GitGemSpec, destDir string) error {
