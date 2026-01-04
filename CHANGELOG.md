@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/contriboss/ore-light/compare/v0.15.0...v0.15.1) (2026-01-04)
+
+
+### Bug Fixes
+
+* fix detection version in docker ([ee583d7](https://github.com/contriboss/ore-light/commit/ee583d71f74a5fb7a27e555429da14380c32ee09))
+
 ## [0.15.0](https://github.com/contriboss/ore-light/compare/v0.14.2...v0.15.0) (2026-01-04)
 
 
