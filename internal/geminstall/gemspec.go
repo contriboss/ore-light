@@ -9,13 +9,8 @@ import (
 	"text/template"
 
 	"github.com/contriboss/gemfile-go/lockfile"
+	"github.com/contriboss/ore-light/internal/ruby"
 	"gopkg.in/yaml.v3"
-)
-
-const (
-	// DEFAULT_RUBYGEMS_VERSION is the RubyGems version to write in gemspec files
-	// Update this to match the current stable RubyGems release (should match cmd/ore/main.go)
-	DEFAULT_RUBYGEMS_VERSION = "3.6.4"
 )
 
 // gemMetadata represents extracted metadata from YAML
@@ -279,7 +274,7 @@ func generateGemspecCode(spec lockfile.GemSpec, meta *gemMetadata) string {
 		Summary:         summary,
 		Description:     description,
 		Dependencies:    spec.Dependencies,
-		RubygemsVersion: DEFAULT_RUBYGEMS_VERSION,
+		RubygemsVersion: ruby.DefaultRubyGemsVersion,
 		Extensions:      extensions,
 	}
 

@@ -147,7 +147,7 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 	for _, gem := range gems {
 		gemPath := findGemInCaches(cacheDir, gem)
 		if gemPath == "" {
-			return report, fmt.Errorf("gem %s is not cached; run `ore download` first", gem.FullName())
+			return report, fmt.Errorf("gem %s is not cached; run `ore fetch` first", gem.FullName())
 		}
 
 		destDir := filepath.Join(vendorDir, "gems", gem.FullName())

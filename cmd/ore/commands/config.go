@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/contriboss/ore-light/internal/config"
+	"github.com/contriboss/ore-light/internal/sources"
 	"gopkg.in/yaml.v3"
 )
 
@@ -17,14 +19,20 @@ func RunConfig(args []string) error {
 	global := fs.Bool("global", false, "Set global config (user-level)")
 	unset := fs.Bool("unset", false, "Unset a configuration value")
 	list := fs.Bool("list", false, "List all configuration settings")
+	show := fs.Bool("show", false, "Show effective ore config")
+	explain := fs.Bool("explain", false, "Explain effective ore config sources")
 
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	// If no flags, show usage
-	if !*local && !*global && !*unset && !*list && len(fs.Args()) == 0 {
+	if !*local && !*global && !*unset && !*list && !*show && !*explain && len(fs.Args()) == 0 {
 		return showConfigUsage()
+	}
+
+	if *show || *explain {
+		return showEffectiveConfig(*explain)
 	}
 
 	// List all configs
@@ -69,12 +77,15 @@ Options:
   --local     Use local config (.bundle/config)
   --global    Use global config (~/.bundle/config)
   --list      List all configuration
+  --show      Show effective ore config
+  --explain   Show effective ore config with sources
   --unset     Remove configuration value
 
 Examples:
   ore config --local path vendor/bundle    # Set local install path
   ore config path                          # Get install path
   ore config --list                        # List all settings
+  ore config --show                        # Show effective ore config
   ore config --unset --local path          # Remove local path setting
 
 Supported keys:
@@ -243,4 +254,69 @@ func toBundleKey(key string) string {
 		// Otherwise, prefix with BUNDLE_
 		return "BUNDLE_" + strings.ToUpper(key)
 	}
+}
+
+func showEffectiveConfig(explain bool) error {
+	cfg := config.Load()
+	vendorDir, vendorSource, _ := config.ResolveVendorDir(cfg, getRubyVersion, getSystemGemDir)
+	cacheDir, cacheSource, cacheErr := config.ResolveCacheDir(cfg)
+	gemfile, gemfileSource, _ := config.ResolveGemfilePath(cfg)
+	gemSources, gemSourcesSource := config.ResolveGemSources(cfg)
+
+	fmt.Println("Effective ore config:")
+	if explain {
+		fmt.Printf("  vendor_dir = %s (%s)\n", vendorDir, vendorSource)
+		if cacheErr != nil {
+			fmt.Printf("  cache_dir = <error: %v> (%s)\n", cacheErr, cacheSource)
+		} else {
+			fmt.Printf("  cache_dir = %s (%s)\n", cacheDir, cacheSource)
+		}
+		fmt.Printf("  gemfile = %s (%s)\n", gemfile, gemfileSource)
+		fmt.Printf("  gem_sources = %s (%s)\n", formatSources(gemSources), gemSourcesSource)
+	} else {
+		fmt.Printf("  vendor_dir = %s\n", vendorDir)
+		if cacheErr != nil {
+			fmt.Printf("  cache_dir = <error: %v>\n", cacheErr)
+		} else {
+			fmt.Printf("  cache_dir = %s\n", cacheDir)
+		}
+		fmt.Printf("  gemfile = %s\n", gemfile)
+		fmt.Printf("  gem_sources = %s\n", formatSources(gemSources))
+	}
+
+	if explain {
+		fmt.Println("")
+		fmt.Println("Config files:")
+		printConfigPath("  user", config.UserConfigPath())
+		printConfigPath("  project", config.ProjectConfigPath())
+	}
+
+	return nil
+}
+
+func printConfigPath(label, path string) {
+	if path == "" {
+		fmt.Printf("%s: <unavailable>\n", label)
+		return
+	}
+	if _, err := os.Stat(path); err == nil {
+		fmt.Printf("%s: %s (loaded)\n", label, path)
+		return
+	}
+	fmt.Printf("%s: %s (missing)\n", label, path)
+}
+
+func formatSources(sources []sources.SourceConfig) string {
+	if len(sources) == 0 {
+		return "<none>"
+	}
+	parts := make([]string, 0, len(sources))
+	for _, src := range sources {
+		if src.Fallback != "" {
+			parts = append(parts, fmt.Sprintf("%s (fallback %s)", src.URL, src.Fallback))
+		} else {
+			parts = append(parts, src.URL)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
