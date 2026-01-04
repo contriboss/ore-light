@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/contriboss/ore-light/compare/v0.14.2...v0.15.0) (2026-01-04)
+
+
+### Features
+
+* update gemlock format and fix scope ([#35](https://github.com/contriboss/ore-light/issues/35)) ([8af7c55](https://github.com/contriboss/ore-light/commit/8af7c5570b5791b3897a4fbf281e761486c856e4))
+
 ## [0.14.2](https://github.com/contriboss/ore-light/compare/v0.14.1...v0.14.2) (2026-01-04)
 
 
