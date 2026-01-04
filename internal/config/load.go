@@ -56,6 +56,9 @@ func (c *Config) merge(other Config) {
 	if other.Gemfile != "" {
 		c.Gemfile = other.Gemfile
 	}
+	if other.DownloadWorkers > 0 {
+		c.DownloadWorkers = other.DownloadWorkers
+	}
 }
 
 // UserConfigPath returns the user-level config path.

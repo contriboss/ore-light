@@ -95,6 +95,10 @@ func defaultCacheDir() (string, error) {
 	return config.DefaultCacheDir(loadAppConfig())
 }
 
+func defaultDownloadWorkers() int {
+	return config.DefaultDownloadWorkers(loadAppConfig())
+}
+
 var cachedConfig = config.Load()
 
 func loadAppConfig() *config.Config {

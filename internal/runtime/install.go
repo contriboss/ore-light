@@ -60,6 +60,9 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 		if gemPath == "" {
 			return InstallReport{}, fmt.Errorf("gem %s is not cached; run `ore fetch` first", gem.FullName())
 		}
+		if err := verifyCachedGemChecksum(gemPath); err != nil {
+			return InstallReport{}, err
+		}
 
 		destDir := filepath.Join(vendorDir, "gems", gem.FullName())
 
@@ -157,7 +160,7 @@ func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 
 	engine := ruby.DetectEngine()
 
-	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
+	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "bundler", "gems")); err != nil {
 		return InstallReport{}, err
 	}
 
@@ -166,8 +169,8 @@ func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 	var extensionTargets []extensionTarget
 
 	for _, spec := range gitSpecs {
-		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
-		destDir := filepath.Join(vendorDir, "gems", gemName)
+		gemName := fmt.Sprintf("%s-%s", spec.Name, shortRevision(spec.Revision))
+		destDir := filepath.Join(vendorDir, "bundler", "gems", gemName)
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {
@@ -444,6 +447,23 @@ func findGemInCaches(primaryCache string, gem lockfile.GemSpec) string {
 	return ""
 }
 
+func verifyCachedGemChecksum(gemPath string) error {
+	metaPath := gemPath + ".meta"
+	if _, err := os.Stat(metaPath); err != nil {
+		return nil
+	}
+
+	ok, err := verifyCacheChecksum(gemPath, metaPath, "")
+	if err != nil {
+		return fmt.Errorf("failed to verify checksum for %s: %w", filepath.Base(gemPath), err)
+	}
+	if !ok {
+		return fmt.Errorf("cached gem %s failed checksum; remove it or re-fetch", filepath.Base(gemPath))
+	}
+
+	return nil
+}
+
 func cloneGitGem(spec lockfile.GitGemSpec, destDir string) error {
 	gitSource, err := resolver.NewGitSource(spec.Remote, spec.Branch, spec.Tag, spec.Revision)
 	if err != nil {
@@ -455,6 +475,15 @@ func cloneGitGem(spec lockfile.GitGemSpec, destDir string) error {
 	}
 
 	return nil
+}
+
+// shortRevision returns the first 12 characters of a git revision.
+// This matches Bundler's convention for git gem directory names.
+func shortRevision(rev string) string {
+	if len(rev) > 12 {
+		return rev[:12]
+	}
+	return rev
 }
 
 func copyPathGem(spec lockfile.PathGemSpec, destDir string) error {

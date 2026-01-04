@@ -333,6 +333,7 @@ func TestNewBuilder(t *testing.T) {
 		builder := NewBuilder(config)
 		if builder == nil {
 			t.Fatal("NewBuilder() returned nil")
+			return
 		}
 		if builder.config.Parallel != 8 {
 			t.Errorf("NewBuilder() config.Parallel = %d, want 8", builder.config.Parallel)
@@ -343,6 +344,7 @@ func TestNewBuilder(t *testing.T) {
 		builder := NewBuilder(nil)
 		if builder == nil {
 			t.Fatal("NewBuilder() returned nil")
+			return
 		}
 		if builder.config.Parallel != 4 {
 			t.Errorf("NewBuilder() config.Parallel = %d, want 4 (default)", builder.config.Parallel)

@@ -21,3 +21,6 @@ url = "https://rubygems.org"
 
 # Optional: Set custom vendor directory
 # vendor_dir = "vendor/bundle"
+
+# Optional: Control concurrent downloads (defaults to an adaptive value)
+# download_workers = 8

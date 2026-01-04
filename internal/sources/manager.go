@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -35,6 +37,12 @@ type Source struct {
 	FallbackURL  string
 	auth         *Authentication
 	fallbackAuth *Authentication
+}
+
+type retryPolicy struct {
+	MaxAttempts int
+	BaseDelay   time.Duration
+	MaxDelay    time.Duration
 }
 
 // extractAuth extracts authentication from URL and returns clean URL and auth
@@ -84,13 +92,31 @@ type Manager struct {
 	client       *http.Client
 	healthStatus map[string]bool
 	mu           sync.RWMutex
+	retry        retryPolicy
+	randMu       sync.Mutex
+	rand         *rand.Rand
+}
+
+const (
+	defaultRetryMaxAttempts = 3
+	defaultRetryBaseDelay   = 200 * time.Millisecond
+	defaultRetryMaxDelay    = 2 * time.Second
+)
+
+func defaultRetryPolicy() retryPolicy {
+	return retryPolicy{
+		MaxAttempts: defaultRetryMaxAttempts,
+		BaseDelay:   defaultRetryBaseDelay,
+		MaxDelay:    defaultRetryMaxDelay,
+	}
 }
 
 // NewManager creates a new source manager
 func NewManager(sourceConfigs []SourceConfig, client *http.Client) *Manager {
 	if client == nil {
 		client = &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: defaultHTTPTransport(16),
 		}
 	}
 
@@ -111,6 +137,8 @@ func NewManager(sourceConfigs []SourceConfig, client *http.Client) *Manager {
 		sources:      sources,
 		client:       client,
 		healthStatus: make(map[string]bool),
+		retry:        defaultRetryPolicy(),
+		rand:         rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -192,7 +220,7 @@ func (m *Manager) DownloadGemWithHeaders(ctx context.Context, gemName string, wr
 	for _, source := range m.sources {
 		// Try primary source
 		downloadURL := fmt.Sprintf("%s/downloads/%s", source.URL, gemName)
-		status, respHeaders, err := m.download(ctx, downloadURL, source.auth, writer, headers)
+		status, respHeaders, err := m.downloadWithRetry(ctx, downloadURL, source.auth, writer, headers)
 
 		if err == nil {
 			return status, respHeaders, nil // Success or not-modified
@@ -205,7 +233,7 @@ func (m *Manager) DownloadGemWithHeaders(ctx context.Context, gemName string, wr
 			fallbackURL := fmt.Sprintf("%s/downloads/%s", source.FallbackURL, gemName)
 			fmt.Printf("Primary source %s failed, trying fallback %s\n", source.URL, source.FallbackURL)
 
-			status, respHeaders, err = m.download(ctx, fallbackURL, source.fallbackAuth, writer, headers)
+			status, respHeaders, err = m.downloadWithRetry(ctx, fallbackURL, source.fallbackAuth, writer, headers)
 			if err == nil {
 				return status, respHeaders, nil // Fallback succeeded
 			}
@@ -225,10 +253,48 @@ func (m *Manager) DownloadGemWithHeaders(ctx context.Context, gemName string, wr
 	return 0, nil, errors.New("no sources available")
 }
 
-func (m *Manager) download(ctx context.Context, url string, auth *Authentication, writer io.Writer, headers map[string]string) (int, http.Header, error) {
+func (m *Manager) downloadWithRetry(ctx context.Context, url string, auth *Authentication, writer io.Writer, headers map[string]string) (int, http.Header, error) {
+	attempts := m.retry.MaxAttempts
+	if attempts < 1 {
+		attempts = 1
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if attempt > 1 {
+			if err := m.sleepWithBackoff(ctx, attempt-1); err != nil {
+				return 0, nil, err
+			}
+		}
+
+		status, respHeaders, written, err := m.download(ctx, url, auth, writer, headers)
+		if err == nil {
+			return status, respHeaders, nil
+		}
+
+		lastErr = err
+
+		if written > 0 {
+			if !resetWriter(writer) {
+				return 0, nil, &partialWriteError{err: err}
+			}
+		}
+
+		if !isRetryableError(err) {
+			return 0, nil, err
+		}
+	}
+
+	if lastErr != nil {
+		return 0, nil, lastErr
+	}
+	return 0, nil, errors.New("download failed")
+}
+
+func (m *Manager) download(ctx context.Context, url string, auth *Authentication, writer io.Writer, headers map[string]string) (int, http.Header, int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return 0, nil, fmt.Errorf("failed to create request: %w", err)
+		return 0, nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Add authentication if present
@@ -246,22 +312,114 @@ func (m *Manager) download(ctx context.Context, url string, auth *Authentication
 
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return 0, nil, fmt.Errorf("network error: %w", err)
+		return 0, nil, 0, fmt.Errorf("network error: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode == http.StatusNotModified {
-		return resp.StatusCode, resp.Header.Clone(), nil
+		return resp.StatusCode, resp.Header.Clone(), 0, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return resp.StatusCode, resp.Header.Clone(), &HTTPError{StatusCode: resp.StatusCode, URL: url}
+		return resp.StatusCode, resp.Header.Clone(), 0, &HTTPError{StatusCode: resp.StatusCode, URL: url}
 	}
 
-	_, err = io.Copy(writer, resp.Body)
-	return resp.StatusCode, resp.Header.Clone(), err
+	counting := &countingWriter{writer: writer}
+	_, err = io.Copy(counting, resp.Body)
+	return resp.StatusCode, resp.Header.Clone(), counting.n, err
+}
+
+type countingWriter struct {
+	writer io.Writer
+	n      int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.writer.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+type resettableWriter interface {
+	io.Seeker
+	Truncate(size int64) error
+}
+
+func resetWriter(writer io.Writer) bool {
+	resettable, ok := writer.(resettableWriter)
+	if !ok {
+		return false
+	}
+	if err := resettable.Truncate(0); err != nil {
+		return false
+	}
+	if _, err := resettable.Seek(0, io.SeekStart); err != nil {
+		return false
+	}
+	return true
+}
+
+func (m *Manager) sleepWithBackoff(ctx context.Context, attempt int) error {
+	delay := m.retry.BaseDelay
+	if delay <= 0 {
+		delay = defaultRetryBaseDelay
+	}
+	if attempt > 1 {
+		delay = delay * time.Duration(1<<uint(attempt-1))
+	}
+	if m.retry.MaxDelay > 0 && delay > m.retry.MaxDelay {
+		delay = m.retry.MaxDelay
+	}
+	delay = m.jitterDelay(delay)
+	if delay <= 0 {
+		return nil
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (m *Manager) jitterDelay(delay time.Duration) time.Duration {
+	if delay <= 0 {
+		return 0
+	}
+	minDelay := delay / 2
+	if minDelay <= 0 {
+		return delay
+	}
+	jitterRange := delay - minDelay
+	if jitterRange <= 0 {
+		return delay
+	}
+
+	m.randMu.Lock()
+	defer m.randMu.Unlock()
+	if m.rand == nil {
+		return delay
+	}
+	jitter := time.Duration(m.rand.Int63n(int64(jitterRange) + 1))
+	return minDelay + jitter
+}
+
+type partialWriteError struct {
+	err error
+}
+
+func (e *partialWriteError) Error() string {
+	return e.err.Error()
+}
+
+func (e *partialWriteError) Unwrap() error {
+	return e.err
 }
 
 // HTTPError represents an HTTP error response
@@ -280,6 +438,20 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var partial *partialWriteError
+	if errors.As(err, &partial) {
+		return false
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+
 	// Network errors are retryable
 	if strings.Contains(err.Error(), "network error") ||
 		strings.Contains(err.Error(), "connection refused") ||
@@ -291,7 +463,8 @@ func isRetryableError(err error) bool {
 	var httpErr *HTTPError
 	if errors.As(err, &httpErr) {
 		switch httpErr.StatusCode {
-		case http.StatusInternalServerError,
+		case http.StatusRequestTimeout,
+			http.StatusInternalServerError,
 			http.StatusBadGateway,
 			http.StatusServiceUnavailable,
 			http.StatusGatewayTimeout,
@@ -307,6 +480,35 @@ func isRetryableError(err error) bool {
 	}
 
 	return false
+}
+
+func defaultHTTPTransport(maxConnsPerHost int) *http.Transport {
+	maxConnsPerHost = clampInt(maxConnsPerHost, 4, 32)
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          maxConnsPerHost * 4,
+		MaxIdleConnsPerHost:   maxConnsPerHost,
+		MaxConnsPerHost:       maxConnsPerHost,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+}
+
+func clampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 // GetSources returns all configured sources for display/debugging
