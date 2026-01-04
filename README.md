@@ -354,6 +354,12 @@ ore install
 # List current configuration
 ore config --list
 
+# Show effective config (resolved from env + config files)
+ore config --show
+
+# Show effective config with sources
+ore config --explain
+
 # Override with environment variable
 ORE_VENDOR_DIR=/tmp/gems ore install
 ```

@@ -24,7 +24,7 @@ func NewBuildEnv(cfg *Config) func(vendorDir string, specs []lockfile.GemSpec) (
 
 		env := os.Environ()
 
-		systemGemDir := getSystemGemDir()
+		systemGemDir := getSystemGemDir(cfg)
 		if vendorDir != systemGemDir {
 			env = setEnv(env, "GEM_HOME", vendorDir)
 			env = setEnv(env, "GEM_PATH", vendorDir)

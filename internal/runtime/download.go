@@ -20,15 +20,11 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	// DEFAULT_RUBY_VERSION is the fallback Ruby version when detection fails
-	DEFAULT_RUBY_VERSION = "3.4.8"
-)
-
 type DownloadManager struct {
 	cacheDir      string
 	sourceManager *sources.Manager
 	workers       int
+	detectRuby    func() string
 }
 
 type DownloadReport struct {
@@ -38,7 +34,7 @@ type DownloadReport struct {
 	mu         sync.Mutex
 }
 
-func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *http.Client, workers int) (*DownloadManager, error) {
+func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *http.Client, workers int, detectRuby func() string) (*DownloadManager, error) {
 	if cacheDir == "" {
 		return nil, fmt.Errorf("cache directory must be provided")
 	}
@@ -60,6 +56,7 @@ func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *h
 		cacheDir:      cacheDir,
 		sourceManager: sources.NewManager(sourceConfigs, client),
 		workers:       workers,
+		detectRuby:    detectRuby,
 	}, nil
 }
 
@@ -197,7 +194,7 @@ func (m *DownloadManager) CheckSourceHealth(ctx context.Context) {
 func (m *DownloadManager) cacheLocations() []string {
 	locations := []string{m.cacheDir}
 
-	if gemPaths := tryGetGemPaths(); len(gemPaths) > 0 {
+	if gemPaths := tryGetGemPaths(m.detectRuby); len(gemPaths) > 0 {
 		for _, gemPath := range gemPaths {
 			cacheDir := filepath.Join(gemPath, "cache")
 			locations = append(locations, cacheDir)
@@ -207,7 +204,7 @@ func (m *DownloadManager) cacheLocations() []string {
 	return locations
 }
 
-func tryGetGemPaths() []string {
+func tryGetGemPaths(detectRubyVersion func() string) []string {
 	cmd := exec.Command("gem", "environment", "gempath")
 	output, err := cmd.Output()
 	if err == nil {
@@ -340,41 +337,28 @@ func NewDownloadManager(cfg *Config, workers int) (*DownloadManager, error) {
 	sourceConfigs := getGemSources(cfg)
 	client := defaultHTTPClient()
 
-	return newDownloadManager(cacheDir, sourceConfigs, client, workers)
+	return newDownloadManager(cacheDir, sourceConfigs, client, workers, makeDetectRubyVersion(cfg))
 }
 
 func getGemSources(cfg *Config) []SourceConfig {
-	if cfg != nil && len(cfg.GemSources) > 0 {
-		return cfg.GemSources
-	}
-
-	return []SourceConfig{
-		{
-			URL:      "https://rubygems.org",
-			Fallback: "",
-		},
-	}
+	sources, _ := config.ResolveGemSources(configAdapter(cfg))
+	return sources
 }
 
 func configAdapter(c *Config) *config.Config {
-	if c == nil {
-		return nil
-	}
-	return &config.Config{
-		VendorDir: c.VendorDir,
-		CacheDir:  c.CacheDir,
-		Gemfile:   c.Gemfile,
-	}
+	return c
 }
 
-func detectRubyVersion() string {
-	return ruby.DetectRubyVersion(defaultLockfilePath(), defaultGemfilePath(), config.ToMajorMinor, DEFAULT_RUBY_VERSION)
+func makeDetectRubyVersion(cfg *Config) func() string {
+	return func() string {
+		return ruby.DetectRubyVersion(defaultLockfilePath(), defaultGemfilePath(cfg), config.ToMajorMinor, ruby.DefaultRubyVersion)
+	}
 }
 
 func defaultLockfilePath() string {
 	return config.DefaultLockfilePath()
 }
 
-func defaultGemfilePath() string {
-	return config.DefaultGemfilePath(nil)
+func defaultGemfilePath(cfg *Config) string {
+	return config.DefaultGemfilePath(configAdapter(cfg))
 }

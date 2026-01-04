@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/logger"
 	"github.com/contriboss/ore-light/internal/registry"
 	"github.com/contriboss/ore-light/internal/sources"
@@ -32,7 +31,7 @@ func RunFetch(args []string) error {
 	}
 
 	// Get cache directory
-	cacheDir, err := config.DefaultCacheDir(nil)
+	cacheDir, err := defaultCacheDir()
 	if err != nil {
 		return fmt.Errorf("failed to determine cache directory: %w", err)
 	}

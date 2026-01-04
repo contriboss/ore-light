@@ -13,6 +13,7 @@ import (
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/cmd/ore/commands"
+	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/extensions"
 )
 
@@ -78,7 +79,7 @@ func TestVersionInfo(t *testing.T) {
 
 func TestConfigOverrides(t *testing.T) {
 	origCfg := appConfig
-	appConfig = &Config{
+	appConfig = &config.Config{
 		VendorDir: "/tmp/vendor-test",
 		CacheDir:  "/tmp/cache-test",
 		GemSources: []SourceConfig{

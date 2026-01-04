@@ -20,19 +20,12 @@ var (
 	buildCommit = "unknown"
 )
 
-const (
-	// DEFAULT_RUBY_VERSION is the fallback Ruby version when detection fails
-	// Update this when new Ruby stable releases come out
-	DEFAULT_RUBY_VERSION = "3.4.7"
-
-	// DEFAULT_BUNDLER_VERSION is the Bundler version to write in Gemfile.lock
-	// Update this to match the current stable Bundler release
-	DEFAULT_BUNDLER_VERSION = "2.7.2"
-
-	// DEFAULT_RUBYGEMS_VERSION is the RubyGems version to write in gemspec files
-	// Update this to match the current stable RubyGems release
-	DEFAULT_RUBYGEMS_VERSION = "3.6.4"
-)
+type commandSpec struct {
+	Name        string
+	Aliases     []string
+	Description string
+	Run         func(args []string) error
+}
 
 func main() {
 	// Ruby developers: This is like parsing ARGV in a Ruby CLI script
@@ -60,175 +53,42 @@ func main() {
 	// Setup logger with verbosity level
 	logger.SetupLogger(verbose)
 
-	// This is like Ruby's case/when, but switch in Go doesn't fall through by default!
-	// In Ruby you need 'when' to match multiple conditions; Go evaluates once and exits.
-	// No need for 'break' statements - they're implicit. Use 'fallthrough' for fall-through.
-	switch cmd {
-	case "--help", "-h", "help":
+	if cmd == "--help" || cmd == "-h" || cmd == "help" {
 		printHelp()
-	case "--version", "-V", "-v", "version":
-		printVersion()
-	case "add":
-		if err := commands.RunAdd(args); err != nil {
-			exitWithError(err)
-		}
-	case "remove":
-		if err := commands.RunRemove(args); err != nil {
-			exitWithError(err)
-		}
-	case "update":
-		if err := commands.RunUpdate(args); err != nil {
-			exitWithError(err)
-		}
-	case "outdated":
-		if err := commands.RunOutdated(args); err != nil {
-			exitWithError(err)
-		}
-	case "info":
-		if err := commands.RunInfo(args); err != nil {
-			exitWithError(err)
-		}
-	case "list":
-		if err := commands.RunList(args); err != nil {
-			exitWithError(err)
-		}
-	case "check":
-		if err := commands.RunCheck(args); err != nil {
-			exitWithError(err)
-		}
-	case "init":
-		if err := commands.RunInit(args); err != nil {
-			exitWithError(err)
-		}
-	case "platform":
-		if err := commands.RunPlatform(args); err != nil {
-			exitWithError(err)
-		}
-	case "open":
-		if err := commands.RunOpen(args); err != nil {
-			exitWithError(err)
-		}
-	case "show":
-		if err := commands.RunShow(args); err != nil {
-			exitWithError(err)
-		}
-	case "clean":
-		if err := commands.RunClean(args); err != nil {
-			exitWithError(err)
-		}
-	case "pristine":
-		if err := commands.RunPristine(args); err != nil {
-			exitWithError(err)
-		}
-	case "config":
-		if err := commands.RunConfig(args); err != nil {
-			exitWithError(err)
-		}
-	case "lock":
-		if err := commands.RunLock(args); err != nil {
-			exitWithError(err)
-		}
-	case "self-update", "selfupdate":
-		if err := commands.RunSelfUpdate(args, version, buildCommit); err != nil {
-			exitWithError(err)
-		}
-	case "fetch":
-		if err := commands.RunFetch(args); err != nil {
-			exitWithError(err)
-		}
-	case "install":
-		if err := commands.RunInstallDefault(args); err != nil {
-			exitWithError(err)
-		}
-	case "cache":
-		if err := commands.RunCache(args); err != nil {
-			exitWithError(err)
-		}
-	case "completion":
-		if err := runCompletionCommand(args); err != nil {
-			exitWithError(err)
-		}
-	case "exec":
-		if err := commands.RunExecDefault(args); err != nil {
-			exitWithError(err)
-		}
-	case "tree":
-		if err := commands.RunTree(args); err != nil {
-			exitWithError(err)
-		}
-	case "audit":
-		if err := commands.RunAudit(args); err != nil {
-			exitWithError(err)
-		}
-	case "stats":
-		if err := commands.RunStats(args); err != nil {
-			exitWithError(err)
-		}
-	case "why":
-		if err := commands.RunWhy(args); err != nil {
-			exitWithError(err)
-		}
-	case "search":
-		if err := commands.RunSearchDefault(args); err != nil {
-			exitWithError(err)
-		}
-	case "gems":
-		fs := flag.NewFlagSet("gems", flag.ContinueOnError)
-		filter := fs.String("filter", "", "Filter gems by name")
-		if err := fs.Parse(args); err != nil {
-			exitWithError(err)
-		}
-		if err := commands.RunGems(*filter); err != nil {
-			exitWithError(err)
-		}
-	case "browse":
-		if err := commands.RunBrowse(); err != nil {
-			exitWithError(err)
-		}
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown command %q\n\n", cmd)
-		printHelp()
-		os.Exit(1)
+		return
 	}
+	if cmd == "--version" || cmd == "-V" || cmd == "-v" || cmd == "version" {
+		printVersion()
+		return
+	}
+
+	if spec := lookupCommand(cmd); spec != nil {
+		if err := spec.Run(args); err != nil {
+			exitWithError(err)
+		}
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "Unknown command %q\n\n", cmd)
+	printHelp()
+	os.Exit(1)
 }
 
 func printHelp() {
-	fmt.Print(`ore
-
-Usage: ore [OPTIONS] [COMMAND]
-
-Options:
-  -V, --version    Print version info and exit
-  -h, --help       Print help
-
-Commands:
-    init          Create a new Gemfile
-    add           Add gems to Gemfile
-    remove        Remove gems from Gemfile
-    update        Update gems to their latest versions within constraints
-    outdated      List gems with newer versions available
-    lock          Regenerate Gemfile.lock from Gemfile
-    self-update   Update ore to the latest version
-    fetch         Download gems into cache (no Ruby required)
-    install       Install gems from Gemfile.lock
-    check         Verify all gems are installed
-    list          List all gems in the current bundle
-    show          Show the source location of a gem
-    info          Show detailed information about a gem
-    search        Search for gems on RubyGems.org
-    why           Show dependency chains for a gem
-    exec          Run commands with ore-managed environment
-    clean         Remove unused gems from vendor directory
-    cache         Inspect or prune the ore gem cache
-    pristine      Restore gems to pristine condition (no Ruby required)
-    config        Get and set Bundler configuration options
-    platform      Display platform compatibility information
-    stats         Show Ruby environment statistics
-    completion    Generate shell completion scripts
-    audit         Audit dependencies for known vulnerabilities
-
-See 'ore <command> --help' for more information on a specific command.
-`)
+	fmt.Println("ore")
+	fmt.Println("")
+	fmt.Println("Usage: ore [OPTIONS] [COMMAND]")
+	fmt.Println("")
+	fmt.Println("Options:")
+	fmt.Println("  -V, --version    Print version info and exit")
+	fmt.Println("  -h, --help       Print help")
+	fmt.Println("")
+	fmt.Println("Commands:")
+	for _, spec := range commandSpecs() {
+		fmt.Printf("    %-12s %s\n", spec.Name, spec.Description)
+	}
+	fmt.Println("")
+	fmt.Println("See 'ore <command> --help' for more information on a specific command.")
 }
 
 func printVersion() {
@@ -255,8 +115,7 @@ func exitWithError(err error) {
 }
 
 func defaultVendorDir() string {
-	cfg := configAdapter(appConfig)
-	return config.DefaultVendorDir(cfg, detectRubyVersion, getSystemGemDir)
+	return config.DefaultVendorDir(appConfig, detectRubyVersion, getSystemGemDir)
 }
 
 func defaultLockfilePath() string {
@@ -264,17 +123,6 @@ func defaultLockfilePath() string {
 }
 
 // configAdapter converts main.Config to internal/config.Config
-func configAdapter(c *Config) *config.Config {
-	if c == nil {
-		return nil
-	}
-	return &config.Config{
-		VendorDir: c.VendorDir,
-		CacheDir:  c.CacheDir,
-		Gemfile:   c.Gemfile,
-	}
-}
-
 // toMajorMinor converts "3.4.7" to "3.4.0" (Bundler convention)
 func toMajorMinor(version string) string {
 	return config.ToMajorMinor(version)
@@ -282,9 +130,9 @@ func toMajorMinor(version string) string {
 
 // readBundleConfigPath reads BUNDLE_PATH from .bundle/config
 // detectRubyVersion detects the Ruby version to use for gem installation
-// Priority: 1) Gemfile.lock, 2) Gemfile, 3) DEFAULT_RUBY_VERSION
+// Priority: 1) Gemfile.lock, 2) Gemfile, 3) default Ruby version
 func detectRubyVersion() string {
-	return ruby.DetectRubyVersion(defaultLockfilePath(), defaultGemfilePath(), toMajorMinor, DEFAULT_RUBY_VERSION)
+	return ruby.DetectRubyVersion(defaultLockfilePath(), defaultGemfilePath(), toMajorMinor, ruby.DefaultRubyVersion)
 }
 
 // getSystemGemDir returns the system gem directory without requiring Ruby
@@ -294,7 +142,7 @@ func getSystemGemDir() string {
 }
 
 func defaultGemfilePath() string {
-	return config.DefaultGemfilePath(configAdapter(appConfig))
+	return config.DefaultGemfilePath(appConfig)
 }
 
 func loadLockfile(lockfilePath string) (*lockfile.Lockfile, error) {
@@ -347,7 +195,7 @@ func deduplicateGemSpecs(specs []lockfile.GemSpec) []lockfile.GemSpec {
 }
 
 func defaultCacheDir() (string, error) {
-	return config.DefaultCacheDir(configAdapter(appConfig))
+	return config.DefaultCacheDir(appConfig)
 }
 
 // downloadManagerAdapter adapts main's downloadManager to commands.DownloadManager interface
@@ -379,16 +227,66 @@ func defaultHTTPClient() *http.Client {
 }
 
 func getGemSources() []SourceConfig {
-	// Check if user has configured sources in TOML
-	if appConfig != nil && len(appConfig.GemSources) > 0 {
-		return appConfig.GemSources
-	}
+	sources, _ := config.ResolveGemSources(appConfig)
+	return sources
+}
 
-	// Default to rubygems.org if no sources configured
-	return []SourceConfig{
-		{
-			URL:      "https://rubygems.org",
-			Fallback: "",
-		},
+func commandSpecs() []commandSpec {
+	return []commandSpec{
+		{Name: "init", Description: "Create a new Gemfile", Run: commands.RunInit},
+		{Name: "add", Description: "Add gems to Gemfile", Run: commands.RunAdd},
+		{Name: "remove", Description: "Remove gems from Gemfile", Run: commands.RunRemove},
+		{Name: "update", Description: "Update gems to their latest versions within constraints", Run: commands.RunUpdate},
+		{Name: "outdated", Description: "List gems with newer versions available", Run: commands.RunOutdated},
+		{Name: "lock", Description: "Regenerate Gemfile.lock from Gemfile", Run: commands.RunLock},
+		{Name: "self-update", Aliases: []string{"selfupdate"}, Description: "Update ore to the latest version", Run: func(args []string) error {
+			return commands.RunSelfUpdate(args, version, buildCommit)
+		}},
+		{Name: "fetch", Description: "Download gems into cache (no Ruby required)", Run: commands.RunFetch},
+		{Name: "install", Description: "Install gems from Gemfile.lock", Run: commands.RunInstallDefault},
+		{Name: "check", Description: "Verify all gems are installed", Run: commands.RunCheck},
+		{Name: "list", Description: "List all gems in the current bundle", Run: commands.RunList},
+		{Name: "show", Description: "Show the source location of a gem", Run: commands.RunShow},
+		{Name: "info", Description: "Show detailed information about a gem", Run: commands.RunInfo},
+		{Name: "search", Description: "Search for gems on RubyGems.org", Run: commands.RunSearchDefault},
+		{Name: "why", Description: "Show dependency chains for a gem", Run: commands.RunWhy},
+		{Name: "exec", Description: "Run commands with ore-managed environment", Run: commands.RunExecDefault},
+		{Name: "clean", Description: "Remove unused gems from vendor directory", Run: commands.RunClean},
+		{Name: "cache", Description: "Inspect or prune the ore gem cache", Run: commands.RunCache},
+		{Name: "pristine", Description: "Restore gems to pristine condition (no Ruby required)", Run: commands.RunPristine},
+		{Name: "config", Description: "Get and set Bundler configuration options", Run: commands.RunConfig},
+		{Name: "platform", Description: "Display platform compatibility information", Run: commands.RunPlatform},
+		{Name: "stats", Description: "Show Ruby environment statistics", Run: commands.RunStats},
+		{Name: "completion", Description: "Generate shell completion scripts", Run: runCompletionCommand},
+		{Name: "audit", Description: "Audit dependencies for known vulnerabilities", Run: commands.RunAudit},
+		{Name: "tree", Description: "Display dependency tree visualization", Run: commands.RunTree},
+		{Name: "gems", Description: "List all installed system gems", Run: runGemsCommand},
+		{Name: "browse", Description: "Interactive TUI to browse installed gems", Run: func(args []string) error {
+			return commands.RunBrowse()
+		}},
 	}
+}
+
+func lookupCommand(name string) *commandSpec {
+	specs := commandSpecs()
+	for i := range specs {
+		if specs[i].Name == name {
+			return &specs[i]
+		}
+		for _, alias := range specs[i].Aliases {
+			if alias == name {
+				return &specs[i]
+			}
+		}
+	}
+	return nil
+}
+
+func runGemsCommand(args []string) error {
+	fs := flag.NewFlagSet("gems", flag.ContinueOnError)
+	filter := fs.String("filter", "", "Filter gems by name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	return commands.RunGems(*filter)
 }

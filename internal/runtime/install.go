@@ -58,7 +58,7 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 	for _, gem := range gems {
 		gemPath := findGemInCaches(cacheDir, gem)
 		if gemPath == "" {
-			return InstallReport{}, fmt.Errorf("gem %s is not cached; run `ore download` first", gem.FullName())
+			return InstallReport{}, fmt.Errorf("gem %s is not cached; run `ore fetch` first", gem.FullName())
 		}
 
 		destDir := filepath.Join(vendorDir, "gems", gem.FullName())
@@ -432,7 +432,7 @@ func findGemInCaches(primaryCache string, gem lockfile.GemSpec) string {
 		return path
 	}
 
-	if gemPaths := tryGetGemPaths(); len(gemPaths) > 0 {
+	if gemPaths := tryGetGemPaths(makeDetectRubyVersion(nil)); len(gemPaths) > 0 {
 		for _, gemPath := range gemPaths {
 			systemCache := filepath.Join(gemPath, "cache", fileName)
 			if _, err := os.Stat(systemCache); err == nil {
@@ -472,9 +472,11 @@ func copyPathGem(spec lockfile.PathGemSpec, destDir string) error {
 
 // DefaultVendorDir returns the default vendor directory for the given config
 func DefaultVendorDir(cfg *Config) string {
-	return config.DefaultVendorDir(configAdapter(cfg), detectRubyVersion, getSystemGemDir)
+	return config.DefaultVendorDir(configAdapter(cfg), makeDetectRubyVersion(cfg), func() string {
+		return getSystemGemDir(cfg)
+	})
 }
 
-func getSystemGemDir() string {
-	return ruby.GetSystemGemDir(detectRubyVersion)
+func getSystemGemDir(cfg *Config) string {
+	return ruby.GetSystemGemDir(makeDetectRubyVersion(cfg))
 }

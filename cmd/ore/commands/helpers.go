@@ -20,7 +20,7 @@ import (
 // 2. gems.rb (if exists)
 // 3. Gemfile (default)
 func defaultGemfilePath() string {
-	return config.DefaultGemfilePath(nil)
+	return config.DefaultGemfilePath(loadAppConfig())
 }
 
 // findLockfilePath finds the lockfile for a given Gemfile path.
@@ -75,16 +75,14 @@ func findLockfilePath(gemfilePath string) (string, error) {
 // 3. .bundle/config BUNDLE_PATH
 // 4. System gem directory (with version manager detection)
 func defaultVendorDir() string {
-	// Note: In the commands package, we don't have access to appConfig from main
-	// So we pass nil and let DefaultVendorDir handle env vars and .bundle/config
-	return config.DefaultVendorDir(nil, getRubyVersion, getSystemGemDir)
+	return config.DefaultVendorDir(loadAppConfig(), getRubyVersion, getSystemGemDir)
 }
 
 // getRubyVersion detects the Ruby version to use (wrapper for ruby package)
 func getRubyVersion() string {
 	lockfilePath := config.DefaultLockfilePath()
 	gemfilePath := defaultGemfilePath()
-	return ruby.DetectRubyVersion(lockfilePath, gemfilePath, config.ToMajorMinor, "3.0")
+	return ruby.DetectRubyVersion(lockfilePath, gemfilePath, config.ToMajorMinor, ruby.DefaultRubyVersion)
 }
 
 // getSystemGemDir returns the system gem directory with version manager detection
@@ -94,7 +92,13 @@ func getSystemGemDir() string {
 
 // defaultCacheDir returns the default cache directory
 func defaultCacheDir() (string, error) {
-	return config.DefaultCacheDir(nil)
+	return config.DefaultCacheDir(loadAppConfig())
+}
+
+var cachedConfig = config.Load()
+
+func loadAppConfig() *config.Config {
+	return cachedConfig
 }
 
 // defaultLockfilePath returns the default lockfile path

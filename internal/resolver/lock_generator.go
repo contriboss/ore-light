@@ -11,6 +11,7 @@ import (
 
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
+	"github.com/contriboss/ore-light/internal/ruby"
 	"github.com/contriboss/pubgrub-go"
 )
 
@@ -450,9 +451,8 @@ func detectBundlerVersion(lockfilePath string) string {
 		}
 	}
 
-	// Fallback to DEFAULT_BUNDLER_VERSION constant
-	// Note: This should match the constant in cmd/ore/main.go
-	return "2.7.2"
+	// Fallback to default Bundler version
+	return ruby.DefaultBundlerVersion
 }
 
 // loadGemspecDependencies loads dependencies from .gemspec files referenced by gemspec directives.

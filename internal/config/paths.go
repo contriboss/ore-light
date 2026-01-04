@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/contriboss/gemfile-go/lockfile"
+	"github.com/contriboss/ore-light/internal/sources"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,9 +44,10 @@ func GetXDGDataHome() (string, error) {
 
 // Config represents the application configuration
 type Config struct {
-	VendorDir string
-	CacheDir  string
-	Gemfile   string
+	VendorDir  string
+	CacheDir   string
+	GemSources []sources.SourceConfig
+	Gemfile    string
 }
 
 // DefaultLockfilePath returns the default lockfile path
@@ -64,80 +66,108 @@ func DefaultLockfilePath() string {
 // DefaultGemfilePath returns the default Gemfile path
 // Supports both Gemfile and gems.rb naming conventions
 func DefaultGemfilePath(cfg *Config) string {
-	if env := os.Getenv("ORE_GEMFILE"); env != "" {
-		return env
-	}
-	if cfg != nil && cfg.Gemfile != "" {
-		return cfg.Gemfile
-	}
-
-	// Check for gems.rb first (newer Bundler 2.0+ convention)
-	if _, err := os.Stat("gems.rb"); err == nil {
-		return "gems.rb"
-	}
-
-	// Default to Gemfile
-	return "Gemfile"
+	path, _, _ := ResolveGemfilePath(cfg)
+	return path
 }
 
 // DefaultCacheDir returns the default cache directory
 func DefaultCacheDir(cfg *Config) (string, error) {
-	if cache := os.Getenv("ORE_CACHE_DIR"); cache != "" {
-		return cache, nil
-	}
-	if cache := os.Getenv("ORE_LIGHT_CACHE_DIR"); cache != "" {
-		return cache, nil
-	}
-	if cfg != nil && cfg.CacheDir != "" {
-		return cfg.CacheDir, nil
-	}
-
-	cacheHome, err := GetXDGCacheHome()
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join(cacheHome, "ore", "gems"), nil
+	path, _, err := ResolveCacheDir(cfg)
+	return path, err
 }
 
 // DefaultVendorDir returns the default vendor directory
 // It requires Ruby detection functions which will be moved to internal/ruby
 func DefaultVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGemDir func() string) string {
+	path, _, _ := ResolveVendorDir(cfg, detectRubyVersion, getSystemGemDir)
+	return path
+}
+
+// ResolveVendorDir returns the resolved vendor directory and its source.
+func ResolveVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGemDir func() string) (string, string, error) {
 	// Priority 1: Ore environment variables
 	if env := os.Getenv("ORE_VENDOR_DIR"); env != "" {
-		return env
+		return env, "env:ORE_VENDOR_DIR", nil
 	}
 	if env := os.Getenv("ORE_LIGHT_VENDOR_DIR"); env != "" {
-		return env
+		return env, "env:ORE_LIGHT_VENDOR_DIR", nil
 	}
 
 	// Priority 2: Bundler environment variable (BUNDLE_PATH)
 	if bundlePath := os.Getenv("BUNDLE_PATH"); bundlePath != "" {
 		rubyVersion := detectRubyVersion()
 		if rubyVersion != "" {
-			return filepath.Join(bundlePath, "ruby", rubyVersion)
+			return filepath.Join(bundlePath, "ruby", rubyVersion), "env:BUNDLE_PATH", nil
 		}
-		return bundlePath
+		return bundlePath, "env:BUNDLE_PATH", nil
 	}
 
 	// Priority 3: Ore config file
 	if cfg != nil && cfg.VendorDir != "" {
-		return cfg.VendorDir
+		return cfg.VendorDir, "config:ore", nil
 	}
 
 	// Priority 4: Bundler .bundle/config file
 	if bundlePath := ReadBundleConfigPath(); bundlePath != "" {
 		rubyVersion := detectRubyVersion()
 		if rubyVersion != "" {
-			return filepath.Join(bundlePath, "ruby", rubyVersion)
+			return filepath.Join(bundlePath, "ruby", rubyVersion), "bundle-config:BUNDLE_PATH", nil
 		}
-		return bundlePath
+		return bundlePath, "bundle-config:BUNDLE_PATH", nil
 	}
 
 	// Priority 5: System gem directory (default - like `gem install`)
-	// This makes ore behave like gem install by default (no isolation)
-	// Users can set BUNDLE_PATH or use --path flag for isolated installs
-	return getSystemGemDir()
+	return getSystemGemDir(), "system", nil
+}
+
+// ResolveCacheDir returns the resolved cache directory and its source.
+func ResolveCacheDir(cfg *Config) (string, string, error) {
+	if cache := os.Getenv("ORE_CACHE_DIR"); cache != "" {
+		return cache, "env:ORE_CACHE_DIR", nil
+	}
+	if cache := os.Getenv("ORE_LIGHT_CACHE_DIR"); cache != "" {
+		return cache, "env:ORE_LIGHT_CACHE_DIR", nil
+	}
+	if cfg != nil && cfg.CacheDir != "" {
+		return cfg.CacheDir, "config:ore", nil
+	}
+
+	cacheHome, err := GetXDGCacheHome()
+	if err != nil {
+		return "", "xdg:cache", err
+	}
+
+	return filepath.Join(cacheHome, "ore", "gems"), "xdg:cache", nil
+}
+
+// ResolveGemfilePath returns the resolved Gemfile path and its source.
+func ResolveGemfilePath(cfg *Config) (string, string, error) {
+	if env := os.Getenv("ORE_GEMFILE"); env != "" {
+		return env, "env:ORE_GEMFILE", nil
+	}
+	if cfg != nil && cfg.Gemfile != "" {
+		return cfg.Gemfile, "config:ore", nil
+	}
+
+	if _, err := os.Stat("gems.rb"); err == nil {
+		return "gems.rb", "file:gems.rb", nil
+	}
+
+	return "Gemfile", "default:Gemfile", nil
+}
+
+// ResolveGemSources returns configured gem sources or the default source.
+func ResolveGemSources(cfg *Config) ([]sources.SourceConfig, string) {
+	if cfg != nil && len(cfg.GemSources) > 0 {
+		return cfg.GemSources, "config:ore"
+	}
+
+	return []sources.SourceConfig{
+		{
+			URL:      "https://rubygems.org",
+			Fallback: "",
+		},
+	}, "default"
 }
 
 // ReadBundleConfigPath reads the BUNDLE_PATH from .bundle/config
