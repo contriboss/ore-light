@@ -12,6 +12,7 @@ import (
 
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/internal/extensions"
+	"github.com/contriboss/ore-light/internal/ruby"
 )
 
 // DownloadManager interface for dependency injection
@@ -40,8 +41,8 @@ type InstallCallbacks struct {
 	GetDownloadManager  func(workers int) (DownloadManager, error)
 	GetDefaultVendorDir func() string
 	InstallFromCache    func(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error)
-	InstallGitGems      func(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error)
-	InstallPathGems     func(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error)
+	InstallGitGems      func(ctx context.Context, vendorDir, rubyScope string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error)
+	InstallPathGems     func(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error)
 }
 
 // RunInstall implements the ore install command
@@ -143,6 +144,9 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		totalExtFailed += installReport.ExtensionsFailed
 	}
 
+	// Get ruby scope for Bundler-compatible paths
+	rubyScope := ruby.Scope()
+
 	// Filter and install git gems
 	gitSpecs := parsed.GitSpecs
 	if len(excludeGroups) > 0 {
@@ -150,7 +154,7 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 	}
 	if len(gitSpecs) > 0 {
 		fmt.Printf("Installing %d git gem(s)...\n", len(gitSpecs))
-		gitReport, err := callbacks.InstallGitGems(ctx, *vendorDir, gitSpecs, *force, *buildExts, extConfig)
+		gitReport, err := callbacks.InstallGitGems(ctx, *vendorDir, rubyScope, gitSpecs, *force, *buildExts, extConfig)
 		if err != nil {
 			return err
 		}
@@ -167,7 +171,7 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 	}
 	if len(pathSpecs) > 0 {
 		fmt.Printf("Installing %d path gem(s)...\n", len(pathSpecs))
-		pathReport, err := callbacks.InstallPathGems(ctx, *vendorDir, pathSpecs, *force, *buildExts, extConfig)
+		pathReport, err := callbacks.InstallPathGems(ctx, *vendorDir, rubyScope, pathSpecs, *force, *buildExts, extConfig)
 		if err != nil {
 			return err
 		}

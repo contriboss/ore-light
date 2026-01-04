@@ -154,13 +154,14 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 	}, nil
 }
 
-// InstallGitGems installs gems from git sources
-func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
+// InstallGitGems installs gems from git sources.
+// rubyScope is the Bundler-compatible path segment (e.g., "ruby/3.4.0").
+func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
 	report := InstallReport{Total: len(gitSpecs)}
 
 	engine := ruby.DetectEngine()
 
-	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "bundler", "gems")); err != nil {
+	if err := geminstall.EnsureDir(filepath.Join(vendorDir, rubyScope, "bundler", "gems")); err != nil {
 		return InstallReport{}, err
 	}
 
@@ -170,7 +171,7 @@ func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 
 	for _, spec := range gitSpecs {
 		gemName := fmt.Sprintf("%s-%s", spec.Name, shortRevision(spec.Revision))
-		destDir := filepath.Join(vendorDir, "bundler", "gems", gemName)
+		destDir := filepath.Join(vendorDir, rubyScope, "bundler", "gems", gemName)
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {
@@ -219,13 +220,14 @@ func InstallGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.G
 	}, nil
 }
 
-// InstallPathGems installs gems from local paths
-func InstallPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
+// InstallPathGems installs gems from local paths.
+// rubyScope is the Bundler-compatible path segment (e.g., "ruby/3.4.0").
+func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
 	report := InstallReport{Total: len(pathSpecs)}
 
 	engine := ruby.DetectEngine()
 
-	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
+	if err := geminstall.EnsureDir(filepath.Join(vendorDir, rubyScope, "gems")); err != nil {
 		return InstallReport{}, err
 	}
 
@@ -235,7 +237,7 @@ func InstallPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile
 
 	for _, spec := range pathSpecs {
 		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
-		destDir := filepath.Join(vendorDir, "gems", gemName)
+		destDir := filepath.Join(vendorDir, rubyScope, "gems", gemName)
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {

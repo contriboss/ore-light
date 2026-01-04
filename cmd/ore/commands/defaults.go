@@ -61,8 +61,8 @@ func RunInstallDefault(args []string) error {
 				ExtensionsFailed: report.ExtensionsFailed,
 			}, nil
 		},
-		InstallGitGems: func(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
-			report, err := runtime.InstallGitGems(ctx, vendorDir, gitSpecs, force, buildExtensions, extConfig)
+		InstallGitGems: func(ctx context.Context, vendorDir, rubyScope string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
+			report, err := runtime.InstallGitGems(ctx, vendorDir, rubyScope, gitSpecs, force, buildExtensions, extConfig)
 			if err != nil {
 				return InstallReport{}, err
 			}
@@ -73,8 +73,8 @@ func RunInstallDefault(args []string) error {
 				ExtensionsFailed: report.ExtensionsFailed,
 			}, nil
 		},
-		InstallPathGems: func(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
-			report, err := runtime.InstallPathGems(ctx, vendorDir, pathSpecs, force, buildExtensions, extConfig)
+		InstallPathGems: func(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
+			report, err := runtime.InstallPathGems(ctx, vendorDir, rubyScope, pathSpecs, force, buildExtensions, extConfig)
 			if err != nil {
 				return InstallReport{}, err
 			}

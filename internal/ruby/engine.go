@@ -14,7 +14,7 @@ type Engine struct {
 
 // EngineType constants for common Ruby engines
 const (
-	EngineMRI         = "mri"         // Standard CRuby/MRI
+	EngineMRI         = "ruby"        // Standard CRuby/MRI (RUBY_ENGINE value)
 	EngineJRuby       = "jruby"       // JRuby (Java)
 	EngineTruffleRuby = "truffleruby" // TruffleRuby (GraalVM)
 	EngineMRuby       = "mruby"       // mruby (embedded)

@@ -50,15 +50,32 @@ func TestShortRevision(t *testing.T) {
 
 func TestGitGemInstallPath(t *testing.T) {
 	// Test that git gem paths follow Bundler convention:
-	// <vendor>/bundler/gems/<name>-<revision[:12]>
+	// <vendor>/<rubyScope>/bundler/gems/<name>-<revision[:12]>
 	vendorDir := "/usr/local/bundle"
+	rubyScope := "ruby/4.0.0"
 	revision := "b27518c5745b123456789abcdef"
 	gemName := "rgeo"
 
-	expectedDir := filepath.Join(vendorDir, "bundler", "gems", "rgeo-b27518c5745b")
-	actualDir := filepath.Join(vendorDir, "bundler", "gems", gemName+"-"+shortRevision(revision))
+	expectedDir := "/usr/local/bundle/ruby/4.0.0/bundler/gems/rgeo-b27518c5745b"
+	actualDir := filepath.Join(vendorDir, rubyScope, "bundler", "gems", gemName+"-"+shortRevision(revision))
 
 	if actualDir != expectedDir {
 		t.Errorf("git gem path = %q, want %q", actualDir, expectedDir)
+	}
+}
+
+func TestPathGemInstallPath(t *testing.T) {
+	// Test that path gem paths follow Bundler convention:
+	// <vendor>/<rubyScope>/gems/<name>-<version>
+	vendorDir := "/usr/local/bundle"
+	rubyScope := "ruby/4.0.0"
+	gemName := "my_gem"
+	version := "1.0.0"
+
+	expectedDir := "/usr/local/bundle/ruby/4.0.0/gems/my_gem-1.0.0"
+	actualDir := filepath.Join(vendorDir, rubyScope, "gems", gemName+"-"+version)
+
+	if actualDir != expectedDir {
+		t.Errorf("path gem path = %q, want %q", actualDir, expectedDir)
 	}
 }
