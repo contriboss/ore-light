@@ -451,8 +451,8 @@ func detectBundlerVersion(lockfilePath string) string {
 		}
 	}
 
-	// Fallback to default Bundler version
-	return ruby.DefaultBundlerVersion
+	// Fallback to default Bundler version (same as RubyGems since 4.0)
+	return ruby.DefaultRubyGemsVersion
 }
 
 // loadGemspecDependencies loads dependencies from .gemspec files referenced by gemspec directives.
