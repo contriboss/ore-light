@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.2](https://github.com/contriboss/ore-light/compare/v0.14.1...v0.14.2) (2026-01-04)
+
+
+### Bug Fixes
+
+* bug in github fetch and improve downloader. ([#34](https://github.com/contriboss/ore-light/issues/34)) ([2800cf4](https://github.com/contriboss/ore-light/commit/2800cf4210f310290f0b52248079b3cdb35d00b9))
+* unify config resolution and CLI help ([#32](https://github.com/contriboss/ore-light/issues/32)) ([5f93327](https://github.com/contriboss/ore-light/commit/5f9332765ea8d6d8f795fcec324f100ef82e9d5d))
+
 ## [0.14.1](https://github.com/contriboss/ore-light/compare/v0.14.0...v0.14.1) (2026-01-01)
 
 
