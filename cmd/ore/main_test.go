@@ -179,7 +179,7 @@ func TestLoadGemSpecs(t *testing.T) {
 	sourceConfigs := []SourceConfig{
 		{URL: "https://example.com", Fallback: ""},
 	}
-	dm, err := newDownloadManager(cacheDir, sourceConfigs, defaultHTTPClient(), 1)
+	dm, err := newDownloadManager(cacheDir, sourceConfigs, defaultHTTPClient(1), 1)
 	if err != nil {
 		t.Fatalf("unexpected error creating download manager: %v", err)
 	}

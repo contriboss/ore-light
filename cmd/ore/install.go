@@ -149,6 +149,9 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 		if gemPath == "" {
 			return report, fmt.Errorf("gem %s is not cached; run `ore fetch` first", gem.FullName())
 		}
+		if err := verifyCachedGemChecksum(gemPath); err != nil {
+			return report, err
+		}
 
 		destDir := filepath.Join(vendorDir, "gems", gem.FullName())
 
@@ -362,6 +365,23 @@ func findGemInCaches(primaryCache string, gem lockfile.GemSpec) string {
 	return ""
 }
 
+func verifyCachedGemChecksum(gemPath string) error {
+	metaPath := gemPath + ".meta"
+	if _, err := os.Stat(metaPath); err != nil {
+		return nil
+	}
+
+	ok, err := verifyCacheChecksum(gemPath, metaPath, "")
+	if err != nil {
+		return fmt.Errorf("failed to verify checksum for %s: %w", filepath.Base(gemPath), err)
+	}
+	if !ok {
+		return fmt.Errorf("cached gem %s failed checksum; remove it or re-fetch", filepath.Base(gemPath))
+	}
+
+	return nil
+}
+
 // tryGetGemPathsForInstall uses same logic as download.go
 func tryGetGemPathsForInstall() []string {
 	cmd := exec.Command("gem", "environment", "gempath")
@@ -504,174 +524,6 @@ func getEnvValue(env []string, key string) (string, bool) {
 		return value, true
 	}
 	return "", false
-}
-
-// installGitGems installs gems from Git sources
-func installGitGems(ctx context.Context, vendorDir string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (installReport, error) {
-	report := installReport{Total: len(gitSpecs)}
-
-	// Detect Ruby engine for extension compatibility filtering
-	engine := ruby.DetectEngine()
-
-	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
-		return report, err
-	}
-
-	extBuilder := extensions.NewBuilder(extConfig)
-
-	// Collect gems that need extensions built (defer until all gems installed)
-	var extensionTargets []extensionTarget
-
-	for _, spec := range gitSpecs {
-		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
-		destDir := filepath.Join(vendorDir, "gems", gemName)
-
-		// Smart skip logic
-		if _, err := os.Stat(destDir); err == nil && !force {
-			// If buildExtensions mode is enabled, check if this gem needs extension building
-			if buildExtensions {
-				needsBuild, err := extensions.NeedsBuild(destDir, engine)
-				if err != nil {
-					return report, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
-				}
-				if needsBuild {
-					// Don't skip - this gem has extensions that need building
-					extensionTargets = append(extensionTargets, extensionTarget{
-						gemName: gemName,
-						destDir: destDir,
-					})
-				}
-			}
-			report.Skipped++
-			continue
-		}
-
-		if err := os.RemoveAll(destDir); err != nil {
-			return report, fmt.Errorf("failed to clean install dir for %s: %w", gemName, err)
-		}
-
-		// Clone the git repo at the locked revision
-		if err := cloneGitGem(spec, destDir); err != nil {
-			return report, fmt.Errorf("failed to clone git gem %s: %w", spec.Name, err)
-		}
-
-		// Link binaries if any
-		if err := geminstall.LinkGemBinaries(destDir, filepath.Join(vendorDir, "bin")); err != nil {
-			return report, err
-		}
-
-		// Collect this gem for extension building (defer until all gems installed)
-		extensionTargets = append(extensionTargets, extensionTarget{
-			gemName: gemName,
-			destDir: destDir,
-		})
-
-		report.Installed++
-	}
-
-	// Build extensions for all installed gems (two-phase: install all, then build all)
-	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig, "", vendorDir)
-
-	return report, nil
-}
-
-// cloneGitGem clones a git gem at the specified revision
-func cloneGitGem(spec lockfile.GitGemSpec, destDir string) error {
-	// Import the resolver package to use GitSource
-	gitSource, err := resolver.NewGitSource(spec.Remote, spec.Branch, spec.Tag, spec.Revision)
-	if err != nil {
-		return fmt.Errorf("failed to create git source: %w", err)
-	}
-
-	// Clone at the locked revision
-	if err := gitSource.CloneAtRevision(spec.Revision, destDir); err != nil {
-		return fmt.Errorf("failed to clone at revision %s: %w", spec.Revision, err)
-	}
-
-	return nil
-}
-
-// installPathGems installs gems from local paths
-func installPathGems(ctx context.Context, vendorDir string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (installReport, error) {
-	report := installReport{Total: len(pathSpecs)}
-
-	// Detect Ruby engine for extension compatibility filtering
-	engine := ruby.DetectEngine()
-
-	if err := geminstall.EnsureDir(filepath.Join(vendorDir, "gems")); err != nil {
-		return report, err
-	}
-
-	extBuilder := extensions.NewBuilder(extConfig)
-
-	// Collect gems that need extensions built (defer until all gems installed)
-	var extensionTargets []extensionTarget
-
-	for _, spec := range pathSpecs {
-		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
-		destDir := filepath.Join(vendorDir, "gems", gemName)
-
-		// Smart skip logic
-		if _, err := os.Stat(destDir); err == nil && !force {
-			// If buildExtensions mode is enabled, check if this gem needs extension building
-			if buildExtensions {
-				needsBuild, err := extensions.NeedsBuild(destDir, engine)
-				if err != nil {
-					return report, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
-				}
-				if needsBuild {
-					// Don't skip - this gem has extensions that need building
-					extensionTargets = append(extensionTargets, extensionTarget{
-						gemName: gemName,
-						destDir: destDir,
-					})
-				}
-			}
-			report.Skipped++
-			continue
-		}
-
-		if err := os.RemoveAll(destDir); err != nil {
-			return report, fmt.Errorf("failed to clean install dir for %s: %w", gemName, err)
-		}
-
-		// Copy the path gem to vendor
-		if err := copyPathGem(spec, destDir); err != nil {
-			return report, fmt.Errorf("failed to copy path gem %s: %w", spec.Name, err)
-		}
-
-		// Link binaries if any
-		if err := geminstall.LinkGemBinaries(destDir, filepath.Join(vendorDir, "bin")); err != nil {
-			return report, err
-		}
-
-		// Collect this gem for extension building (defer until all gems installed)
-		extensionTargets = append(extensionTargets, extensionTarget{
-			gemName: gemName,
-			destDir: destDir,
-		})
-
-		report.Installed++
-	}
-
-	// Build extensions for all installed gems (two-phase: install all, then build all)
-	buildPendingExtensions(ctx, extBuilder, engine, extensionTargets, &report, extConfig, "", vendorDir)
-
-	return report, nil
-}
-
-// copyPathGem copies a path gem to the vendor directory
-func copyPathGem(spec lockfile.PathGemSpec, destDir string) error {
-	pathSource, err := resolver.NewPathSource(spec.Remote)
-	if err != nil {
-		return fmt.Errorf("failed to create path source: %w", err)
-	}
-
-	if err := pathSource.CopyToVendor(destDir); err != nil {
-		return fmt.Errorf("failed to copy to vendor: %w", err)
-	}
-
-	return nil
 }
 
 // Helper for tests: create a minimal .gem archive.

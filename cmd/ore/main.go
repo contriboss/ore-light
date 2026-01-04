@@ -1,9 +1,9 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -97,7 +97,7 @@ func printVersion() {
 
 func versionInfo() string {
 	hash := shortHash(buildCommit)
-	return fmt.Sprintf("ore %s (%s)", version, hash)
+	return fmt.Sprintf("ore %s (%s) default-ruby %s", version, hash, ruby.DefaultRubyVersion)
 }
 
 func shortHash(commit string) string {
@@ -198,32 +198,42 @@ func defaultCacheDir() (string, error) {
 	return config.DefaultCacheDir(appConfig)
 }
 
-// downloadManagerAdapter adapts main's downloadManager to commands.DownloadManager interface
-type downloadManagerAdapter struct {
-	dm *downloadManager
+func defaultDownloadWorkers() int {
+	return config.DefaultDownloadWorkers(appConfig)
 }
 
-func (a *downloadManagerAdapter) CheckSourceHealth(ctx context.Context) {
-	a.dm.CheckSourceHealth(ctx)
-}
-
-func (a *downloadManagerAdapter) DownloadAll(ctx context.Context, gems []lockfile.GemSpec, force bool) (commands.DownloadReport, error) {
-	report, err := a.dm.DownloadAll(ctx, gems, force)
-	if err != nil {
-		return commands.DownloadReport{}, err
+func defaultHTTPClient(workers int) *http.Client {
+	maxConnsPerHost := clampInt(workers, 4, 32)
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          maxConnsPerHost * 4,
+		MaxIdleConnsPerHost:   maxConnsPerHost,
+		MaxConnsPerHost:       maxConnsPerHost,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
 	}
-	return commands.DownloadReport{
-		Downloaded: report.Downloaded,
-		Skipped:    report.Skipped,
-	}, nil
+
+	return &http.Client{
+		Timeout:   60 * time.Second,
+		Transport: transport,
+	}
 }
 
-func (a *downloadManagerAdapter) CacheDir() string {
-	return a.dm.CacheDir()
-}
-
-func defaultHTTPClient() *http.Client {
-	return &http.Client{Timeout: 60 * time.Second}
+func clampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 func getGemSources() []SourceConfig {

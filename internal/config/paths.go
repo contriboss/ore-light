@@ -44,10 +44,11 @@ func GetXDGDataHome() (string, error) {
 
 // Config represents the application configuration
 type Config struct {
-	VendorDir  string
-	CacheDir   string
-	GemSources []sources.SourceConfig
-	Gemfile    string
+	VendorDir       string
+	CacheDir        string
+	GemSources      []sources.SourceConfig
+	Gemfile         string
+	DownloadWorkers int `toml:"download_workers"`
 }
 
 // DefaultLockfilePath returns the default lockfile path

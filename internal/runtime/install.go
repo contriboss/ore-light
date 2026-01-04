@@ -60,6 +60,9 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 		if gemPath == "" {
 			return InstallReport{}, fmt.Errorf("gem %s is not cached; run `ore fetch` first", gem.FullName())
 		}
+		if err := verifyCachedGemChecksum(gemPath); err != nil {
+			return InstallReport{}, err
+		}
 
 		destDir := filepath.Join(vendorDir, "gems", gem.FullName())
 
@@ -442,6 +445,23 @@ func findGemInCaches(primaryCache string, gem lockfile.GemSpec) string {
 	}
 
 	return ""
+}
+
+func verifyCachedGemChecksum(gemPath string) error {
+	metaPath := gemPath + ".meta"
+	if _, err := os.Stat(metaPath); err != nil {
+		return nil
+	}
+
+	ok, err := verifyCacheChecksum(gemPath, metaPath, "")
+	if err != nil {
+		return fmt.Errorf("failed to verify checksum for %s: %w", filepath.Base(gemPath), err)
+	}
+	if !ok {
+		return fmt.Errorf("cached gem %s failed checksum; remove it or re-fetch", filepath.Base(gemPath))
+	}
+
+	return nil
 }
 
 func cloneGitGem(spec lockfile.GitGemSpec, destDir string) error {

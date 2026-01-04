@@ -50,7 +50,7 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
-	workers := fs.Int("workers", runtime.NumCPU(), "Number of concurrent downloads")
+	workers := fs.Int("workers", defaultDownloadWorkers(), "Number of concurrent downloads")
 	force := fs.Bool("force", false, "Re-download or reinstall even if artifacts exist")
 	vendorDir := fs.String("vendor", callbacks.GetDefaultVendorDir(), "Destination directory for installed gems")
 	skipExtensions := fs.Bool("skip-extensions", false, "Skip building native extensions")

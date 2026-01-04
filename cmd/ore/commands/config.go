@@ -262,6 +262,7 @@ func showEffectiveConfig(explain bool) error {
 	cacheDir, cacheSource, cacheErr := config.ResolveCacheDir(cfg)
 	gemfile, gemfileSource, _ := config.ResolveGemfilePath(cfg)
 	gemSources, gemSourcesSource := config.ResolveGemSources(cfg)
+	downloadWorkers, downloadWorkersSource := config.ResolveDownloadWorkers(cfg)
 
 	fmt.Println("Effective ore config:")
 	if explain {
@@ -273,6 +274,7 @@ func showEffectiveConfig(explain bool) error {
 		}
 		fmt.Printf("  gemfile = %s (%s)\n", gemfile, gemfileSource)
 		fmt.Printf("  gem_sources = %s (%s)\n", formatSources(gemSources), gemSourcesSource)
+		fmt.Printf("  download_workers = %d (%s)\n", downloadWorkers, downloadWorkersSource)
 	} else {
 		fmt.Printf("  vendor_dir = %s\n", vendorDir)
 		if cacheErr != nil {
@@ -282,6 +284,7 @@ func showEffectiveConfig(explain bool) error {
 		}
 		fmt.Printf("  gemfile = %s\n", gemfile)
 		fmt.Printf("  gem_sources = %s\n", formatSources(gemSources))
+		fmt.Printf("  download_workers = %d\n", downloadWorkers)
 	}
 
 	if explain {

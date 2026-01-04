@@ -2,9 +2,13 @@ package runtime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +18,7 @@ import (
 	"time"
 
 	"github.com/contriboss/gemfile-go/lockfile"
+	"github.com/contriboss/ore-light/internal/compactindex"
 	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/ore-light/internal/ruby"
 	"github.com/contriboss/ore-light/internal/sources"
@@ -23,8 +28,11 @@ import (
 type DownloadManager struct {
 	cacheDir      string
 	sourceManager *sources.Manager
+	compactIndex  *compactindex.Client
 	workers       int
 	detectRuby    func() string
+	checksumMu    sync.Mutex
+	checksums     map[string]checksumEntry
 }
 
 type DownloadReport struct {
@@ -34,6 +42,11 @@ type DownloadReport struct {
 	mu         sync.Mutex
 }
 
+type checksumEntry struct {
+	checksum string
+	ok       bool
+}
+
 func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *http.Client, workers int, detectRuby func() string) (*DownloadManager, error) {
 	if cacheDir == "" {
 		return nil, fmt.Errorf("cache directory must be provided")
@@ -41,22 +54,26 @@ func newDownloadManager(cacheDir string, sourceConfigs []SourceConfig, client *h
 	if len(sourceConfigs) == 0 {
 		return nil, fmt.Errorf("at least one gem source must be configured")
 	}
-	if client == nil {
-		client = defaultHTTPClient()
-	}
 	if workers <= 0 {
-		workers = 1
+		workers = config.DefaultDownloadWorkers(nil)
+	}
+	if client == nil {
+		client = defaultHTTPClient(workers)
 	}
 
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
+	sourceManager := sources.NewManager(sourceConfigs, client)
+
 	return &DownloadManager{
 		cacheDir:      cacheDir,
-		sourceManager: sources.NewManager(sourceConfigs, client),
+		sourceManager: sourceManager,
+		compactIndex:  newCompactIndexClient(sourceManager),
 		workers:       workers,
 		detectRuby:    detectRuby,
+		checksums:     make(map[string]checksumEntry),
 	}, nil
 }
 
@@ -101,14 +118,37 @@ func (m *DownloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSp
 func (m *DownloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec, force bool) (bool, error) {
 	cachePath := m.cachePathFor(gem)
 	metaPath := cachePath + ".meta"
+	expectedChecksum, _ := m.expectedChecksum(ctx, gem)
 	if !force {
 		if foundPath := m.findInCaches(gem); foundPath != "" {
-			if foundPath != cachePath {
-				if err := copyFile(foundPath, cachePath); err != nil {
+			if foundPath == cachePath {
+				ok, err := verifyCacheChecksum(cachePath, metaPath, expectedChecksum)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: checksum check failed for %s: %v\n", gem.FullName(), err)
+				}
+				if !ok {
+					fmt.Fprintf(os.Stderr, "Warning: cached gem %s failed checksum; re-downloading\n", gem.FullName())
+					_ = os.Remove(cachePath)
+					_ = os.Remove(metaPath)
+				} else {
+					_ = ensureCacheChecksum(cachePath, metaPath)
+					return false, nil
+				}
+			} else {
+				sha, err := copyFile(foundPath, cachePath)
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "Note: Using %s from system cache (copy failed: %v)\n", gem.FullName(), err)
+				} else if sha != "" {
+					if expectedChecksum != "" && sha != expectedChecksum {
+						fmt.Fprintf(os.Stderr, "Warning: cached gem %s failed checksum; re-downloading\n", gem.FullName())
+						_ = os.Remove(cachePath)
+						_ = os.Remove(metaPath)
+					} else {
+						_ = saveCacheMetadata(metaPath, cacheMetadata{SHA256: sha})
+						return false, nil
+					}
 				}
 			}
-			return false, nil
 		}
 	}
 
@@ -143,6 +183,17 @@ func (m *DownloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 		return false, fmt.Errorf("failed to download %s: %w", gem.FullName(), err)
 	}
 	if status == http.StatusNotModified {
+		ok, err := verifyCacheChecksum(cachePath, metaPath, expectedChecksum)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: checksum check failed for %s: %v\n", gem.FullName(), err)
+		}
+		if !ok {
+			fmt.Fprintf(os.Stderr, "Warning: cached gem %s failed checksum; re-downloading\n", gem.FullName())
+			_ = os.Remove(cachePath)
+			_ = os.Remove(metaPath)
+			return m.downloadGem(ctx, gem, true)
+		}
+		_ = ensureCacheChecksum(cachePath, metaPath)
 		return false, nil
 	}
 
@@ -154,12 +205,28 @@ func (m *DownloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 		return false, fmt.Errorf("failed to finalize download for %s: %w", gem.FullName(), err)
 	}
 
+	sha, shaErr := computeSHA256(cachePath)
+	if shaErr != nil {
+		if expectedChecksum != "" {
+			return false, fmt.Errorf("failed to compute checksum for %s: %w", gem.FullName(), shaErr)
+		}
+		fmt.Fprintf(os.Stderr, "Warning: failed to compute checksum for %s: %v\n", gem.FullName(), shaErr)
+	}
+	if expectedChecksum != "" && sha != "" && sha != expectedChecksum {
+		_ = os.Remove(cachePath)
+		_ = os.Remove(metaPath)
+		return false, fmt.Errorf("checksum mismatch for %s", gem.FullName())
+	}
+
 	if respHeaders != nil {
 		meta := cacheMetadata{
 			ETag:         respHeaders.Get("ETag"),
 			LastModified: respHeaders.Get("Last-Modified"),
+			SHA256:       sha,
 		}
 		_ = saveCacheMetadata(metaPath, meta)
+	} else if sha != "" {
+		_ = saveCacheMetadata(metaPath, cacheMetadata{SHA256: sha})
 	}
 
 	fmt.Printf("Fetched %s\n", gem.FullName())
@@ -262,14 +329,14 @@ func (m *DownloadManager) findInCaches(gem lockfile.GemSpec) string {
 	return ""
 }
 
-func copyFile(src, dst string) error {
+func copyFile(src, dst string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
+		return "", err
 	}
 
 	in, err := os.Open(src)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() {
 		_ = in.Close()
@@ -277,17 +344,22 @@ func copyFile(src, dst string) error {
 
 	out, err := os.Create(dst)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() {
 		_ = out.Close()
 	}()
 
-	if _, err := io.Copy(out, in); err != nil {
-		return err
+	hasher := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(out, hasher), in); err != nil {
+		return "", err
 	}
 
-	return out.Close()
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 func (m *DownloadManager) CacheDir() string {
@@ -298,9 +370,60 @@ func gemFileName(gem lockfile.GemSpec) string {
 	return fmt.Sprintf("%s.gem", gem.FullName())
 }
 
+func newCompactIndexClient(manager *sources.Manager) *compactindex.Client {
+	if manager == nil {
+		return nil
+	}
+
+	for _, source := range manager.GetSources() {
+		if source.URL == "" {
+			continue
+		}
+		client, err := compactindex.NewClient(source.URL)
+		if err == nil {
+			return client
+		}
+	}
+
+	return nil
+}
+
+func (m *DownloadManager) expectedChecksum(ctx context.Context, gem lockfile.GemSpec) (string, bool) {
+	if m.compactIndex == nil {
+		return "", false
+	}
+
+	key := gem.FullName()
+
+	m.checksumMu.Lock()
+	entry, ok := m.checksums[key]
+	m.checksumMu.Unlock()
+	if ok {
+		return entry.checksum, entry.ok
+	}
+
+	infoList, err := m.compactIndex.GetGemInfo(ctx, gem.Name)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			fmt.Fprintf(os.Stderr, "Warning: checksum lookup failed for %s: %v\n", gem.FullName(), err)
+		}
+		m.checksumMu.Lock()
+		m.checksums[key] = checksumEntry{}
+		m.checksumMu.Unlock()
+		return "", false
+	}
+
+	checksum, found := compactindex.FindChecksum(infoList, gem.Version, gem.Platform)
+	m.checksumMu.Lock()
+	m.checksums[key] = checksumEntry{checksum: checksum, ok: found}
+	m.checksumMu.Unlock()
+	return checksum, found
+}
+
 type cacheMetadata struct {
 	ETag         string `json:"etag"`
 	LastModified string `json:"last_modified"`
+	SHA256       string `json:"sha256"`
 }
 
 func loadCacheMetadata(path string) (*cacheMetadata, error) {
@@ -323,8 +446,107 @@ func saveCacheMetadata(path string, meta cacheMetadata) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-func defaultHTTPClient() *http.Client {
-	return &http.Client{Timeout: 60 * time.Second}
+func ensureCacheChecksum(path, metaPath string) error {
+	if _, err := os.Stat(path); err != nil {
+		return nil
+	}
+
+	meta, err := loadCacheMetadata(metaPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			meta = &cacheMetadata{}
+		} else {
+			return err
+		}
+	}
+
+	if meta.SHA256 != "" {
+		return nil
+	}
+
+	sha, err := computeSHA256(path)
+	if err != nil {
+		return err
+	}
+	meta.SHA256 = sha
+	return saveCacheMetadata(metaPath, *meta)
+}
+
+func verifyCacheChecksum(path, metaPath, expectedChecksum string) (bool, error) {
+	if expectedChecksum != "" {
+		sha, err := computeSHA256(path)
+		if err != nil {
+			return true, err
+		}
+		return sha == expectedChecksum, nil
+	}
+
+	meta, err := loadCacheMetadata(metaPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return true, nil
+		}
+		return true, err
+	}
+	if meta.SHA256 == "" {
+		return true, nil
+	}
+	sha, err := computeSHA256(path)
+	if err != nil {
+		return true, err
+	}
+	return sha == meta.SHA256, nil
+}
+
+func computeSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func defaultHTTPClient(workers int) *http.Client {
+	maxConnsPerHost := clampInt(workers, 4, 32)
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          maxConnsPerHost * 4,
+		MaxIdleConnsPerHost:   maxConnsPerHost,
+		MaxConnsPerHost:       maxConnsPerHost,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	return &http.Client{
+		Timeout:   60 * time.Second,
+		Transport: transport,
+	}
+}
+
+func clampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 // NewDownloadManager creates a download manager with configured sources
@@ -335,7 +557,10 @@ func NewDownloadManager(cfg *Config, workers int) (*DownloadManager, error) {
 	}
 
 	sourceConfigs := getGemSources(cfg)
-	client := defaultHTTPClient()
+	if workers <= 0 {
+		workers = config.DefaultDownloadWorkers(configAdapter(cfg))
+	}
+	client := defaultHTTPClient(workers)
 
 	return newDownloadManager(cacheDir, sourceConfigs, client, workers, makeDetectRubyVersion(cfg))
 }
