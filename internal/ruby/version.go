@@ -58,7 +58,12 @@ func DetectRubyVersion(lockfilePath, gemfilePath string, toMajorMinor func(strin
 		return ver
 	}
 
-	// 7. Fallback to default
+	// 7. Try running ruby --version command
+	if ver := DetectRubyVersionFromCommand(toMajorMinor); ver != "" {
+		return ver
+	}
+
+	// 8. Fallback to default
 	return defaultVersion
 }
 
@@ -155,6 +160,35 @@ func DetectRubyVersionFromEnv() string {
 	}
 
 	return ""
+}
+
+// DetectRubyVersionFromCommand runs `ruby --version` to detect the Ruby version
+func DetectRubyVersionFromCommand(toMajorMinor func(string) string) string {
+	cmd := exec.Command("ruby", "--version")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	// Parse "ruby 4.0.0 (2025-12-25 revision ...) [arm64-darwin24]"
+	line := strings.TrimSpace(string(output))
+	if !strings.HasPrefix(line, "ruby ") {
+		return ""
+	}
+
+	// Extract version after "ruby "
+	parts := strings.Fields(line)
+	if len(parts) < 2 {
+		return ""
+	}
+
+	version := parts[1]
+	// Remove patchlevel suffix if present (e.g., "3.2.2p53" -> "3.2.2")
+	if idx := strings.Index(version, "p"); idx > 0 {
+		version = version[:idx]
+	}
+
+	return toMajorMinor(version)
 }
 
 // walkUpForFile walks up from startDir to filesystem root looking for filename
