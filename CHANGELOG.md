@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/contriboss/ore-light/compare/v0.16.0...v0.16.1) (2026-01-05)
+
+
+### Bug Fixes
+
+* exit non-zero on extension failures and support version-constrained build deps ([#39](https://github.com/contriboss/ore-light/issues/39)) ([218e976](https://github.com/contriboss/ore-light/commit/218e976e137972fe24b6502738af656c20ca62ab))
+
 ## [0.16.0](https://github.com/contriboss/ore-light/compare/v0.15.1...v0.16.0) (2026-01-05)
 
 
