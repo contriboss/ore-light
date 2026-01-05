@@ -51,7 +51,7 @@ type BuildResult struct {
 	Success             bool
 	Skipped             bool
 	Error               error
-	MissingDependencies []string // Build-time dependencies that were missing (e.g., rake)
+	MissingDependencies []rubyext.MissingDependency // Build-time dependencies that were missing (e.g., rake)
 }
 
 // HasExtensions checks if a gem directory contains extensions compatible with the given Ruby engine
@@ -187,7 +187,7 @@ func (b *Builder) BuildExtensions(ctx context.Context, gemDir, gemName string, e
 	// Process results even if there's an error, to collect MissingDependencies
 	var builtExtensions []string
 	var buildFailed bool
-	var missingDeps []string
+	var missingDeps []rubyext.MissingDependency
 	for _, extResult := range results {
 		if extResult == nil {
 			continue

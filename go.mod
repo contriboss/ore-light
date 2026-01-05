@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/contriboss/gemfile-go v0.6.0
 	github.com/contriboss/pubgrub-go v0.3.3
-	github.com/contriboss/ruby-extension-go v0.2.4
+	github.com/contriboss/ruby-extension-go v0.3.0
 	github.com/contriboss/rubygems-client-go v0.1.0
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-isatty v0.0.20
