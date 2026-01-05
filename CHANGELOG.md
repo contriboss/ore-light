@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.0](https://github.com/contriboss/ore-light/compare/v0.15.1...v0.16.0) (2026-01-05)
+
+
+### Features
+
+* replace exec git commands with go-git library for shallow clone support ([134e9a6](https://github.com/contriboss/ore-light/commit/134e9a611641ca567bbd1e9ad8a52cf7477a9b2e))
+
+
+### Bug Fixes
+
+* increase download timeout to 2.5 minutes for large gems ([00e77c1](https://github.com/contriboss/ore-light/commit/00e77c1d67151bd5d7c26cb110ef13d3e8f156a5))
+
 ## [0.15.1](https://github.com/contriboss/ore-light/compare/v0.15.0...v0.15.1) (2026-01-04)
 
 
