@@ -221,7 +221,7 @@ func defaultHTTPClient(workers int) *http.Client {
 	}
 
 	return &http.Client{
-		Timeout:   60 * time.Second,
+		Timeout:   150 * time.Second, // 2.5 minutes for large gems
 		Transport: transport,
 	}
 }
