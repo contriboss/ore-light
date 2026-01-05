@@ -3,8 +3,10 @@ package audit
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/contriboss/ore-light/internal/config"
 	"gopkg.in/yaml.v3"
@@ -71,11 +73,14 @@ func (db *Database) Update() error {
 			return fmt.Errorf("failed to create parent directory: %w", err)
 		}
 
-		cmd := exec.Command("git", "clone", "--depth", "1", DatabaseURL, db.Path)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		if err := cmd.Run(); err != nil {
+		_, err := git.PlainClone(db.Path, false, &git.CloneOptions{
+			URL:           DatabaseURL,
+			Depth:         1,
+			SingleBranch:  true,
+			ReferenceName: plumbing.NewBranchReferenceName("main"),
+			Progress:      os.Stdout,
+		})
+		if err != nil {
 			return fmt.Errorf("failed to clone advisory database: %w", err)
 		}
 
@@ -86,11 +91,21 @@ func (db *Database) Update() error {
 	// Update existing database
 	fmt.Println("Updating ruby-advisory-db...")
 
-	cmd := exec.Command("git", "-C", db.Path, "pull", "--ff-only")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	repo, err := git.PlainOpen(db.Path)
+	if err != nil {
+		return fmt.Errorf("failed to open advisory database: %w", err)
+	}
 
-	if err := cmd.Run(); err != nil {
+	wt, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	err = wt.Pull(&git.PullOptions{
+		RemoteName: "origin",
+		Progress:   os.Stdout,
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return fmt.Errorf("failed to update advisory database: %w", err)
 	}
 

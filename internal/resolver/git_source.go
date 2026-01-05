@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/ore-light/internal/config"
 	"github.com/contriboss/pubgrub-go"
@@ -29,6 +32,8 @@ type GitSource struct {
 	resolvedRevision string
 	// Dependencies parsed from gemspec
 	dependencies []pubgrub.Term
+	// Cached repository reference
+	repo *git.Repository
 }
 
 // NewGitSource creates a new Git source for a gem
@@ -112,60 +117,125 @@ func (g *GitSource) cloneOrUpdate(repoDir string) error {
 		return g.updateRepo(repoDir)
 	}
 
-	// Clone the repository
-	if err := os.MkdirAll(repoDir, 0o755); err != nil {
-		return err
+	// Prepare clone options
+	cloneOpts := &git.CloneOptions{
+		URL: g.URL,
 	}
 
-	cmd := exec.Command("git", "clone", "--quiet", g.URL, repoDir)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git clone failed: %w\n%s", err, string(output))
+	// Use shallow clone for branch/tag (not for raw SHA refs)
+	if g.Branch != "" {
+		cloneOpts.Depth = 1
+		cloneOpts.SingleBranch = true
+		cloneOpts.ReferenceName = plumbing.NewBranchReferenceName(g.Branch)
+	} else if g.Tag != "" {
+		cloneOpts.Depth = 1
+		cloneOpts.SingleBranch = true
+		cloneOpts.ReferenceName = plumbing.NewTagReferenceName(g.Tag)
 	}
+	// ref (SHA) = full clone, no Depth set
+
+	repo, err := git.PlainClone(repoDir, false, cloneOpts)
+	if err != nil {
+		return fmt.Errorf("git clone failed: %w", err)
+	}
+	g.repo = repo
 
 	return nil
 }
 
 // updateRepo updates an existing repository
 func (g *GitSource) updateRepo(repoDir string) error {
-	cmd := exec.Command("git", "-C", repoDir, "fetch", "--quiet", "origin")
-	output, err := cmd.CombinedOutput()
+	repo, err := git.PlainOpen(repoDir)
 	if err != nil {
-		return fmt.Errorf("git fetch failed: %w\n%s", err, string(output))
+		return fmt.Errorf("failed to open repository: %w", err)
+	}
+	g.repo = repo
+
+	err = repo.Fetch(&git.FetchOptions{
+		RemoteName: "origin",
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return fmt.Errorf("git fetch failed: %w", err)
 	}
 	return nil
 }
 
 // checkoutRef checks out the specified branch, tag, or ref
 func (g *GitSource) checkoutRef(repoDir string) (string, error) {
-	// Determine what to checkout
-	var ref string
+	if g.repo == nil {
+		repo, err := git.PlainOpen(repoDir)
+		if err != nil {
+			return "", fmt.Errorf("failed to open repository: %w", err)
+		}
+		g.repo = repo
+	}
+
+	wt, err := g.repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	checkoutOpts := &git.CheckoutOptions{
+		Force: true,
+	}
+
 	if g.Tag != "" {
-		ref = g.Tag
+		// Checkout tag
+		ref, err := g.repo.Tag(g.Tag)
+		if err != nil {
+			// Try as lightweight tag reference
+			tagRef, err := g.repo.Reference(plumbing.NewTagReferenceName(g.Tag), true)
+			if err != nil {
+				return "", fmt.Errorf("tag %s not found: %w", g.Tag, err)
+			}
+			checkoutOpts.Hash = tagRef.Hash()
+		} else {
+			checkoutOpts.Hash = ref.Hash()
+		}
 	} else if g.Branch != "" {
-		ref = "origin/" + g.Branch
+		// Checkout remote branch
+		remoteRef, err := g.repo.Reference(plumbing.NewRemoteReferenceName("origin", g.Branch), true)
+		if err != nil {
+			return "", fmt.Errorf("branch origin/%s not found: %w", g.Branch, err)
+		}
+		checkoutOpts.Hash = remoteRef.Hash()
 	} else if g.Ref != "" {
-		ref = g.Ref
+		// Checkout specific commit SHA
+		checkoutOpts.Hash = plumbing.NewHash(g.Ref)
 	} else {
-		// Default to main/master
-		ref = "origin/HEAD"
+		// Default: checkout HEAD
+		headRef, err := g.repo.Head()
+		if err != nil {
+			// Try origin/HEAD or origin/main
+			remoteRef, err := g.repo.Reference(plumbing.NewRemoteReferenceName("origin", "HEAD"), true)
+			if err != nil {
+				// Fallback to origin/main
+				remoteRef, err = g.repo.Reference(plumbing.NewRemoteReferenceName("origin", "main"), true)
+				if err != nil {
+					// Fallback to origin/master
+					remoteRef, err = g.repo.Reference(plumbing.NewRemoteReferenceName("origin", "master"), true)
+					if err != nil {
+						return "", fmt.Errorf("no default branch found: %w", err)
+					}
+				}
+			}
+			checkoutOpts.Hash = remoteRef.Hash()
+		} else {
+			checkoutOpts.Hash = headRef.Hash()
+		}
 	}
 
-	// Checkout the ref
-	cmd := exec.Command("git", "-C", repoDir, "checkout", "--quiet", ref)
-	output, err := cmd.CombinedOutput()
+	if err := wt.Checkout(checkoutOpts); err != nil {
+		return "", fmt.Errorf("checkout failed: %w", err)
+	}
+
+	// Get HEAD SHA after checkout
+	head, err := g.repo.Head()
 	if err != nil {
-		return "", fmt.Errorf("git checkout %s failed: %w\n%s", ref, err, string(output))
+		// If HEAD is detached, use the hash we checked out
+		return checkoutOpts.Hash.String(), nil
 	}
-
-	// Get the commit SHA
-	cmd = exec.Command("git", "-C", repoDir, "rev-parse", "HEAD")
-	shaOutput, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git rev-parse failed: %w", err)
-	}
-
-	return strings.TrimSpace(string(shaOutput)), nil
+	return head.Hash().String(), nil
 }
 
 // parseGemspec parses the gemspec file to extract dependencies using tree-sitter
@@ -255,6 +325,8 @@ func getGitCacheDir() (string, error) {
 
 // CloneAtRevision clones the repository at a specific revision to a destination directory
 // This is used during gem installation
+// Note: Uses exec.Command for git archive as go-git doesn't support archive
+// TODO: Contribute archive support to go-git upstream
 func (g *GitSource) CloneAtRevision(revision, destDir string) error {
 	// First ensure the repo is in our cache
 	repoDir := g.getRepoDir()
