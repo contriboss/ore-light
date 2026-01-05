@@ -134,6 +134,7 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 	// Install regular gems
 	var totalInstalled, totalSkipped, totalExtBuilt, totalExtFailed int
 	if len(gems) > 0 {
+		fmt.Printf("Installing %d rubygems gem(s)...\n", len(gems))
 		installReport, err := callbacks.InstallFromCache(ctx, dm.CacheDir(), *vendorDir, gems, *force, *buildExts, extConfig)
 		if err != nil {
 			return err
@@ -200,7 +201,8 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		fmt.Printf("Built %d native extension(s).\n", totalExtBuilt)
 	}
 	if totalExtFailed > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: %d extension(s) failed to build.\n", totalExtFailed)
+		fmt.Fprintf(os.Stderr, "Error: %d native extension(s) failed to build.\n", totalExtFailed)
+		return fmt.Errorf("%d native extension(s) failed to build", totalExtFailed)
 	}
 
 	// Display post-install messages

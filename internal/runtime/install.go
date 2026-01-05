@@ -14,6 +14,7 @@ import (
 	"github.com/contriboss/ore-light/internal/resolver"
 	"github.com/contriboss/ore-light/internal/ruby"
 	"github.com/contriboss/ore-light/internal/sources"
+	rubyext "github.com/contriboss/ruby-extension-go"
 )
 
 // InstallReport tracks installation progress and results
@@ -312,11 +313,15 @@ func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder,
 
 			allInstalled := true
 			for _, dep := range extResult.MissingDependencies {
+				depStr := dep.Name
+				if dep.Constraint != "" {
+					depStr = fmt.Sprintf("%s (%s)", dep.Name, dep.Constraint)
+				}
 				if extConfig.Verbose {
-					fmt.Printf("Installing build dependency: %s\n", dep)
+					fmt.Printf("Installing build dependency: %s\n", depStr)
 				}
 				if err := installBuildDependency(ctx, dep, actualCacheDir, vendorDir, extConfig.Verbose); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: Failed to install build dependency %s: %v\n", dep, err)
+					fmt.Fprintf(os.Stderr, "Warning: Failed to install build dependency %s: %v\n", depStr, err)
 					allInstalled = false
 					break
 				}
@@ -361,7 +366,9 @@ func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder,
 	}
 }
 
-func installBuildDependency(ctx context.Context, gemName, cacheDir, vendorDir string, verbose bool) error {
+func installBuildDependency(ctx context.Context, dep rubyext.MissingDependency, cacheDir, vendorDir string, verbose bool) error {
+	gemName := dep.Name
+
 	client, err := registry.NewClient("https://rubygems.org", registry.ProtocolRubygems)
 	if err != nil {
 		return fmt.Errorf("failed to create registry client: %w", err)
@@ -374,7 +381,22 @@ func installBuildDependency(ctx context.Context, gemName, cacheDir, vendorDir st
 	if len(versions) == 0 {
 		return fmt.Errorf("no versions found for %s", gemName)
 	}
+
+	// Filter versions by constraint if one is specified
 	targetVersion := versions[0]
+	if dep.Constraint != "" {
+		cond, parseErr := resolver.NewSemverCondition(dep.Constraint)
+		if parseErr == nil {
+			for _, v := range versions {
+				ver, verErr := resolver.NewSemverVersion(v)
+				if verErr == nil && cond.Satisfies(ver) {
+					targetVersion = v
+					break
+				}
+			}
+		}
+		// If parsing fails or no match, fall back to latest version
+	}
 
 	gemFileName := fmt.Sprintf("%s-%s.gem", gemName, targetVersion)
 	cachedPath := filepath.Join(cacheDir, gemFileName)

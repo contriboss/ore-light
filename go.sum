@@ -45,6 +45,8 @@ github.com/contriboss/pubgrub-go v0.3.3 h1:C9WN+rmwL1J56XtFp0SO+SMjKIdPG1Goa6drz
 github.com/contriboss/pubgrub-go v0.3.3/go.mod h1:GSdpaquQoqedQVXdmuy08Wdef/k108x/fKJcUFyrM+4=
 github.com/contriboss/ruby-extension-go v0.2.4 h1:DRYb4Qreubkc8oNz+KzxXvarLvu4rvvh5LLBXAUh/V0=
 github.com/contriboss/ruby-extension-go v0.2.4/go.mod h1:xEfGEj82FAlXS842Kf8F9mIyl0gV00puvDhjKcR5xUc=
+github.com/contriboss/ruby-extension-go v0.3.0 h1:cG4BPeOMZ5rSL+eW7qqv2mTQX9rbk07/dohmMH/DFrM=
+github.com/contriboss/ruby-extension-go v0.3.0/go.mod h1:xEfGEj82FAlXS842Kf8F9mIyl0gV00puvDhjKcR5xUc=
 github.com/contriboss/rubygems-client-go v0.1.0 h1:HGCGLaNtcD58mmTXhdLuKUgerRGQMOqE0NbKw2JCSSI=
 github.com/contriboss/rubygems-client-go v0.1.0/go.mod h1:jRwg1ARgvAzJJxwbHOpmEDoCIBFYotuKpP1z2goNk84=
 github.com/cyphar/filepath-securejoin v0.4.1 h1:JyxxyPEaktOD+GAnqIqTf9A8tHyAG22rowi7HkoSU1s=

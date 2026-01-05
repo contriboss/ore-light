@@ -19,6 +19,7 @@ import (
 	"github.com/contriboss/ore-light/internal/resolver"
 	"github.com/contriboss/ore-light/internal/ruby"
 	"github.com/contriboss/ore-light/internal/sources"
+	rubyext "github.com/contriboss/ruby-extension-go"
 )
 
 // Ruby developers: This is like a result object from bundle install
@@ -40,14 +41,16 @@ type extensionTarget struct {
 
 // installBuildDependency fetches and installs a build-time dependency gem (like rake)
 // Returns error if fetch or install fails
-func installBuildDependency(ctx context.Context, gemName, cacheDir, vendorDir string, verbose bool) error {
+func installBuildDependency(ctx context.Context, dep rubyext.MissingDependency, cacheDir, vendorDir string, verbose bool) error {
+	gemName := dep.Name
+
 	// Create registry client
 	client, err := registry.NewClient("https://rubygems.org", registry.ProtocolRubygems)
 	if err != nil {
 		return fmt.Errorf("failed to create registry client: %w", err)
 	}
 
-	// Get latest version
+	// Get versions
 	versions, err := client.GetGemVersions(ctx, gemName)
 	if err != nil {
 		return fmt.Errorf("failed to get versions for %s: %w", gemName, err)
@@ -55,7 +58,22 @@ func installBuildDependency(ctx context.Context, gemName, cacheDir, vendorDir st
 	if len(versions) == 0 {
 		return fmt.Errorf("no versions found for %s", gemName)
 	}
+
+	// Filter versions by constraint if one is specified
 	targetVersion := versions[0]
+	if dep.Constraint != "" {
+		cond, parseErr := resolver.NewSemverCondition(dep.Constraint)
+		if parseErr == nil {
+			for _, v := range versions {
+				ver, verErr := resolver.NewSemverVersion(v)
+				if verErr == nil && cond.Satisfies(ver) {
+					targetVersion = v
+					break
+				}
+			}
+		}
+		// If parsing fails or no match, fall back to latest version
+	}
 
 	// Construct gem filename (platform-independent for build tools)
 	gemFileName := fmt.Sprintf("%s-%s.gem", gemName, targetVersion)
@@ -289,11 +307,15 @@ func buildPendingExtensions(ctx context.Context, extBuilder *extensions.Builder,
 			// Install each missing dependency
 			allInstalled := true
 			for _, dep := range extResult.MissingDependencies {
+				depStr := dep.Name
+				if dep.Constraint != "" {
+					depStr = fmt.Sprintf("%s (%s)", dep.Name, dep.Constraint)
+				}
 				if extConfig.Verbose {
-					fmt.Printf("Installing build dependency: %s\n", dep)
+					fmt.Printf("Installing build dependency: %s\n", depStr)
 				}
 				if err := installBuildDependency(ctx, dep, actualCacheDir, vendorDir, extConfig.Verbose); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: Failed to install build dependency %s: %v\n", dep, err)
+					fmt.Fprintf(os.Stderr, "Warning: Failed to install build dependency %s: %v\n", depStr, err)
 					allInstalled = false
 					break
 				}
