@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/contriboss/ore-light/compare/v0.17.0...v0.17.1) (2026-01-13)
+
+
+### Bug Fixes
+
+* trigger release ([5690de3](https://github.com/contriboss/ore-light/commit/5690de3364035dbcc34a142ccebf67e0dba6c2cd))
+
 ## [0.17.0](https://github.com/contriboss/ore-light/compare/v0.16.1...v0.17.0) (2026-01-13)
 
 
