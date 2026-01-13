@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -11,6 +12,8 @@ import (
 	"github.com/contriboss/ore-light/internal/compactindex"
 	"github.com/contriboss/pubgrub-go"
 )
+
+var darwinVersionedPlatformRegex = regexp.MustCompile(`^(.*-darwin)-?\d+$`)
 
 // CompactIndexSource implements pubgrub.Source using Bundler's compact index cache.
 type CompactIndexSource struct {
@@ -489,8 +492,9 @@ func versionSupportsPlatforms(entry *availability, required []string) bool {
 }
 
 func platformMatchesRequirement(actualPlatform, required string) bool {
+	required = strings.TrimSpace(required)
 	if required == "" {
-		return false
+		return strings.TrimSpace(actualPlatform) == ""
 	}
 	if required == "ruby" {
 		return strings.TrimSpace(actualPlatform) == ""
@@ -501,6 +505,9 @@ func platformMatchesRequirement(actualPlatform, required string) bool {
 	}
 	actualNorm := normalizePlatformForIndex(actualPlatform)
 	if required == norm {
+		return actualNorm == norm
+	}
+	if darwinVersionedPlatformRegex.MatchString(required) {
 		return actualNorm == norm
 	}
 	return actualPlatform == required
@@ -518,6 +525,14 @@ func platformRequirementSatisfied(entry *availability, required string) bool {
 		return false
 	}
 	if required != norm {
+		if darwinVersionedPlatformRegex.MatchString(required) {
+			for p := range entry.platforms {
+				if normalizePlatformForIndex(p) == norm {
+					return true
+				}
+			}
+			return false
+		}
 		return entry.platforms[required]
 	}
 	for p := range entry.platforms {

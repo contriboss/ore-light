@@ -31,6 +31,7 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 
 		perPlatform := make([]lockfile.GemSpec, 0, len(targetPlatforms))
 		seenPlatforms := make(map[string]bool)
+		allPlatformsResolved := true
 
 		for _, target := range targetPlatforms {
 			platform := target.normalized
@@ -46,7 +47,8 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 			allowFallback := pinned == ""
 			version, deps, actualPlatform := selectBestPlatformVersion(infoList, platform, target.original, constraintsByGem[gemName], pinned, allowFallback)
 			if version == "" || actualPlatform == "" {
-				continue
+				allPlatformsResolved = false
+				break
 			}
 			if seenPlatforms[actualPlatform] {
 				continue
@@ -64,7 +66,7 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 			})
 		}
 
-		if len(perPlatform) > 0 {
+		if allPlatformsResolved && len(perPlatform) > 0 {
 			specs = append(specs, perPlatform...)
 			gemsWithPlatformSpecs[gemName] = true
 		}
@@ -232,9 +234,10 @@ func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform str
 
 	if pinnedVersion != "" {
 		trySelect(true, true)
-	}
-	if bestInfo == nil && allowFallback {
-		trySelect(true, false)
+		if bestInfo == nil {
+			// Allow platform fallback while keeping the pinned version.
+			trySelect(true, false)
+		}
 	}
 	if bestInfo == nil && allowFallback {
 		trySelect(false, true)
