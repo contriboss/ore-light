@@ -7,5 +7,5 @@ const (
 
 	// DefaultRubyGemsVersion is the unified RubyGems/Bundler version.
 	// Since RubyGems 4.0, Bundler and RubyGems share the same version.
-	DefaultRubyGemsVersion = "4.0.1"
+	DefaultRubyGemsVersion = "4.0.3"
 )

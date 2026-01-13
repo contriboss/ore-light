@@ -124,6 +124,8 @@ func (p *PathSource) parseGemspec(gemspecPath string) (string, []pubgrub.Term, e
 		return "", nil, fmt.Errorf("failed to parse gemspec: %w", err)
 	}
 
+	version := resolveGemspecVersion(gemspec.Version, filepath.Dir(gemspecPath))
+
 	// Convert RuntimeDependencies to PubGrub terms
 	var terms []pubgrub.Term
 	for _, dep := range gemspec.RuntimeDependencies {
@@ -150,7 +152,7 @@ func (p *PathSource) parseGemspec(gemspecPath string) (string, []pubgrub.Term, e
 		terms = append(terms, term)
 	}
 
-	return gemspec.Version, terms, nil
+	return version, terms, nil
 }
 
 // CopyToVendor copies the path gem to the vendor directory

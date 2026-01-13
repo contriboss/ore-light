@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -76,9 +77,9 @@ func readMessagesFromSpecDir(specDir string) ([]PostInstallMessage, error) {
 		// Only include gems with post-install messages
 		if gemspec.PostInstallMessage != "" {
 			messages = append(messages, PostInstallMessage{
-				GemName: gemspec.Name,
-				Version: gemspec.Version,
-				Message: gemspec.PostInstallMessage,
+				GemName: normalizeRubyLiteral(gemspec.Name),
+				Version: normalizeRubyLiteral(gemspec.Version),
+				Message: normalizeRubyLiteral(gemspec.PostInstallMessage),
 			})
 		}
 	}
@@ -109,6 +110,10 @@ func DisplayPostInstallMessages(messages []PostInstallMessage) {
 		Foreground(lipgloss.Color("240"))
 
 	for _, msg := range messages {
+		msg.GemName = normalizeRubyLiteral(msg.GemName)
+		msg.Version = normalizeRubyLiteral(msg.Version)
+		msg.Message = normalizeRubyLiteral(msg.Message)
+
 		// Header
 		fmt.Println(borderStyle.Render(strings.Repeat("─", 80)))
 		fmt.Printf("%s %s (%s)\n",
@@ -124,4 +129,89 @@ func DisplayPostInstallMessages(messages []PostInstallMessage) {
 		}
 		fmt.Println()
 	}
+}
+
+func normalizeRubyLiteral(input string) string {
+	s := strings.TrimSpace(input)
+	if s == "" {
+		return s
+	}
+
+	for {
+		trimmed := strings.TrimSpace(strings.TrimSuffix(s, ".freeze"))
+		if trimmed == s {
+			break
+		}
+		s = trimmed
+	}
+
+	for {
+		if len(s) >= 2 && s[0] == '(' && s[len(s)-1] == ')' {
+			s = strings.TrimSpace(s[1 : len(s)-1])
+			continue
+		}
+		break
+	}
+
+	if decoded, ok := decodePercentString(s); ok {
+		return decoded
+	}
+
+	if len(s) >= 2 && ((s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'')) {
+		if unquoted, err := strconv.Unquote(s); err == nil {
+			return unquoted
+		}
+		return s[1 : len(s)-1]
+	}
+
+	return s
+}
+
+func decodePercentString(input string) (string, bool) {
+	if len(input) < 3 || input[0] != '%' {
+		return "", false
+	}
+	kind := input[1]
+	if kind != 'q' && kind != 'Q' {
+		return "", false
+	}
+
+	delim := input[2]
+	end := delim
+	switch delim {
+	case '(':
+		end = ')'
+	case '[':
+		end = ']'
+	case '{':
+		end = '}'
+	case '<':
+		end = '>'
+	}
+
+	var b strings.Builder
+	for i := 3; i < len(input); i++ {
+		ch := input[i]
+		if ch == '\\' {
+			if i+1 < len(input) && input[i+1] == end {
+				b.WriteByte(end)
+				i++
+				continue
+			}
+			b.WriteByte(ch)
+			continue
+		}
+		if ch == end {
+			content := b.String()
+			if kind == 'Q' {
+				if unquoted, err := strconv.Unquote(`"` + content + `"`); err == nil {
+					return unquoted, true
+				}
+			}
+			return content, true
+		}
+		b.WriteByte(ch)
+	}
+
+	return "", false
 }

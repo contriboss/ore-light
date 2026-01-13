@@ -3,6 +3,7 @@ package resolver
 import (
 	"fmt"
 
+	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/pubgrub-go"
 )
 
@@ -47,6 +48,16 @@ func (s *RubyGemsSource) SetVersionPins(pins map[string]string) {
 	s.versionPins = pins
 }
 
+// SetOverrides sets resolver overrides for git/path gems.
+func (s *RubyGemsSource) SetOverrides(overrides map[string]overrideSpec) {
+	s.compactSource.SetOverrides(overrides)
+}
+
+// SetRequiredPlatforms restricts versions to those available for all platforms.
+func (s *RubyGemsSource) SetRequiredPlatforms(platforms []string) {
+	s.compactSource.SetRequiredPlatforms(platforms)
+}
+
 // SourceURL returns the URL of this gem source
 func (s *RubyGemsSource) SourceURL() string {
 	return s.sourceURL
@@ -62,4 +73,9 @@ func (s *RubyGemsSource) GetDependencies(name pubgrub.Name, version pubgrub.Vers
 // Delegates to compact index source.
 func (s *RubyGemsSource) GetVersions(name pubgrub.Name) ([]pubgrub.Version, error) {
 	return s.compactSource.GetVersions(name)
+}
+
+// GetChecksum returns the checksum for a gem version/platform if available.
+func (s *RubyGemsSource) GetChecksum(name, version, platform string) (lockfile.Checksum, bool) {
+	return s.compactSource.GetChecksum(name, version, platform)
 }

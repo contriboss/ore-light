@@ -32,6 +32,8 @@ type GitSource struct {
 	resolvedRevision string
 	// Dependencies parsed from gemspec
 	dependencies []pubgrub.Term
+	// Version from gemspec
+	version string
 	// Cached repository reference
 	repo *git.Repository
 }
@@ -69,10 +71,14 @@ func (g *GitSource) GetVersions(name pubgrub.Name) ([]pubgrub.Version, error) {
 		return nil, err
 	}
 
-	// For git gems, we return a pseudo-version based on the commit SHA
-	version, err := NewSemverVersion("0.0.1")
+	// For git gems, prefer the gemspec version (fallback to 0.0.1)
+	versionStr := g.version
+	if versionStr == "" {
+		versionStr = "0.0.1"
+	}
+	version, err := NewSemverVersion(versionStr)
 	if err != nil {
-		return nil, err
+		version, _ = NewSemverVersion("0.0.1")
 	}
 
 	return []pubgrub.Version{version}, nil
@@ -96,10 +102,11 @@ func (g *GitSource) Resolve() error {
 	g.resolvedRevision = revision
 
 	// Parse the gemspec to get dependencies
-	deps, err := g.parseGemspec(repoDir)
+	version, deps, err := g.parseGemspec(repoDir)
 	if err != nil {
 		return fmt.Errorf("failed to parse gemspec: %w", err)
 	}
+	g.version = version
 	g.dependencies = deps
 
 	return nil
@@ -108,6 +115,11 @@ func (g *GitSource) Resolve() error {
 // GetRevision returns the resolved git revision
 func (g *GitSource) GetRevision() string {
 	return g.resolvedRevision
+}
+
+// GetVersion returns the version parsed from the gemspec.
+func (g *GitSource) GetVersion() string {
+	return g.version
 }
 
 // cloneOrUpdate clones the repository or updates if it already exists
@@ -239,17 +251,17 @@ func (g *GitSource) checkoutRef(repoDir string) (string, error) {
 }
 
 // parseGemspec parses the gemspec file to extract dependencies using tree-sitter
-func (g *GitSource) parseGemspec(repoDir string) ([]pubgrub.Term, error) {
+func (g *GitSource) parseGemspec(repoDir string) (string, []pubgrub.Term, error) {
 	// Find the gemspec file
 	gemspecPath, err := g.findGemspec(repoDir)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	// Read gemspec file
 	content, err := os.ReadFile(gemspecPath)
 	if err != nil {
-		return []pubgrub.Term{}, nil // graceful fallback
+		return "", []pubgrub.Term{}, nil // graceful fallback
 	}
 
 	// Parse with tree-sitter
@@ -258,8 +270,10 @@ func (g *GitSource) parseGemspec(repoDir string) ([]pubgrub.Term, error) {
 	if err != nil {
 		// If tree-sitter parsing fails, return empty dependencies
 		// This allows git gems without dependencies to work
-		return []pubgrub.Term{}, nil
+		return "", []pubgrub.Term{}, nil
 	}
+
+	version := resolveGemspecVersion(gemspec.Version, filepath.Dir(gemspecPath))
 
 	// Convert RuntimeDependencies to PubGrub terms
 	var terms []pubgrub.Term
@@ -287,7 +301,7 @@ func (g *GitSource) parseGemspec(repoDir string) ([]pubgrub.Term, error) {
 		terms = append(terms, term)
 	}
 
-	return terms, nil
+	return version, terms, nil
 }
 
 // findGemspec finds the gemspec file in the repository

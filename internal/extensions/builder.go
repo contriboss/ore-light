@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/contriboss/ore-light/internal/ruby"
@@ -66,7 +67,7 @@ func HasExtensions(gemDir string, engine ruby.Engine) (bool, []string, error) {
 	}
 
 	// Find extension files
-	var extensions []string
+	extensionSet := make(map[string]struct{})
 	err := filepath.Walk(extDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -79,12 +80,26 @@ func HasExtensions(gemDir string, engine ruby.Engine) (bool, []string, error) {
 		name := info.Name()
 		ext := strings.ToLower(filepath.Ext(name))
 
+		if name == "Cargo.toml" {
+			if members, ok := workspaceCdylibManifests(path); ok {
+				for _, member := range members {
+					relPath, err := filepath.Rel(gemDir, member)
+					if err != nil {
+						return err
+					}
+					extensionSet[relPath] = struct{}{}
+				}
+				return nil
+			}
+		}
+
 		// Traditional Ruby builders
 		isRubyBuild := name == "extconf.rb" || name == "Rakefile" || name == "rakefile" ||
 			name == "mkrf_conf.rb" || name == "configure" || name == "configure.sh"
 
 		// Modern build systems
-		isModernBuild := name == "CMakeLists.txt" || name == "Cargo.toml" ||
+		isCargoBuild := name == "Cargo.toml" && cargoHasCdylib(path)
+		isModernBuild := name == "CMakeLists.txt" || isCargoBuild ||
 			name == "Makefile" || name == "GNUmakefile"
 
 		// Language-specific files (filter Java files for non-JRuby engines)
@@ -105,7 +120,7 @@ func HasExtensions(gemDir string, engine ruby.Engine) (bool, []string, error) {
 			if err != nil {
 				return err
 			}
-			extensions = append(extensions, relPath)
+			extensionSet[relPath] = struct{}{}
 		}
 		return nil
 	})
@@ -114,7 +129,17 @@ func HasExtensions(gemDir string, engine ruby.Engine) (bool, []string, error) {
 		return false, nil, err
 	}
 
-	return len(extensions) > 0, extensions, nil
+	if len(extensionSet) == 0 {
+		return false, nil, nil
+	}
+
+	extensions := make([]string, 0, len(extensionSet))
+	for ext := range extensionSet {
+		extensions = append(extensions, ext)
+	}
+	sort.Strings(extensions)
+
+	return true, extensions, nil
 }
 
 // BuildExtensions builds all extensions for a gem compatible with the given Ruby engine

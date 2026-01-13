@@ -81,6 +81,8 @@ func (m *DownloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSp
 	report := &DownloadReport{}
 	report.Total = len(gems)
 
+	progress := newDownloadProgress(len(gems))
+
 	g, ctx := errgroup.WithContext(ctx)
 	semaphore := make(chan struct{}, m.workers)
 
@@ -95,7 +97,8 @@ func (m *DownloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSp
 				defer func() { <-semaphore }()
 			}
 
-			downloaded, err := m.downloadGem(ctx, gem, force)
+			downloaded, err := m.downloadGem(ctx, gem, force, progress)
+			progress.step(gem.FullName())
 			if err != nil {
 				return err
 			}
@@ -115,7 +118,7 @@ func (m *DownloadManager) DownloadAll(ctx context.Context, gems []lockfile.GemSp
 	return report, err
 }
 
-func (m *DownloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec, force bool) (bool, error) {
+func (m *DownloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec, force bool, progress *downloadProgress) (bool, error) {
 	cachePath := m.cachePathFor(gem)
 	metaPath := cachePath + ".meta"
 	expectedChecksum, _ := m.expectedChecksum(ctx, gem)
@@ -191,7 +194,7 @@ func (m *DownloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 			fmt.Fprintf(os.Stderr, "Warning: cached gem %s failed checksum; re-downloading\n", gem.FullName())
 			_ = os.Remove(cachePath)
 			_ = os.Remove(metaPath)
-			return m.downloadGem(ctx, gem, true)
+			return m.downloadGem(ctx, gem, true, progress)
 		}
 		_ = ensureCacheChecksum(cachePath, metaPath)
 		return false, nil
@@ -229,7 +232,9 @@ func (m *DownloadManager) downloadGem(ctx context.Context, gem lockfile.GemSpec,
 		_ = saveCacheMetadata(metaPath, cacheMetadata{SHA256: sha})
 	}
 
-	fmt.Printf("Fetched %s\n", gem.FullName())
+	if progress == nil || (!progress.enabled && !isQuietOutput()) {
+		fmt.Printf("Fetched %s\n", gem.FullName())
+	}
 	return true, nil
 }
 
@@ -238,8 +243,13 @@ func (m *DownloadManager) cachePathFor(gem lockfile.GemSpec) string {
 }
 
 func (m *DownloadManager) CheckSourceHealth(ctx context.Context) {
-	fmt.Println("Checking gem source availability...")
 	m.sourceManager.CheckHealth(ctx)
+
+	if isQuietOutput() {
+		return
+	}
+
+	fmt.Println("Checking gem source availability...")
 
 	sources := m.sourceManager.GetSources()
 	for _, source := range sources {

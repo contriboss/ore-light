@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,6 +54,15 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 		}
 	}
 
+	// Determine lockfile path and platforms early so resolution can honor them.
+	lockfilePath := determineLockfilePath(gemfilePath)
+	lockPlatforms := detectPlatforms(lockfilePath, platforms)
+	if versionPins == nil {
+		if pins := loadVersionPinsFromLockfile(lockfilePath); len(pins) > 0 {
+			versionPins = pins
+		}
+	}
+
 	// Determine default source URL from Gemfile sources
 	// Respects configured sources, fallback to rubygems.org
 	defaultSourceURL := "https://rubygems.org"
@@ -74,6 +84,7 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 			return src
 		}
 		src := NewRubyGemsSourceWithURL(url)
+		src.SetRequiredPlatforms(lockPlatforms)
 		sources[url] = src
 		return src
 	}
@@ -93,6 +104,13 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 	seenPackages := make(map[string]pubgrub.Version)
 	gemSources := make(map[string]string)  // gem name -> source URL
 	gemGroups := make(map[string][]string) // gem name -> groups
+	constraintsByGem := make(map[string][]pubgrub.Condition)
+	addConstraint := func(name string, cond pubgrub.Condition) {
+		if cond == nil {
+			return
+		}
+		constraintsByGem[name] = append(constraintsByGem[name], cond)
+	}
 
 	// Track git and path dependencies separately
 	var gitSpecs []lockfile.GitGemSpec
@@ -100,14 +118,22 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 	gitDeps := make(map[string]*gemfile.GemDependency)
 	pathDeps := make(map[string]*gemfile.GemDependency)
 
-	fmt.Printf("Resolving dependencies...\n")
+	quiet := isQuietOutput()
+	if !quiet {
+		fmt.Printf("Resolving dependencies...\n")
+	}
+	progress := newResolveProgress(len(parsed.Dependencies))
 
 	// Create a root source for all dependencies
 	// The new pubgrub-go uses a root package to collect all requirements
 	rootSource := pubgrub.NewRootSource()
-	var regularDepTerms []pubgrub.Term
+	overrides := make(map[string]overrideSpec)
 
 	for _, dep := range parsed.Dependencies {
+		if progress != nil && progress.enabled {
+			progress.step(dep.Name)
+		}
+
 		// Track groups for this dependency
 		// Groups determine when gems are installed (e.g., --without development test)
 		if len(dep.Groups) > 0 {
@@ -116,7 +142,9 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 
 		// Check if this is a git dependency
 		if dep.Source != nil && dep.Source.Type == "git" {
-			fmt.Printf("Resolving %s from git...\n", dep.Name)
+			if (progress == nil || !progress.enabled) && !quiet {
+				fmt.Printf("Resolving %s from git...\n", dep.Name)
+			}
 			gitDeps[dep.Name] = &dep
 
 			// Create git source and resolve
@@ -133,9 +161,13 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 			gitDeps := gitSource.dependencies
 
 			// Create GitGemSpec entry
+			gitVersion := gitSource.GetVersion()
+			if gitVersion == "" {
+				gitVersion = "0.0.1"
+			}
 			gitSpec := lockfile.GitGemSpec{
 				Name:     dep.Name,
-				Version:  "0.0.1", // Placeholder version
+				Version:  gitVersion,
 				Remote:   dep.Source.URL,
 				Revision: gitSource.GetRevision(),
 				Branch:   dep.Source.Branch,
@@ -146,26 +178,39 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 			// Convert dependencies to lockfile format
 			var lockfileDeps []lockfile.Dependency
 			for _, gitDep := range gitDeps {
-				lockfileDeps = append(lockfileDeps, lockfile.Dependency{
-					Name: gitDep.Name.Value(),
-				})
+				lockDep := lockfileDependencyFromTerm(gitDep)
+				lockfileDeps = append(lockfileDeps, lockDep)
+				if cond, ok := conditionFromConstraints(lockDep.Constraints); ok {
+					addConstraint(lockDep.Name, cond)
+				}
 			}
 			gitSpec.Dependencies = lockfileDeps
 			gitSpecs = append(gitSpecs, gitSpec)
 
-			// Add transitive dependencies from git gem to regular solver
-			regularDepTerms = append(regularDepTerms, gitDeps...)
+			overrides[dep.Name] = overrideSpec{
+				version: gitVersion,
+				deps:    gitDeps,
+			}
+			rootSource.AddPackage(pubgrub.MakeName(dep.Name), nil)
 
 			continue
 		}
 
 		// Check if this is a path dependency
 		if dep.Source != nil && dep.Source.Type == "path" {
-			fmt.Printf("Resolving %s from path...\n", dep.Name)
+			if (progress == nil || !progress.enabled) && !quiet {
+				fmt.Printf("Resolving %s from path...\n", dep.Name)
+			}
 			pathDeps[dep.Name] = &dep
 
+			// Resolve relative paths against the Gemfile directory
+			pathURL := dep.Source.URL
+			if !filepath.IsAbs(pathURL) {
+				pathURL = filepath.Join(filepath.Dir(gemfilePath), pathURL)
+			}
+
 			// Create path source and resolve
-			pathSource, err := NewPathSource(dep.Source.URL)
+			pathSource, err := NewPathSource(pathURL)
 			if err != nil {
 				return fmt.Errorf("failed to create path source for %s: %w", dep.Name, err)
 			}
@@ -178,9 +223,13 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 			pathGemDeps := pathSource.dependencies
 
 			// Create PathGemSpec entry
+			pathVersion := pathSource.GetVersion()
+			if pathVersion == "" {
+				pathVersion = "0.0.1"
+			}
 			pathSpec := lockfile.PathGemSpec{
 				Name:    dep.Name,
-				Version: pathSource.GetVersion(),
+				Version: pathVersion,
 				Remote:  dep.Source.URL,
 				Groups:  dep.Groups,
 			}
@@ -188,15 +237,20 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 			// Convert dependencies to lockfile format
 			var lockfileDeps []lockfile.Dependency
 			for _, pathDep := range pathGemDeps {
-				lockfileDeps = append(lockfileDeps, lockfile.Dependency{
-					Name: pathDep.Name.Value(),
-				})
+				lockDep := lockfileDependencyFromTerm(pathDep)
+				lockfileDeps = append(lockfileDeps, lockDep)
+				if cond, ok := conditionFromConstraints(lockDep.Constraints); ok {
+					addConstraint(lockDep.Name, cond)
+				}
 			}
 			pathSpec.Dependencies = lockfileDeps
 			pathSpecs = append(pathSpecs, pathSpec)
 
-			// Add transitive dependencies from path gem to regular solver
-			regularDepTerms = append(regularDepTerms, pathGemDeps...)
+			overrides[dep.Name] = overrideSpec{
+				version: pathVersion,
+				deps:    pathGemDeps,
+			}
+			rootSource.AddPackage(pubgrub.MakeName(dep.Name), nil)
 
 			continue
 		}
@@ -214,7 +268,9 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 			}
 		}
 
-		fmt.Printf("Resolving %s from %s...\n", dep.Name, gemSourceURL)
+		if (progress == nil || !progress.enabled) && !quiet {
+			fmt.Printf("Resolving %s from %s...\n", dep.Name, gemSourceURL)
+		}
 
 		// Store gem source for later
 		gemSources[dep.Name] = gemSourceURL
@@ -224,17 +280,9 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 
 		// Note: version pins are handled by RubyGemsSource.GetVersions()
 		// We don't apply them as constraints here to avoid conflicts
-		if len(dep.Constraints) > 0 {
-			// Combine multiple constraints with ", " (semver library supports compound constraints)
-			// Example: [">= 1.0", "< 2.0"] becomes ">= 1.0, < 2.0"
-			constraintStr := strings.Join(dep.Constraints, ", ")
-			semverCondition, err := NewSemverCondition(constraintStr)
-			if err != nil {
-				// If we can't parse, use any version
-				condition = NewAnyVersionCondition()
-			} else {
-				condition = semverCondition
-			}
+		if semverCondition, ok := conditionFromConstraints(dep.Constraints); ok {
+			condition = semverCondition
+			addConstraint(dep.Name, semverCondition)
 		} else {
 			// No constraints - accept any version
 			condition = NewAnyVersionCondition()
@@ -244,17 +292,24 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 		rootSource.AddPackage(pubgrub.MakeName(dep.Name), condition)
 	}
 
-	// Add transitive dependencies from git/path gems to root source
-	for _, term := range regularDepTerms {
-		rootSource.AddPackage(term.Name, term.Condition)
+	if len(overrides) > 0 {
+		defaultSource.SetOverrides(overrides)
 	}
 
 	// Create unified solver with root source and gem source
 	// This resolves all dependencies together with proper conflict resolution
 	// Enable incompatibility tracking for detailed error messages
+	solverOptions := []pubgrub.SolverOption{
+		pubgrub.WithIncompatibilityTracking(true),
+		pubgrub.WithPreferHighestVersions(true),
+	}
+	if os.Getenv("ORE_PUBGRUB_DEBUG") != "" {
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		solverOptions = append(solverOptions, pubgrub.WithLogger(logger))
+	}
 	unifiedSolver := pubgrub.NewSolverWithOptions(
 		[]pubgrub.Source{rootSource, defaultSource},
-		pubgrub.WithIncompatibilityTracking(true),
+		solverOptions...,
 	)
 
 	// Solve all dependencies at once
@@ -292,52 +347,93 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 		return allSolutions[i].Name.Value() < allSolutions[j].Name.Value()
 	})
 
-	// Determine lockfile path - supports both Gemfile.lock and gems.locked
-	lockfilePath := determineLockfilePath(gemfilePath)
+	baseVersions := make(map[string]string, len(allSolutions))
+	for _, pkg := range allSolutions {
+		baseVersions[pkg.Name.Value()] = pkg.Version.String()
+	}
+
+	existingPlatformVersions := loadExistingPlatformVersions(lockfilePath)
 
 	// Convert to lockfile specs and fetch dependencies
 	depSource := NewRubyGemsSource()
-	specs := make([]lockfile.GemSpec, len(allSolutions))
-	for i, pkg := range allSolutions {
+	specs := make([]lockfile.GemSpec, 0, len(allSolutions))
+	skipSpecs := make(map[string]bool, len(gitDeps)+len(pathDeps)+1)
+	for name := range gitDeps {
+		skipSpecs[name] = true
+	}
+	for name := range pathDeps {
+		skipSpecs[name] = true
+	}
+	skipSpecs["bundler"] = true
+
+	for _, pkg := range allSolutions {
 		gemName := pkg.Name.Value()
 		version := pkg.Version.String()
-
-		// Get dependencies for this gem
-		deps, depsErr := depSource.GetDependencies(pkg.Name, pkg.Version)
-		if depsErr != nil {
-			// If we can't fetch dependencies, continue without them
-			deps = []pubgrub.Term{}
+		if skipSpecs[gemName] {
+			continue
 		}
 
-		// Convert dependencies to lockfile format
 		var lockfileDeps []lockfile.Dependency
-		for _, dep := range deps {
-			// Extract constraint string from Condition using String() method
-			var constraints []string
-			if dep.Condition != nil && dep.Condition.String() != ">= 0" {
-				constraints = []string{dep.Condition.String()}
+		if depSource.compactSource != nil {
+			if depsMap, err := depSource.compactSource.GetDependenciesMap(gemName, version, ""); err == nil {
+				lockfileDeps = dependenciesFromCompactMap(depsMap)
 			}
-			lockfileDeps = append(lockfileDeps, lockfile.Dependency{
-				Name:        dep.Name.Value(),
-				Constraints: constraints,
-			})
+		}
+		if lockfileDeps == nil {
+			deps, depsErr := depSource.GetDependencies(pkg.Name, pkg.Version)
+			if depsErr != nil {
+				deps = []pubgrub.Term{}
+			}
+
+			for _, dep := range deps {
+				lockDep := lockfileDependencyFromTerm(dep)
+				lockfileDeps = append(lockfileDeps, lockDep)
+			}
 		}
 
-		specs[i] = lockfile.GemSpec{
+		for _, lockDep := range lockfileDeps {
+			if cond, ok := conditionFromConstraints(lockDep.Constraints); ok {
+				addConstraint(lockDep.Name, cond)
+			}
+		}
+
+		specs = append(specs, lockfile.GemSpec{
 			Name:         gemName,
 			Version:      version,
 			Dependencies: lockfileDeps,
 			SourceURL:    gemSources[gemName],
 			Groups:       gemGroups[gemName], // Track which groups this gem belongs to
-		}
+		})
 	}
+
+	platformSpecs, platformSpecNames := buildPlatformSpecs(depSource.compactSource, specs, lockPlatforms, constraintsByGem, gemSources, gemGroups, versionPins, baseVersions, existingPlatformVersions)
+	if len(platformSpecs) > 0 {
+		specs = append(specs, platformSpecs...)
+	}
+
+	if len(platformSpecNames) > 0 || len(skipSpecs) > 0 {
+		filtered := make([]lockfile.GemSpec, 0, len(specs))
+		for _, spec := range specs {
+			if skipSpecs[spec.Name] {
+				continue
+			}
+			if spec.Platform == "" && platformSpecNames[spec.Name] {
+				continue
+			}
+			filtered = append(filtered, spec)
+		}
+		specs = filtered
+	}
+
+	checksums := buildLockfileChecksums(specs, gitSpecs, pathSpecs, gemSources, sources, defaultSourceURL)
 
 	// Build Lockfile structure
 	lock := &lockfile.Lockfile{
 		GemSpecs:  specs,
 		GitSpecs:  gitSpecs,
 		PathSpecs: pathSpecs,
-		Platforms: detectPlatforms(lockfilePath, platforms),
+		Platforms: lockPlatforms,
+		Checksums: checksums,
 		Dependencies: func() []lockfile.Dependency {
 			var deps []lockfile.Dependency
 			for _, dep := range parsed.Dependencies {
@@ -381,11 +477,16 @@ func determineLockfilePath(gemfilePath string) string {
 // 4. Additional platforms specified via --add-platform flag
 func detectPlatforms(lockfilePath string, additionalPlatforms []string) []string {
 	platformSet := make(map[string]bool)
+	addPlatform := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		platformSet[p] = true
+	}
 
-	// Always include "ruby" for platform-independent gems
-	platformSet["ruby"] = true
-
-	// Read existing platforms from lockfile if it exists
+	// Read existing platforms from lockfile if it exists.
+	// This mirrors Bundler behavior, which preserves lockfile platforms by default.
 	if _, err := os.Stat(lockfilePath); err == nil {
 		if file, err := os.Open(lockfilePath); err == nil {
 			defer func() {
@@ -393,27 +494,23 @@ func detectPlatforms(lockfilePath string, additionalPlatforms []string) []string
 			}()
 			if parsed, err := lockfile.Parse(file); err == nil {
 				for _, p := range parsed.Platforms {
-					platformSet[p] = true
+					addPlatform(p)
 				}
 			}
 		}
 	}
 
-	// Add current platform if Ruby is available
+	// Always include the current Ruby platform (Bundler keeps it alongside existing platforms).
 	cmd := exec.Command("ruby", "-e", "puts RUBY_PLATFORM")
 	output, err := cmd.Output()
 	if err == nil {
 		platform := regexp.MustCompile(`\s+`).ReplaceAllString(string(output), "")
-		if platform != "" && platform != "ruby" {
-			platformSet[platform] = true
-		}
+		addPlatform(platform)
 	}
 
 	// Add additional platforms from --add-platform flags
 	for _, p := range additionalPlatforms {
-		if p != "" {
-			platformSet[p] = true
-		}
+		addPlatform(p)
 	}
 
 	// Convert set to sorted slice for consistent output
@@ -453,6 +550,23 @@ func detectBundlerVersion(lockfilePath string) string {
 
 	// Fallback to default Bundler version (same as RubyGems since 4.0)
 	return ruby.DefaultRubyGemsVersion
+}
+
+func loadVersionPinsFromLockfile(lockfilePath string) map[string]string {
+	lf, err := lockfile.ParseFile(lockfilePath)
+	if err != nil || lf == nil {
+		return nil
+	}
+
+	pins := make(map[string]string)
+	for _, spec := range lf.GemSpecs {
+		if spec.Name == "" || spec.Version == "" {
+			continue
+		}
+		pins[spec.Name] = spec.Version
+	}
+
+	return pins
 }
 
 // loadGemspecDependencies loads dependencies from .gemspec files referenced by gemspec directives.
