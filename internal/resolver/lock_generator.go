@@ -353,6 +353,7 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 	}
 
 	existingPlatformVersions := loadExistingPlatformVersions(lockfilePath)
+	existingRubySpecs := loadExistingRubySpecs(lockfilePath)
 
 	// Convert to lockfile specs and fetch dependencies
 	depSource := NewRubyGemsSource()
@@ -417,7 +418,7 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 			if skipSpecs[spec.Name] {
 				continue
 			}
-			if spec.Platform == "" && platformSpecNames[spec.Name] {
+			if spec.Platform == "" && platformSpecNames[spec.Name] && !existingRubySpecs[spec.Name] {
 				continue
 			}
 			filtered = append(filtered, spec)
@@ -515,7 +516,7 @@ func detectPlatforms(lockfilePath string, additionalPlatforms []string) []string
 	}
 
 	// Always include the current Ruby platform (Bundler keeps it alongside existing platforms).
-	cmd := exec.Command("ruby", "-e", "puts RUBY_PLATFORM")
+	cmd := exec.Command("ruby", "-e", `require "rubygems"; puts Gem::Platform.local.to_s`)
 	output, err := cmd.Output()
 	if err == nil {
 		platform := regexp.MustCompile(`\s+`).ReplaceAllString(string(output), "")

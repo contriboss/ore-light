@@ -14,7 +14,7 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 		return nil, nil
 	}
 
-	targetPlatforms := normalizePlatformTargets(platforms)
+	targetPlatforms := buildPlatformTargets(platforms)
 	if len(targetPlatforms) == 0 {
 		return nil, nil
 	}
@@ -30,24 +30,28 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 		}
 
 		perPlatform := make([]lockfile.GemSpec, 0, len(targetPlatforms))
-		allPlatformsResolved := true
+		seenPlatforms := make(map[string]bool)
 
-		for _, platform := range targetPlatforms {
+		for _, target := range targetPlatforms {
+			platform := target.normalized
 			pinned := ""
 			if versionPins != nil && versionPins[gemName] != "" {
 				pinned = versionPins[gemName]
 			} else if baseVersions != nil && baseVersions[gemName] != "" {
 				pinned = baseVersions[gemName]
 			} else if existingPlatformVersions != nil && existingPlatformVersions[gemName] != nil {
-				pinned = existingPlatformVersions[gemName][platform]
+				pinned = existingPlatformVersions[gemName][target.original]
 			}
 
 			allowFallback := pinned == ""
-			version, deps, actualPlatform := selectBestPlatformVersion(infoList, platform, constraintsByGem[gemName], pinned, allowFallback)
+			version, deps, actualPlatform := selectBestPlatformVersion(infoList, platform, target.original, constraintsByGem[gemName], pinned, allowFallback)
 			if version == "" || actualPlatform == "" {
-				allPlatformsResolved = false
-				break
+				continue
 			}
+			if seenPlatforms[actualPlatform] {
+				continue
+			}
+			seenPlatforms[actualPlatform] = true
 
 			lockDeps := dependenciesFromCompactMap(deps)
 			perPlatform = append(perPlatform, lockfile.GemSpec{
@@ -60,7 +64,7 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 			})
 		}
 
-		if allPlatformsResolved && len(perPlatform) > 0 {
+		if len(perPlatform) > 0 {
 			specs = append(specs, perPlatform...)
 			gemsWithPlatformSpecs[gemName] = true
 		}
@@ -69,21 +73,32 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 	return specs, gemsWithPlatformSpecs
 }
 
-func normalizePlatformTargets(platforms []string) []string {
-	set := make(map[string]struct{})
+type platformTarget struct {
+	original   string
+	normalized string
+}
+
+func buildPlatformTargets(platforms []string) []platformTarget {
+	set := make(map[string]platformTarget)
 	for _, platform := range platforms {
+		platform = strings.TrimSpace(platform)
+		if platform == "" {
+			continue
+		}
 		normalized := normalizePlatformForIndex(platform)
 		if normalized == "" {
 			continue
 		}
-		set[normalized] = struct{}{}
+		set[platform] = platformTarget{original: platform, normalized: normalized}
 	}
 
-	targets := make([]string, 0, len(set))
-	for platform := range set {
-		targets = append(targets, platform)
+	targets := make([]platformTarget, 0, len(set))
+	for _, target := range set {
+		targets = append(targets, target)
 	}
-	sort.Strings(targets)
+	sort.Slice(targets, func(i, j int) bool {
+		return targets[i].original < targets[j].original
+	})
 	return targets
 }
 
@@ -99,20 +114,34 @@ func loadExistingPlatformVersions(lockfilePath string) map[string]map[string]str
 		if spec.Platform == "" {
 			continue
 		}
-		platform := normalizePlatformForIndex(spec.Platform)
-		if platform == "" {
-			continue
-		}
 		if existing[spec.Name] == nil {
 			existing[spec.Name] = make(map[string]string)
 		}
-		existing[spec.Name][platform] = spec.Version
+		existing[spec.Name][spec.Platform] = spec.Version
 	}
 
 	return existing
 }
 
-func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform string, conditions []pubgrub.Condition, pinnedVersion string, allowFallback bool) (string, map[string]string, string) {
+func loadExistingRubySpecs(lockfilePath string) map[string]bool {
+	existing := make(map[string]bool)
+
+	lf, err := lockfile.ParseFile(lockfilePath)
+	if err != nil || lf == nil {
+		return existing
+	}
+
+	for _, spec := range lf.GemSpecs {
+		if spec.Platform != "" {
+			continue
+		}
+		existing[spec.Name] = true
+	}
+
+	return existing
+}
+
+func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform string, desiredPlatform string, conditions []pubgrub.Condition, pinnedVersion string, allowFallback bool) (string, map[string]string, string) {
 	var bestInfo *compactindex.VersionInfo
 	var bestVersion *SemverVersion
 	allowPrerelease := allowPrereleases()
@@ -120,6 +149,27 @@ func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform str
 	platformScore := func(p string) int {
 		p = strings.ToLower(p)
 		if strings.Contains(p, "linux") {
+			target := strings.ToLower(desiredPlatform)
+			if strings.Contains(target, "linux-musl") {
+				switch {
+				case strings.Contains(p, "linux-musl"):
+					return 3
+				default:
+					return 2
+				case strings.Contains(p, "linux-gnu"):
+					return 1
+				}
+			}
+			if strings.Contains(target, "linux-gnu") {
+				switch {
+				case strings.Contains(p, "linux-gnu"):
+					return 3
+				default:
+					return 2
+				case strings.Contains(p, "linux-musl"):
+					return 1
+				}
+			}
 			switch {
 			case strings.Contains(p, "linux-musl"):
 				return 1
@@ -135,10 +185,13 @@ func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform str
 		return 0
 	}
 
-	trySelect := func(requirePinned bool) {
+	trySelect := func(requirePinned bool, exactOnly bool) {
 		for i := range infoList {
 			info := &infoList[i]
 			if normalizePlatformForIndex(info.Platform) != platform {
+				continue
+			}
+			if exactOnly && desiredPlatform != "" && info.Platform != desiredPlatform {
 				continue
 			}
 			if requirePinned && pinnedVersion != "" && info.Version != pinnedVersion {
@@ -178,10 +231,16 @@ func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform str
 	}
 
 	if pinnedVersion != "" {
-		trySelect(true)
+		trySelect(true, true)
 	}
 	if bestInfo == nil && allowFallback {
-		trySelect(false)
+		trySelect(true, false)
+	}
+	if bestInfo == nil && allowFallback {
+		trySelect(false, true)
+	}
+	if bestInfo == nil && allowFallback {
+		trySelect(false, false)
 	}
 
 	if bestInfo == nil {

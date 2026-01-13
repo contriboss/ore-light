@@ -95,7 +95,19 @@ func (s *CompactIndexSource) SetOverrides(overrides map[string]overrideSpec) {
 func (s *CompactIndexSource) SetRequiredPlatforms(platforms []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.platforms = normalizePlatformTargets(platforms)
+	set := make(map[string]struct{})
+	for _, p := range platforms {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		set[p] = struct{}{}
+	}
+	s.platforms = make([]string, 0, len(set))
+	for p := range set {
+		s.platforms = append(s.platforms, p)
+	}
+	slices.Sort(s.platforms)
 	// Clear cached versions to ensure platform filtering is applied.
 	s.versions = make(map[string][]pubgrub.Version)
 }
@@ -163,7 +175,7 @@ func (s *CompactIndexSource) GetVersions(name pubgrub.Name) ([]pubgrub.Version, 
 			available[info.Version] = entry
 		}
 
-		platform := normalizePlatformForIndex(info.Platform)
+		platform := strings.TrimSpace(info.Platform)
 		if platform == "" {
 			entry.ruby = true
 		} else {
@@ -275,7 +287,7 @@ func (s *CompactIndexSource) GetDependencies(name pubgrub.Name, version pubgrub.
 func (s *CompactIndexSource) GetDependenciesForPlatform(name pubgrub.Name, version, platform string) ([]pubgrub.Term, error) {
 	gemName := name.Value()
 	versionStr := strings.TrimSpace(version)
-	platform = normalizePlatformForIndex(platform)
+	platform = strings.TrimSpace(platform)
 
 	s.mu.RLock()
 	if override, ok := s.overrides[gemName]; ok {
@@ -293,12 +305,15 @@ func (s *CompactIndexSource) GetDependenciesForPlatform(name pubgrub.Name, versi
 
 	var versionInfo *compactindex.VersionInfo
 	for i := range infoList {
-		if infoList[i].Version != versionStr {
+		info := &infoList[i]
+		if info.Version != versionStr {
 			continue
 		}
-		if normalizePlatformForIndex(infoList[i].Platform) == platform {
-			versionInfo = &infoList[i]
-			break
+		if !platformMatchesRequirement(info.Platform, platform) {
+			continue
+		}
+		if versionInfo == nil || platformScoreWithTarget(platform, info.Platform) > platformScoreWithTarget(platform, versionInfo.Platform) {
+			versionInfo = info
 		}
 	}
 
@@ -316,19 +331,19 @@ func (s *CompactIndexSource) GetDependenciesMap(name, version, platform string) 
 		return nil, err
 	}
 
-	normalizedPlatform := normalizePlatformForIndex(platform)
+	platform = strings.TrimSpace(platform)
 	for i := range infoList {
 		info := &infoList[i]
 		if info.Version != version {
 			continue
 		}
-		if normalizedPlatform == "" {
+		if platform == "" {
 			if info.Platform == "" {
 				return info.Dependencies, nil
 			}
 			continue
 		}
-		if normalizePlatformForIndex(info.Platform) == normalizedPlatform {
+		if platformMatchesRequirement(info.Platform, platform) {
 			return info.Dependencies, nil
 		}
 	}
@@ -404,27 +419,29 @@ func selectPlatformInfo(infoList []compactindex.VersionInfo, version string, req
 		return nil
 	}
 
-	bestForPlatform := make(map[string]*compactindex.VersionInfo, len(requiredSet))
-	for i := range infoList {
-		info := &infoList[i]
-		if info.Version != version {
-			continue
+	bestForReq := make(map[string]*compactindex.VersionInfo, len(requiredSet))
+	for req := range requiredSet {
+		var best *compactindex.VersionInfo
+		for i := range infoList {
+			info := &infoList[i]
+			if info.Version != version {
+				continue
+			}
+			if !platformMatchesRequirement(info.Platform, req) {
+				continue
+			}
+			if best == nil || platformScoreWithTarget(req, info.Platform) > platformScoreWithTarget(req, best.Platform) {
+				best = info
+			}
 		}
-		normalized := normalizePlatformForIndex(info.Platform)
-		if normalized == "" || !requiredSet[normalized] {
-			continue
+		if best == nil {
+			return nil
 		}
-		if current := bestForPlatform[normalized]; current == nil || platformScore(info.Platform) > platformScore(current.Platform) {
-			bestForPlatform[normalized] = info
-		}
-	}
-
-	if len(bestForPlatform) != len(requiredSet) {
-		return nil
+		bestForReq[req] = best
 	}
 
 	var best *compactindex.VersionInfo
-	for _, info := range bestForPlatform {
+	for _, info := range bestForReq {
 		if best == nil || platformScore(info.Platform) > platformScore(best.Platform) {
 			best = info
 		}
@@ -464,9 +481,75 @@ func versionSupportsPlatforms(entry *availability, required []string) bool {
 		if platform == "" {
 			continue
 		}
-		if !entry.platforms[platform] {
+		if !platformRequirementSatisfied(entry, platform) {
 			return false
 		}
 	}
 	return true
+}
+
+func platformMatchesRequirement(actualPlatform, required string) bool {
+	if required == "" {
+		return false
+	}
+	if required == "ruby" {
+		return strings.TrimSpace(actualPlatform) == ""
+	}
+	norm := normalizePlatformForIndex(required)
+	if norm == "" {
+		return false
+	}
+	actualNorm := normalizePlatformForIndex(actualPlatform)
+	if required == norm {
+		return actualNorm == norm
+	}
+	return actualPlatform == required
+}
+
+func platformRequirementSatisfied(entry *availability, required string) bool {
+	if required == "" {
+		return false
+	}
+	if required == "ruby" {
+		return entry.ruby
+	}
+	norm := normalizePlatformForIndex(required)
+	if norm == "" {
+		return false
+	}
+	if required != norm {
+		return entry.platforms[required]
+	}
+	for p := range entry.platforms {
+		if normalizePlatformForIndex(p) == norm {
+			return true
+		}
+	}
+	return false
+}
+
+func platformScoreWithTarget(target, platform string) int {
+	target = strings.ToLower(strings.TrimSpace(target))
+	p := strings.ToLower(strings.TrimSpace(platform))
+	if strings.Contains(target, "linux-musl") {
+		switch {
+		case strings.Contains(p, "linux-musl"):
+			return 3
+		default:
+			return 2
+		case strings.Contains(p, "linux-gnu"):
+			return 1
+		}
+	}
+	if strings.Contains(target, "linux-gnu") {
+		switch {
+		case strings.Contains(p, "linux-gnu"):
+			return 3
+		default:
+			return 2
+		case strings.Contains(p, "linux-musl"):
+			return 1
+		}
+	}
+	return platformScore(platform)
 }
