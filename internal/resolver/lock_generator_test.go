@@ -2,8 +2,9 @@ package resolver
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
-	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -30,14 +31,29 @@ DEPENDENCIES
 	}
 
 	got := detectPlatforms(lockfilePath, []string{"x86_64-linux-musl"})
-	want := []string{
+	gotSet := make(map[string]bool, len(got))
+	for _, p := range got {
+		gotSet[p] = true
+	}
+
+	required := []string{
 		"aarch64-linux",
 		"arm64-darwin",
 		"x86_64-linux",
 		"x86_64-linux-musl",
 	}
 
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("detectPlatforms = %#v, want %#v", got, want)
+	for _, want := range required {
+		if !gotSet[want] {
+			t.Fatalf("detectPlatforms missing %q in %#v", want, got)
+		}
+	}
+
+	cmd := exec.Command("ruby", "-e", "puts RUBY_PLATFORM")
+	if output, err := cmd.Output(); err == nil {
+		platform := strings.TrimSpace(string(output))
+		if platform != "" && !gotSet[platform] {
+			t.Fatalf("detectPlatforms missing current ruby platform %q in %#v", platform, got)
+		}
 	}
 }
