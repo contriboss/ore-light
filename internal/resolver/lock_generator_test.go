@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -53,6 +54,16 @@ DEPENDENCIES
 	if output, err := cmd.Output(); err == nil {
 		platform := strings.TrimSpace(string(output))
 		if platform != "" && !gotSet[platform] {
+			if matches := regexp.MustCompile(`^(.*-darwin)-?\d+$`).FindStringSubmatch(platform); matches != nil {
+				if gotSet[matches[1]] {
+					return
+				}
+			}
+			if matches := regexp.MustCompile(`^(.*-linux)-(gnu|musl)$`).FindStringSubmatch(platform); matches != nil {
+				if gotSet[matches[1]] {
+					return
+				}
+			}
 			t.Fatalf("detectPlatforms missing current ruby platform %q in %#v", platform, got)
 		}
 	}

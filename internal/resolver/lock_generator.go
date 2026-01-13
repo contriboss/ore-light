@@ -485,6 +485,20 @@ func detectPlatforms(lockfilePath string, additionalPlatforms []string) []string
 		platformSet[p] = true
 	}
 
+	baseForVariant := func(p string) string {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return ""
+		}
+		if matches := regexp.MustCompile(`^(.*-darwin)-?\d+$`).FindStringSubmatch(p); matches != nil {
+			return matches[1]
+		}
+		if matches := regexp.MustCompile(`^(.*-linux)-(gnu|musl)$`).FindStringSubmatch(p); matches != nil {
+			return matches[1]
+		}
+		return ""
+	}
+
 	// Read existing platforms from lockfile if it exists.
 	// This mirrors Bundler behavior, which preserves lockfile platforms by default.
 	if _, err := os.Stat(lockfilePath); err == nil {
@@ -505,7 +519,11 @@ func detectPlatforms(lockfilePath string, additionalPlatforms []string) []string
 	output, err := cmd.Output()
 	if err == nil {
 		platform := regexp.MustCompile(`\s+`).ReplaceAllString(string(output), "")
-		addPlatform(platform)
+		if base := baseForVariant(platform); base != "" && platformSet[base] {
+			// Skip adding versioned or libc-specific variants when base is already present.
+		} else {
+			addPlatform(platform)
+		}
 	}
 
 	// Add additional platforms from --add-platform flags
