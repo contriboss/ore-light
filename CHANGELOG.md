@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/contriboss/ore-light/compare/v0.16.1...v0.17.0) (2026-01-13)
+
+
+### Features
+
+* improve lock mechanism to work with bundler 4 ([#42](https://github.com/contriboss/ore-light/issues/42)) ([a4bacdf](https://github.com/contriboss/ore-light/commit/a4bacdf328abbc463f927489b17f30e236908034))
+
 ## [0.16.1](https://github.com/contriboss/ore-light/compare/v0.16.0...v0.16.1) (2026-01-05)
 
 
