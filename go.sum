@@ -45,8 +45,8 @@ github.com/cloudflare/circl v1.6.1 h1:zqIqSPIndyBh1bjLVVDHMPpVKqp8Su/V+6MeDzzQBQ
 github.com/cloudflare/circl v1.6.1/go.mod h1:uddAzsPgqdMAYatqJ0lsjX1oECcQLIlRpzZh3pJrofs=
 github.com/contriboss/gemfile-go v0.7.0 h1:8hYgmb8+BcBCDCD3xQcYDlYLl82zjTr7vlgMHkQ/qZk=
 github.com/contriboss/gemfile-go v0.7.0/go.mod h1:LQ7Q6tAnyZRE0/jedvLxoKp2hT26Kr7JjkJYzKD1iWI=
-github.com/contriboss/pubgrub-go v0.3.3 h1:C9WN+rmwL1J56XtFp0SO+SMjKIdPG1Goa6drzmVQMl0=
-github.com/contriboss/pubgrub-go v0.3.3/go.mod h1:GSdpaquQoqedQVXdmuy08Wdef/k108x/fKJcUFyrM+4=
+github.com/contriboss/pubgrub-go v0.3.4 h1:9Ro9Mv9YKrN/ZX/e2TGThfx8VL1+gijv0JjngsqvJMI=
+github.com/contriboss/pubgrub-go v0.3.4/go.mod h1:GSdpaquQoqedQVXdmuy08Wdef/k108x/fKJcUFyrM+4=
 github.com/contriboss/ruby-extension-go v0.3.0 h1:cG4BPeOMZ5rSL+eW7qqv2mTQX9rbk07/dohmMH/DFrM=
 github.com/contriboss/ruby-extension-go v0.3.0/go.mod h1:xEfGEj82FAlXS842Kf8F9mIyl0gV00puvDhjKcR5xUc=
 github.com/contriboss/rubygems-client-go v0.1.0 h1:HGCGLaNtcD58mmTXhdLuKUgerRGQMOqE0NbKw2JCSSI=
