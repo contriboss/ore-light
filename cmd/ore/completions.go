@@ -29,7 +29,7 @@ _ore_completions() {
             COMPREPLY=( $(compgen -d -- ${cur}) )
             ;;
         *)
-            COMPREPLY=( $(compgen -W "--help --version --lockfile --vendor --force --verbose" -- ${cur}) )
+            COMPREPLY=( $(compgen -W "--help --version --lockfile --vendor --force --verbose --prerelease" -- ${cur}) )
             ;;
     esac
 }
@@ -87,7 +87,8 @@ _ore() {
                         '--lockfile[Path to Gemfile.lock]:file:_files -g "*.lock"' \
                         '--vendor[Destination directory]:directory:_directories' \
                         '--force[Force reinstall]' \
-                        '--verbose[Enable verbose output]'
+                        '--verbose[Enable verbose output]' \
+                        '--prerelease[Allow prerelease versions]'
                     ;;
                 add|remove)
                     _arguments \
@@ -143,6 +144,7 @@ complete -c ore -f -n '__fish_seen_subcommand_from install fetch check list lock
 complete -c ore -f -n '__fish_seen_subcommand_from install fetch check list' -l vendor -d 'Destination directory' -r -a '(__fish_complete_directories)'
 complete -c ore -f -n '__fish_seen_subcommand_from install' -l force -d 'Force reinstall'
 complete -c ore -f -n '__fish_seen_subcommand_from install fetch' -l verbose -d 'Enable verbose output'
+complete -c ore -f -n '__fish_seen_subcommand_from lock' -l prerelease -d 'Allow prerelease versions'
 `)
 }
 

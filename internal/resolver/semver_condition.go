@@ -14,23 +14,65 @@ var constraintRegex = regexp.MustCompile(`^(>=|<=|>|<|!=|==|=)?\s*(.+?)\s*$`)
 
 // SemverCondition implements pubgrub.Condition using RubyGems-style version semantics.
 type SemverCondition struct {
-	requirements []gemRequirement
+	requirements []gemRequirement   // AND constraints (comma-separated)
+	orGroups     [][]gemRequirement // OR groups (|| separated), nil if no OR constraints
 	original     string
 }
 
 // NewSemverCondition creates a condition from a Ruby-style constraint string.
+// Supports RubyGems-style constraints including:
+//   - Comparison operators: >=, >, <=, <, !=, =
+//   - Pessimistic operator: ~>
+//   - AND (comma-separated): ">= 1.0.0, < 2.0.0"
+//   - OR (double-pipe): "< 1.0.0 || > 1.0.0" (means "not 1.0.0")
 func NewSemverCondition(constraintString string) (*SemverCondition, error) {
 	trimmed := strings.TrimSpace(constraintString)
 	if trimmed == "" || trimmed == ">= 0" {
 		return &SemverCondition{
 			requirements: nil,
+			orGroups:     nil,
 			original:     constraintString,
 		}, nil
 	}
 
+	// Check for OR constraints (||)
+	orParts := strings.Split(trimmed, "||")
+
+	if len(orParts) > 1 {
+		// Has OR constraints - parse each branch separately
+		var orGroups [][]gemRequirement
+		for _, orPart := range orParts {
+			requirements, err := parseANDConstraints(strings.TrimSpace(orPart))
+			if err != nil {
+				return nil, err
+			}
+			orGroups = append(orGroups, requirements)
+		}
+		return &SemverCondition{
+			requirements: nil,
+			orGroups:     orGroups,
+			original:     constraintString,
+		}, nil
+	}
+
+	// No OR constraints - parse as single AND expression
+	requirements, err := parseANDConstraints(trimmed)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SemverCondition{
+		requirements: requirements,
+		orGroups:     nil,
+		original:     constraintString,
+	}, nil
+}
+
+// parseANDConstraints parses a constraint string that may contain comma-separated AND conditions.
+func parseANDConstraints(constraint string) ([]gemRequirement, error) {
 	var requirements []gemRequirement
 
-	parts := strings.Split(trimmed, ",")
+	parts := strings.Split(constraint, ",")
 	for _, part := range parts {
 		clause := strings.TrimSpace(part)
 		if clause == "" {
@@ -79,10 +121,7 @@ func NewSemverCondition(constraintString string) (*SemverCondition, error) {
 		requirements = append(requirements, gemRequirement{op: op, version: version})
 	}
 
-	return &SemverCondition{
-		requirements: requirements,
-		original:     constraintString,
-	}, nil
+	return requirements, nil
 }
 
 // Satisfies checks if a version satisfies this condition.
@@ -92,12 +131,27 @@ func (c *SemverCondition) Satisfies(ver pubgrub.Version) bool {
 		return false
 	}
 
-	for _, req := range c.requirements {
-		if !req.satisfiedBy(target) {
+	// If we have OR groups, check if any group is satisfied
+	if c.orGroups != nil {
+		for _, group := range c.orGroups {
+			if satisfiesAll(target, group) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Otherwise, check requirements directly
+	return satisfiesAll(target, c.requirements)
+}
+
+// satisfiesAll checks if a version satisfies all requirements in a group.
+func satisfiesAll(version *SemverVersion, requirements []gemRequirement) bool {
+	for _, req := range requirements {
+		if !req.satisfiedBy(version) {
 			return false
 		}
 	}
-
 	return true
 }
 
@@ -113,15 +167,39 @@ func (c *SemverCondition) String() string {
 // This uses the exported helpers in pubgrub-go to build intervals directly with
 // our SemverVersion type, avoiding ParseVersionRange which creates SemanticVersion.
 func (c *SemverCondition) ToVersionSet() pubgrub.VersionSet {
-	// If no requirements, return full set (any version)
-	if len(c.requirements) == 0 {
+	// If no requirements and no OR groups, return full set (any version)
+	if len(c.requirements) == 0 && len(c.orGroups) == 0 {
+		return pubgrub.FullVersionSet()
+	}
+
+	// If we have OR groups, union their version sets
+	if len(c.orGroups) > 0 {
+		var result pubgrub.VersionSet
+		for _, group := range c.orGroups {
+			groupSet := requirementsToVersionSet(group)
+			if result == nil {
+				result = groupSet
+			} else {
+				result = result.Union(groupSet)
+			}
+		}
+		return result
+	}
+
+	// Otherwise, intersect requirements directly
+	return requirementsToVersionSet(c.requirements)
+}
+
+// requirementsToVersionSet converts a slice of requirements to a VersionSet.
+func requirementsToVersionSet(requirements []gemRequirement) pubgrub.VersionSet {
+	if len(requirements) == 0 {
 		return pubgrub.FullVersionSet()
 	}
 
 	// Start with full set and intersect each requirement
 	result := pubgrub.FullVersionSet()
 
-	for _, req := range c.requirements {
+	for _, req := range requirements {
 		// Convert each requirement to a VersionSet interval using our SemverVersion
 		var interval pubgrub.VersionSet
 

@@ -105,6 +105,16 @@ func loadAppConfig() *config.Config {
 	return cachedConfig
 }
 
+func quietOutput() bool {
+	if os.Getenv("ORE_QUIET") != "" {
+		return true
+	}
+	if os.Getenv("CI") != "" {
+		return true
+	}
+	return !isTTY()
+}
+
 // defaultLockfilePath returns the default lockfile path
 func defaultLockfilePath() string {
 	return config.DefaultLockfilePath()

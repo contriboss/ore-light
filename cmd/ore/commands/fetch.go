@@ -11,6 +11,7 @@ import (
 	"github.com/contriboss/ore-light/internal/logger"
 	"github.com/contriboss/ore-light/internal/registry"
 	"github.com/contriboss/ore-light/internal/sources"
+	"golang.org/x/sync/errgroup"
 )
 
 // RunFetch implements the ore fetch command
@@ -20,6 +21,7 @@ func RunFetch(args []string) error {
 	version := fs.String("version", "", "Gem version to fetch (default: latest)")
 	platform := fs.String("platform", "", "Platform to fetch (e.g., x86_64-linux, java, ruby)")
 	source := fs.String("source", "https://rubygems.org", "Gem source URL")
+	workers := fs.Int("workers", defaultDownloadWorkers(), "Number of concurrent downloads")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -53,13 +55,22 @@ func RunFetch(args []string) error {
 	}, nil)
 
 	ctx := context.Background()
+	g, ctx := errgroup.WithContext(ctx)
+	if *workers > 0 {
+		g.SetLimit(*workers)
+	}
 
 	for _, gemName := range gems {
-		if err := fetchGem(ctx, client, sourceManager, gemName, *version, *platform, cacheDir); err != nil {
-			logger.Error("error fetching gem", "gem", gemName, "error", err)
-			continue
-		}
+		gemName := gemName
+		g.Go(func() error {
+			if err := fetchGem(ctx, client, sourceManager, gemName, *version, *platform, cacheDir); err != nil {
+				logger.Error("error fetching gem", "gem", gemName, "error", err)
+			}
+			return nil
+		})
 	}
+
+	_ = g.Wait()
 
 	return nil
 }

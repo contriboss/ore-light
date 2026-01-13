@@ -70,7 +70,39 @@ func TestHasExtensions(t *testing.T) {
 				if err := os.MkdirAll(extDir, 0755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(filepath.Join(extDir, "Cargo.toml"), []byte(""), 0644); err != nil {
+				cargo := []byte("[package]\nname = \"rust_ext\"\n[lib]\ncrate-type = [\"cdylib\"]\n")
+				if err := os.WriteFile(filepath.Join(extDir, "Cargo.toml"), cargo, 0644); err != nil {
+					t.Fatal(err)
+				}
+				return dir
+			},
+			wantHas:      true,
+			wantExtCount: 1,
+			wantErr:      false,
+		},
+		{
+			name: "workspace Cargo.toml uses member cdylib",
+			setupFunc: func(t *testing.T) string {
+				dir := t.TempDir()
+				extDir := filepath.Join(dir, "ext", "rust_workspace")
+				ffiDir := filepath.Join(extDir, "ffi")
+				coreDir := filepath.Join(extDir, "core")
+				if err := os.MkdirAll(ffiDir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(coreDir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				root := []byte("[workspace]\nmembers = [\"core\", \"ffi\"]\n")
+				if err := os.WriteFile(filepath.Join(extDir, "Cargo.toml"), root, 0644); err != nil {
+					t.Fatal(err)
+				}
+				ffi := []byte("[package]\nname = \"ffi\"\n[lib]\ncrate-type = [\"cdylib\"]\n")
+				if err := os.WriteFile(filepath.Join(ffiDir, "Cargo.toml"), ffi, 0644); err != nil {
+					t.Fatal(err)
+				}
+				core := []byte("[package]\nname = \"core\"\n")
+				if err := os.WriteFile(filepath.Join(coreDir, "Cargo.toml"), core, 0644); err != nil {
 					t.Fatal(err)
 				}
 				return dir

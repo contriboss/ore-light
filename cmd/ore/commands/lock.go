@@ -16,6 +16,7 @@ func RunLock(args []string) error {
 	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
 	verbose := fs.Bool("v", false, "Enable verbose output")
 	cpuProfile := fs.String("cpuprofile", "", "Write CPU profile to file")
+	allowPrerelease := fs.Bool("prerelease", false, "Allow prerelease versions")
 
 	// Multi-value flag for platforms (like bundle lock --add-platform)
 	var platforms []string
@@ -52,6 +53,8 @@ func RunLock(args []string) error {
 	if *verbose {
 		fmt.Printf("Resolving dependencies from %s...\n", *gemfilePath)
 	}
+
+	resolver.SetAllowPrereleases(*allowPrerelease)
 
 	startTime := time.Now()
 	if err := resolver.GenerateLockfileWithPlatforms(*gemfilePath, nil, platforms); err != nil {

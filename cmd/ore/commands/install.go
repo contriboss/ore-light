@@ -62,6 +62,8 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		return err
 	}
 
+	quiet := quietOutput()
+
 	dm, err := callbacks.GetDownloadManager(*workers)
 	if err != nil {
 		return err
@@ -125,7 +127,9 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Cache ready. %d fetched, %d reused.\n", downloadReport.Downloaded, downloadReport.Skipped)
+		if !quiet {
+			fmt.Printf("Cache ready. %d fetched, %d reused.\n", downloadReport.Downloaded, downloadReport.Skipped)
+		}
 	}
 
 	// Import the extensions package for config
@@ -134,7 +138,9 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 	// Install regular gems
 	var totalInstalled, totalSkipped, totalExtBuilt, totalExtFailed int
 	if len(gems) > 0 {
-		fmt.Printf("Installing %d rubygems gem(s)...\n", len(gems))
+		if !quiet {
+			fmt.Printf("Installing %d rubygems gem(s)...\n", len(gems))
+		}
 		installReport, err := callbacks.InstallFromCache(ctx, dm.CacheDir(), *vendorDir, gems, *force, *buildExts, extConfig)
 		if err != nil {
 			return err
@@ -154,7 +160,9 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		gitSpecs = filterGitGemsByGroups(gitSpecs, excludeGroups)
 	}
 	if len(gitSpecs) > 0 {
-		fmt.Printf("Installing %d git gem(s)...\n", len(gitSpecs))
+		if !quiet {
+			fmt.Printf("Installing %d git gem(s)...\n", len(gitSpecs))
+		}
 		gitReport, err := callbacks.InstallGitGems(ctx, *vendorDir, rubyScope, gitSpecs, *force, *buildExts, extConfig)
 		if err != nil {
 			return err
@@ -171,7 +179,9 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		pathSpecs = filterPathGemsByGroups(pathSpecs, excludeGroups)
 	}
 	if len(pathSpecs) > 0 {
-		fmt.Printf("Installing %d path gem(s)...\n", len(pathSpecs))
+		if !quiet {
+			fmt.Printf("Installing %d path gem(s)...\n", len(pathSpecs))
+		}
 		pathReport, err := callbacks.InstallPathGems(ctx, *vendorDir, rubyScope, pathSpecs, *force, *buildExts, extConfig)
 		if err != nil {
 			return err
@@ -206,7 +216,7 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 	}
 
 	// Display post-install messages
-	if totalInstalled > 0 {
+	if totalInstalled > 0 && !quiet {
 		if messages, err := ReadPostInstallMessages(*vendorDir); err == nil {
 			DisplayPostInstallMessages(messages)
 		}
@@ -236,7 +246,9 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 
 	execCmd += " <command>"
 
-	fmt.Printf("Use `%s` to run commands with this environment.\n", execCmd)
+	if !quiet {
+		fmt.Printf("Use `%s` to run commands with this environment.\n", execCmd)
+	}
 	return nil
 }
 
