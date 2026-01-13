@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/contriboss/ore-light/compare/v0.17.1...v0.17.2) (2026-01-13)
+
+
+### Bug Fixes
+
+* avoid mutation of gnu/musl ([be45de5](https://github.com/contriboss/ore-light/commit/be45de53eb08c8548c0566486bdbfcb40771f4fe))
+
 ## [0.17.1](https://github.com/contriboss/ore-light/compare/v0.17.0...v0.17.1) (2026-01-13)
 
 
