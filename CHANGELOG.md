@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.3](https://github.com/contriboss/ore-light/compare/v0.17.2...v0.17.3) (2026-01-15)
+
+
+### Bug Fixes
+
+* match bundler 4 structure ([#46](https://github.com/contriboss/ore-light/issues/46)) ([cef507d](https://github.com/contriboss/ore-light/commit/cef507db2321af2fe315c3ffa52bae8bd452d339))
+
 ## [0.17.2](https://github.com/contriboss/ore-light/compare/v0.17.1...v0.17.2) (2026-01-13)
 
 
