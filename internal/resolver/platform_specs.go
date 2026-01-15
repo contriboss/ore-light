@@ -1,9 +1,6 @@
 package resolver
 
 import (
-	"sort"
-	"strings"
-
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/internal/compactindex"
 	"github.com/contriboss/pubgrub-go"
@@ -14,7 +11,7 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 		return nil, nil
 	}
 
-	targetPlatforms := buildPlatformTargets(platforms)
+	targetPlatforms := BuildPlatformTargets(platforms)
 	if len(targetPlatforms) == 0 {
 		return nil, nil
 	}
@@ -34,18 +31,18 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 		allPlatformsResolved := true
 
 		for _, target := range targetPlatforms {
-			platform := target.normalized
+			platform := target.Normalized
 			pinned := ""
 			if versionPins != nil && versionPins[gemName] != "" {
 				pinned = versionPins[gemName]
 			} else if baseVersions != nil && baseVersions[gemName] != "" {
 				pinned = baseVersions[gemName]
 			} else if existingPlatformVersions != nil && existingPlatformVersions[gemName] != nil {
-				pinned = existingPlatformVersions[gemName][target.original]
+				pinned = existingPlatformVersions[gemName][target.Original]
 			}
 
 			allowFallback := pinned == ""
-			version, deps, actualPlatform := selectBestPlatformVersion(infoList, platform, target.original, constraintsByGem[gemName], pinned, allowFallback)
+			version, deps, actualPlatform := selectBestPlatformVersion(infoList, platform, target.Original, constraintsByGem[gemName], pinned, allowFallback)
 			if version == "" || actualPlatform == "" {
 				allPlatformsResolved = false
 				break
@@ -73,35 +70,6 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 	}
 
 	return specs, gemsWithPlatformSpecs
-}
-
-type platformTarget struct {
-	original   string
-	normalized string
-}
-
-func buildPlatformTargets(platforms []string) []platformTarget {
-	set := make(map[string]platformTarget)
-	for _, platform := range platforms {
-		platform = strings.TrimSpace(platform)
-		if platform == "" {
-			continue
-		}
-		normalized := normalizePlatformForIndex(platform)
-		if normalized == "" {
-			continue
-		}
-		set[platform] = platformTarget{original: platform, normalized: normalized}
-	}
-
-	targets := make([]platformTarget, 0, len(set))
-	for _, target := range set {
-		targets = append(targets, target)
-	}
-	sort.Slice(targets, func(i, j int) bool {
-		return targets[i].original < targets[j].original
-	})
-	return targets
 }
 
 func loadExistingPlatformVersions(lockfilePath string) map[string]map[string]string {
@@ -148,45 +116,6 @@ func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform str
 	var bestVersion *SemverVersion
 	allowPrerelease := allowPrereleases()
 
-	platformScore := func(p string) int {
-		p = strings.ToLower(p)
-		if strings.Contains(p, "linux") {
-			target := strings.ToLower(desiredPlatform)
-			if strings.Contains(target, "linux-musl") {
-				switch {
-				case strings.Contains(p, "linux-musl"):
-					return 3
-				default:
-					return 2
-				case strings.Contains(p, "linux-gnu"):
-					return 1
-				}
-			}
-			if strings.Contains(target, "linux-gnu") {
-				switch {
-				case strings.Contains(p, "linux-gnu"):
-					return 3
-				default:
-					return 2
-				case strings.Contains(p, "linux-musl"):
-					return 1
-				}
-			}
-			switch {
-			case strings.Contains(p, "linux-musl"):
-				return 1
-			case strings.Contains(p, "linux-gnu"):
-				return 2
-			default:
-				return 3 // prefer plain linux if available
-			}
-		}
-		if p != "" {
-			return 1
-		}
-		return 0
-	}
-
 	trySelect := func(requirePinned bool, exactOnly bool) {
 		for i := range infoList {
 			info := &infoList[i]
@@ -224,7 +153,7 @@ func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform str
 				continue
 			}
 			if cmp == 0 && bestInfo != nil {
-				if platformScore(info.Platform) > platformScore(bestInfo.Platform) {
+				if PlatformScoreWithTarget(desiredPlatform, info.Platform) > PlatformScoreWithTarget(desiredPlatform, bestInfo.Platform) {
 					bestVersion = version
 					bestInfo = info
 				}

@@ -3,7 +3,6 @@ package resolver
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -12,8 +11,6 @@ import (
 	"github.com/contriboss/ore-light/internal/compactindex"
 	"github.com/contriboss/pubgrub-go"
 )
-
-var darwinVersionedPlatformRegex = regexp.MustCompile(`^(.*-darwin)-?\d+$`)
 
 // CompactIndexSource implements pubgrub.Source using Bundler's compact index cache.
 type CompactIndexSource struct {
@@ -312,10 +309,10 @@ func (s *CompactIndexSource) GetDependenciesForPlatform(name pubgrub.Name, versi
 		if info.Version != versionStr {
 			continue
 		}
-		if !platformMatchesRequirement(info.Platform, platform) {
+		if !PlatformMatchesRequirement(info.Platform, platform) {
 			continue
 		}
-		if versionInfo == nil || platformScoreWithTarget(platform, info.Platform) > platformScoreWithTarget(platform, versionInfo.Platform) {
+		if versionInfo == nil || PlatformScoreWithTarget(platform, info.Platform) > PlatformScoreWithTarget(platform, versionInfo.Platform) {
 			versionInfo = info
 		}
 	}
@@ -346,7 +343,7 @@ func (s *CompactIndexSource) GetDependenciesMap(name, version, platform string) 
 			}
 			continue
 		}
-		if platformMatchesRequirement(info.Platform, platform) {
+		if PlatformMatchesRequirement(info.Platform, platform) {
 			return info.Dependencies, nil
 		}
 	}
@@ -430,10 +427,10 @@ func selectPlatformInfo(infoList []compactindex.VersionInfo, version string, req
 			if info.Version != version {
 				continue
 			}
-			if !platformMatchesRequirement(info.Platform, req) {
+			if !PlatformMatchesRequirement(info.Platform, req) {
 				continue
 			}
-			if best == nil || platformScoreWithTarget(req, info.Platform) > platformScoreWithTarget(req, best.Platform) {
+			if best == nil || PlatformScoreWithTarget(req, info.Platform) > PlatformScoreWithTarget(req, best.Platform) {
 				best = info
 			}
 		}
@@ -445,126 +442,16 @@ func selectPlatformInfo(infoList []compactindex.VersionInfo, version string, req
 
 	var best *compactindex.VersionInfo
 	for _, info := range bestForReq {
-		if best == nil || platformScore(info.Platform) > platformScore(best.Platform) {
+		if best == nil || PlatformScore(info.Platform) > PlatformScore(best.Platform) {
 			best = info
 		}
 	}
 	return best
 }
 
-func platformScore(platform string) int {
-	p := strings.ToLower(strings.TrimSpace(platform))
-	if strings.Contains(p, "linux") {
-		switch {
-		case strings.Contains(p, "linux-musl"):
-			return 1
-		case strings.Contains(p, "linux-gnu"):
-			return 2
-		default:
-			return 3
-		}
-	}
-	if p != "" {
-		return 1
-	}
-	return 0
-}
-
 func versionSupportsPlatforms(entry *availability, required []string) bool {
 	if entry == nil {
 		return false
 	}
-	if len(required) == 0 {
-		return entry.ruby
-	}
-	if entry.ruby {
-		return true
-	}
-	for _, platform := range required {
-		if platform == "" {
-			continue
-		}
-		if !platformRequirementSatisfied(entry, platform) {
-			return false
-		}
-	}
-	return true
-}
-
-func platformMatchesRequirement(actualPlatform, required string) bool {
-	required = strings.TrimSpace(required)
-	if required == "" {
-		return strings.TrimSpace(actualPlatform) == ""
-	}
-	if required == "ruby" {
-		return strings.TrimSpace(actualPlatform) == ""
-	}
-	norm := normalizePlatformForIndex(required)
-	if norm == "" {
-		return false
-	}
-	actualNorm := normalizePlatformForIndex(actualPlatform)
-	if required == norm {
-		return actualNorm == norm
-	}
-	if darwinVersionedPlatformRegex.MatchString(required) {
-		return actualNorm == norm
-	}
-	return actualPlatform == required
-}
-
-func platformRequirementSatisfied(entry *availability, required string) bool {
-	if required == "" {
-		return false
-	}
-	if required == "ruby" {
-		return entry.ruby
-	}
-	norm := normalizePlatformForIndex(required)
-	if norm == "" {
-		return false
-	}
-	if required != norm {
-		if darwinVersionedPlatformRegex.MatchString(required) {
-			for p := range entry.platforms {
-				if normalizePlatformForIndex(p) == norm {
-					return true
-				}
-			}
-			return false
-		}
-		return entry.platforms[required]
-	}
-	for p := range entry.platforms {
-		if normalizePlatformForIndex(p) == norm {
-			return true
-		}
-	}
-	return false
-}
-
-func platformScoreWithTarget(target, platform string) int {
-	target = strings.ToLower(strings.TrimSpace(target))
-	p := strings.ToLower(strings.TrimSpace(platform))
-	if strings.Contains(target, "linux-musl") {
-		switch {
-		case strings.Contains(p, "linux-musl"):
-			return 3
-		default:
-			return 2
-		case strings.Contains(p, "linux-gnu"):
-			return 1
-		}
-	}
-	if strings.Contains(target, "linux-gnu") {
-		switch {
-		case strings.Contains(p, "linux-gnu"):
-			return 3
-		default:
-			return 2
-		case strings.Contains(p, "linux-musl"):
-			return 1
-		}
-	}
-	return platformScore(platform)
+	return VersionSupportsPlatforms(entry.ruby, entry.platforms, required)
 }
