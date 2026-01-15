@@ -304,6 +304,7 @@ func (s *CompactIndexSource) GetDependenciesForPlatform(name pubgrub.Name, versi
 	}
 
 	var versionInfo *compactindex.VersionInfo
+	var bestScore int
 	for i := range infoList {
 		info := &infoList[i]
 		if info.Version != versionStr {
@@ -312,8 +313,10 @@ func (s *CompactIndexSource) GetDependenciesForPlatform(name pubgrub.Name, versi
 		if !PlatformMatchesRequirement(info.Platform, platform) {
 			continue
 		}
-		if versionInfo == nil || PlatformScoreWithTarget(platform, info.Platform) > PlatformScoreWithTarget(platform, versionInfo.Platform) {
+		score := PlatformScoreWithTarget(platform, info.Platform)
+		if versionInfo == nil || score > bestScore {
 			versionInfo = info
+			bestScore = score
 		}
 	}
 

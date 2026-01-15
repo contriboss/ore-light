@@ -168,11 +168,12 @@ func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform str
 			trySelect(true, false)
 		}
 	}
+	// Fallback: try without pinned version, first exact platform match, then any matching platform.
 	if bestInfo == nil && allowFallback {
-		trySelect(false, true)
-	}
-	if bestInfo == nil && allowFallback {
-		trySelect(false, false)
+		trySelect(false, true) // exact platform match
+		if bestInfo == nil {
+			trySelect(false, false) // any matching platform
+		}
 	}
 
 	if bestInfo == nil {
