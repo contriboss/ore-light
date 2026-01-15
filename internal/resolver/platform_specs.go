@@ -1,9 +1,6 @@
 package resolver
 
 import (
-	"sort"
-	"strings"
-
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/internal/compactindex"
 	"github.com/contriboss/pubgrub-go"
@@ -14,7 +11,7 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 		return nil, nil
 	}
 
-	targetPlatforms := normalizePlatformTargets(platforms)
+	targetPlatforms := BuildPlatformTargets(platforms)
 	if len(targetPlatforms) == 0 {
 		return nil, nil
 	}
@@ -30,24 +27,30 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 		}
 
 		perPlatform := make([]lockfile.GemSpec, 0, len(targetPlatforms))
+		seenPlatforms := make(map[string]bool)
 		allPlatformsResolved := true
 
-		for _, platform := range targetPlatforms {
+		for _, target := range targetPlatforms {
+			platform := target.Normalized
 			pinned := ""
 			if versionPins != nil && versionPins[gemName] != "" {
 				pinned = versionPins[gemName]
 			} else if baseVersions != nil && baseVersions[gemName] != "" {
 				pinned = baseVersions[gemName]
 			} else if existingPlatformVersions != nil && existingPlatformVersions[gemName] != nil {
-				pinned = existingPlatformVersions[gemName][platform]
+				pinned = existingPlatformVersions[gemName][target.Original]
 			}
 
 			allowFallback := pinned == ""
-			version, deps, actualPlatform := selectBestPlatformVersion(infoList, platform, constraintsByGem[gemName], pinned, allowFallback)
+			version, deps, actualPlatform := selectBestPlatformVersion(infoList, platform, target.Original, constraintsByGem[gemName], pinned, allowFallback)
 			if version == "" || actualPlatform == "" {
 				allPlatformsResolved = false
 				break
 			}
+			if seenPlatforms[actualPlatform] {
+				continue
+			}
+			seenPlatforms[actualPlatform] = true
 
 			lockDeps := dependenciesFromCompactMap(deps)
 			perPlatform = append(perPlatform, lockfile.GemSpec{
@@ -69,24 +72,6 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 	return specs, gemsWithPlatformSpecs
 }
 
-func normalizePlatformTargets(platforms []string) []string {
-	set := make(map[string]struct{})
-	for _, platform := range platforms {
-		normalized := normalizePlatformForIndex(platform)
-		if normalized == "" {
-			continue
-		}
-		set[normalized] = struct{}{}
-	}
-
-	targets := make([]string, 0, len(set))
-	for platform := range set {
-		targets = append(targets, platform)
-	}
-	sort.Strings(targets)
-	return targets
-}
-
 func loadExistingPlatformVersions(lockfilePath string) map[string]map[string]string {
 	existing := make(map[string]map[string]string)
 
@@ -99,46 +84,45 @@ func loadExistingPlatformVersions(lockfilePath string) map[string]map[string]str
 		if spec.Platform == "" {
 			continue
 		}
-		platform := normalizePlatformForIndex(spec.Platform)
-		if platform == "" {
-			continue
-		}
 		if existing[spec.Name] == nil {
 			existing[spec.Name] = make(map[string]string)
 		}
-		existing[spec.Name][platform] = spec.Version
+		existing[spec.Name][spec.Platform] = spec.Version
 	}
 
 	return existing
 }
 
-func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform string, conditions []pubgrub.Condition, pinnedVersion string, allowFallback bool) (string, map[string]string, string) {
+func loadExistingRubySpecs(lockfilePath string) map[string]bool {
+	existing := make(map[string]bool)
+
+	lf, err := lockfile.ParseFile(lockfilePath)
+	if err != nil || lf == nil {
+		return existing
+	}
+
+	for _, spec := range lf.GemSpecs {
+		if spec.Platform != "" {
+			continue
+		}
+		existing[spec.Name] = true
+	}
+
+	return existing
+}
+
+func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform string, desiredPlatform string, conditions []pubgrub.Condition, pinnedVersion string, allowFallback bool) (string, map[string]string, string) {
 	var bestInfo *compactindex.VersionInfo
 	var bestVersion *SemverVersion
 	allowPrerelease := allowPrereleases()
 
-	platformScore := func(p string) int {
-		p = strings.ToLower(p)
-		if strings.Contains(p, "linux") {
-			switch {
-			case strings.Contains(p, "linux-musl"):
-				return 1
-			case strings.Contains(p, "linux-gnu"):
-				return 2
-			default:
-				return 3 // prefer plain linux if available
-			}
-		}
-		if p != "" {
-			return 1
-		}
-		return 0
-	}
-
-	trySelect := func(requirePinned bool) {
+	trySelect := func(requirePinned bool, exactOnly bool) {
 		for i := range infoList {
 			info := &infoList[i]
 			if normalizePlatformForIndex(info.Platform) != platform {
+				continue
+			}
+			if exactOnly && desiredPlatform != "" && info.Platform != desiredPlatform {
 				continue
 			}
 			if requirePinned && pinnedVersion != "" && info.Version != pinnedVersion {
@@ -169,7 +153,7 @@ func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform str
 				continue
 			}
 			if cmp == 0 && bestInfo != nil {
-				if platformScore(info.Platform) > platformScore(bestInfo.Platform) {
+				if PlatformScoreWithTarget(desiredPlatform, info.Platform) > PlatformScoreWithTarget(desiredPlatform, bestInfo.Platform) {
 					bestVersion = version
 					bestInfo = info
 				}
@@ -178,10 +162,18 @@ func selectBestPlatformVersion(infoList []compactindex.VersionInfo, platform str
 	}
 
 	if pinnedVersion != "" {
-		trySelect(true)
+		trySelect(true, true)
+		if bestInfo == nil {
+			// Allow platform fallback while keeping the pinned version.
+			trySelect(true, false)
+		}
 	}
+	// Fallback: try without pinned version, first exact platform match, then any matching platform.
 	if bestInfo == nil && allowFallback {
-		trySelect(false)
+		trySelect(false, true) // exact platform match
+		if bestInfo == nil {
+			trySelect(false, false) // any matching platform
+		}
 	}
 
 	if bestInfo == nil {

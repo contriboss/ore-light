@@ -50,7 +50,7 @@ DEPENDENCIES
 		}
 	}
 
-	cmd := exec.Command("ruby", "-e", "puts RUBY_PLATFORM")
+	cmd := exec.Command("ruby", "-e", `require "rubygems"; puts Gem::Platform.local.to_s`)
 	if output, err := cmd.Output(); err == nil {
 		platform := strings.TrimSpace(string(output))
 		if platform != "" && !gotSet[platform] {

@@ -31,7 +31,7 @@ func TestSelectBestPlatformVersion_PrefersGNU(t *testing.T) {
 		{Version: "1.0.0", Platform: "x86_64-linux-gnu"},
 	}
 
-	version, _, platform := selectBestPlatformVersion(infoList, "x86_64-linux", nil, "", true)
+	version, _, platform := selectBestPlatformVersion(infoList, "x86_64-linux", "x86_64-linux", nil, "", true)
 	if version != "1.0.0" {
 		t.Fatalf("version = %q, want %q", version, "1.0.0")
 	}
