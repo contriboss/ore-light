@@ -298,3 +298,50 @@ func TestPostInstallMessageParsing(t *testing.T) {
 		t.Errorf("expected 0 messages from empty dir, got %d", len(messages))
 	}
 }
+
+// TestPlatformMatches tests platform matching logic
+func TestPlatformMatches(t *testing.T) {
+	tests := []struct {
+		name            string
+		gemPlatform     string
+		currentPlatform string
+		want            bool
+	}{
+		// Exact matches
+		{"exact match linux-gnu", "x86_64-linux-gnu", "x86_64-linux-gnu", true},
+		{"exact match linux-musl", "x86_64-linux-musl", "x86_64-linux-musl", true},
+		{"exact match darwin", "arm64-darwin", "arm64-darwin", true},
+
+		// Linux libc variants - gnu system
+		{"gnu gem on gnu system", "x86_64-linux-gnu", "x86_64-linux-gnu", true},
+		{"musl gem on gnu system", "x86_64-linux-musl", "x86_64-linux-gnu", false},
+		{"plain linux gem on gnu system", "x86_64-linux", "x86_64-linux-gnu", true},
+
+		// Linux libc variants - musl system
+		{"gnu gem on musl system", "x86_64-linux-gnu", "x86_64-linux-musl", false},
+		{"musl gem on musl system", "x86_64-linux-musl", "x86_64-linux-musl", true},
+		{"plain linux gem on musl system", "x86_64-linux", "x86_64-linux-musl", true},
+
+		// Darwin with version suffixes
+		{"darwin versioned match", "arm64-darwin-24", "arm64-darwin", true},
+		{"darwin versioned match 2", "arm64-darwin", "arm64-darwin-24", true},
+		{"darwin versioned exact", "arm64-darwin-24", "arm64-darwin-24", true},
+
+		// Architecture mismatches
+		{"arch mismatch", "aarch64-linux-gnu", "x86_64-linux-gnu", false},
+		{"os mismatch", "x86_64-darwin", "x86_64-linux-gnu", false},
+
+		// Edge cases
+		{"too short gem platform", "linux", "x86_64-linux-gnu", false},
+		{"too short current platform", "x86_64-linux-gnu", "linux", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := platformMatches(tt.gemPlatform, tt.currentPlatform)
+			if got != tt.want {
+				t.Errorf("platformMatches(%q, %q) = %v, want %v", tt.gemPlatform, tt.currentPlatform, got, tt.want)
+			}
+		})
+	}
+}

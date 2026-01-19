@@ -245,7 +245,8 @@ func platformMatches(gemPlatform, currentPlatform string) bool {
 
 	// Platform variants - extract base platform components
 	// Examples: arm64-darwin-24 matches arm64-darwin
-	//           x86_64-linux-gnu matches x86_64-linux
+	//           x86_64-linux-gnu matches x86_64-linux-gnu (exact)
+	//           x86_64-linux matches x86_64-linux-gnu (generic gem, specific current)
 	gemParts := strings.Split(gemPlatform, "-")
 	currentParts := strings.Split(currentPlatform, "-")
 
@@ -254,6 +255,35 @@ func platformMatches(gemPlatform, currentPlatform string) bool {
 		return false
 	}
 
-	// Match arch and os (first two components)
-	return gemParts[0] == currentParts[0] && gemParts[1] == currentParts[1]
+	// Must match arch and os (first two components)
+	if gemParts[0] != currentParts[0] || gemParts[1] != currentParts[1] {
+		return false
+	}
+
+	// Handle Linux libc variants (gnu vs musl)
+	if gemParts[1] == "linux" {
+		gemLibc := ""
+		currentLibc := ""
+
+		if len(gemParts) >= 3 {
+			gemLibc = gemParts[2]
+		}
+		if len(currentParts) >= 3 {
+			currentLibc = currentParts[2]
+		}
+
+		// If gem has a specific libc requirement, it must match the current libc
+		if gemLibc != "" && currentLibc != "" && gemLibc != currentLibc {
+			return false
+		}
+	}
+
+	// Handle Darwin version suffixes (arm64-darwin-24 matches arm64-darwin)
+	// Darwin version is numeric, libc variants are not
+	if gemParts[1] == "darwin" {
+		// Darwin versions are just fine to not match exactly
+		return true
+	}
+
+	return true
 }

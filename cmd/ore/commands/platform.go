@@ -112,10 +112,48 @@ func detectCurrentPlatform() string {
 	case "darwin":
 		return goarch + "-darwin"
 	case "linux":
+		// Detect libc variant (glibc vs musl)
+		libc := detectLinuxLibc()
+		if libc != "" {
+			return goarch + "-linux-" + libc
+		}
 		return goarch + "-linux"
 	default:
 		return "unsupported"
 	}
+}
+
+// detectLinuxLibc detects whether the system uses glibc or musl
+func detectLinuxLibc() string {
+	// Check for musl by looking for ld-musl-* in standard locations
+	muslPaths := []string{
+		"/lib/ld-musl-x86_64.so.1",
+		"/lib/ld-musl-aarch64.so.1",
+		"/lib64/ld-musl-x86_64.so.1",
+		"/lib64/ld-musl-aarch64.so.1",
+	}
+
+	for _, path := range muslPaths {
+		if _, err := os.Stat(path); err == nil {
+			return "musl"
+		}
+	}
+
+	// Check for glibc by looking for libc.so.6 or running ldd
+	glibcPaths := []string{
+		"/lib/x86_64-linux-gnu/libc.so.6",
+		"/lib64/libc.so.6",
+		"/lib/aarch64-linux-gnu/libc.so.6",
+	}
+
+	for _, path := range glibcPaths {
+		if _, err := os.Stat(path); err == nil {
+			return "gnu"
+		}
+	}
+
+	// Default to gnu on Linux (most common)
+	return "gnu"
 }
 
 func detectCurrentRubyVersion() string {
