@@ -252,11 +252,21 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 			return report, err
 		}
 
-		// Collect this gem for extension building (defer until all gems installed)
-		extensionTargets = append(extensionTargets, extensionTarget{
-			gemName: gem.FullName(),
-			destDir: destDir,
-		})
+		// Only add to extension targets if the gem actually needs building
+		// Precompiled native gems (e.g., nokogiri-1.19.0-x86_64-linux-gnu) already
+		// have their .so files and should NOT trigger extension compilation
+		needsBuild, err := extensions.NeedsBuild(destDir, engine)
+		if err != nil {
+			// Log warning but don't fail - extension building is best-effort
+			if extConfig != nil && extConfig.Verbose {
+				fmt.Fprintf(os.Stderr, "Warning: failed to check if %s needs extension build: %v\n", gem.FullName(), err)
+			}
+		} else if needsBuild {
+			extensionTargets = append(extensionTargets, extensionTarget{
+				gemName: gem.FullName(),
+				destDir: destDir,
+			})
+		}
 
 		report.Installed++
 	}
