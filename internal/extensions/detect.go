@@ -47,6 +47,7 @@ func hasBuildCompleteMarker(gemDir string) bool {
 
 	// We don't try to compute platform/api_version; glob both segments instead.
 	pattern := filepath.Join(baseDir, "extensions", "*", "*", fullName, "gem.build_complete")
+	// Error only occurs for malformed patterns (syntax errors); our pattern is always valid
 	matches, _ := filepath.Glob(pattern)
 	return len(matches) > 0
 }

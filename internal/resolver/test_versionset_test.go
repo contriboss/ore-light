@@ -1,8 +1,9 @@
 package resolver_test
 
 import (
-	"github.com/contriboss/ore-light/internal/resolver"
 	"testing"
+
+	"github.com/contriboss/ore-light/internal/resolver"
 )
 
 func TestVersionSetContains(t *testing.T) {
