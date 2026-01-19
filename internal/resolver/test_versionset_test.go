@@ -2,6 +2,7 @@ package resolver_test
 
 import (
 	"testing"
+
 	"github.com/contriboss/ore-light/internal/resolver"
 )
 
@@ -11,9 +12,9 @@ func TestVersionSetContains(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v", err)
 	}
-	
+
 	versionSet := condition.ToVersionSet()
-	
+
 	versions := []struct {
 		version string
 		expect  bool
@@ -23,7 +24,7 @@ func TestVersionSetContains(t *testing.T) {
 		{"0.1.1", true},
 		{"0.2.0", true},
 	}
-	
+
 	for _, v := range versions {
 		semverVer, err := resolver.NewSemverVersion(v.version)
 		if err != nil {
