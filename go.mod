@@ -1,6 +1,6 @@
 module github.com/contriboss/ore-light
 
-go 1.25
+go 1.25.5
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/contriboss/gemfile-go v0.7.2
+	github.com/contriboss/go-update v1.0.1
 	github.com/contriboss/pubgrub-go v0.3.4
 	github.com/contriboss/ruby-extension-go v0.3.0
 	github.com/contriboss/rubygems-client-go v0.1.0
@@ -15,7 +16,6 @@ require (
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/pelletier/go-toml/v2 v2.2.4
-	github.com/rhysd/go-github-selfupdate v1.2.3
 	golang.org/x/sync v0.18.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -36,14 +36,12 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
+	github.com/dsnet/compress v0.0.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.6.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
-	github.com/google/go-github/v30 v30.1.0 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
@@ -58,16 +56,13 @@ require (
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/skeema/knownhosts v1.3.1 // indirect
-	github.com/tcnksm/go-gitconfig v0.1.2 // indirect
 	github.com/tree-sitter/go-tree-sitter v0.25.0 // indirect
 	github.com/tree-sitter/tree-sitter-ruby v0.23.1 // indirect
-	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
 	golang.org/x/net v0.46.0 // indirect
-	golang.org/x/oauth2 v0.33.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
