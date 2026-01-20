@@ -143,17 +143,28 @@ func ResolveCacheDir(cfg *Config) (string, string, error) {
 
 // ResolveGemfilePath returns the resolved Gemfile path and its source.
 func ResolveGemfilePath(cfg *Config) (string, string, error) {
+	// Priority 1: BUNDLE_GEMFILE (standard Bundler environment variable)
+	// This is set by appraisal and other Bundler-based tools
+	if env := os.Getenv("BUNDLE_GEMFILE"); env != "" {
+		return env, "env:BUNDLE_GEMFILE", nil
+	}
+
+	// Priority 2: ORE_GEMFILE (ore-specific override)
 	if env := os.Getenv("ORE_GEMFILE"); env != "" {
 		return env, "env:ORE_GEMFILE", nil
 	}
+
+	// Priority 3: Ore config file
 	if cfg != nil && cfg.Gemfile != "" {
 		return cfg.Gemfile, "config:ore", nil
 	}
 
+	// Priority 4: Auto-detect gems.rb (newer Bundler convention)
 	if _, err := os.Stat("gems.rb"); err == nil {
 		return "gems.rb", "file:gems.rb", nil
 	}
 
+	// Priority 5: Default to Gemfile
 	return "Gemfile", "default:Gemfile", nil
 }
 
