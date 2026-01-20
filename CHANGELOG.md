@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/contriboss/ore-light/compare/v0.18.0...v0.19.0) (2026-01-20)
+
+
+### Features
+
+* Add BUNDLE_GEMFILE environment variable support ([#56](https://github.com/contriboss/ore-light/issues/56)) ([c69f8ed](https://github.com/contriboss/ore-light/commit/c69f8edd19586b27577362410eb5e57cac5bd69a))
+
 ## [0.18.0](https://github.com/contriboss/ore-light/compare/v0.17.3...v0.18.0) (2026-01-20)
 
 
