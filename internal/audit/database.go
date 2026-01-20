@@ -25,10 +25,7 @@ type Database struct {
 
 // DefaultDatabasePath returns the default path for the advisory database
 func DefaultDatabasePath() (string, error) {
-	// Check environment variable first
-	if path := os.Getenv("ORE_AUDIT_DB"); path != "" {
-		return path, nil
-	}
+	// Check environment variable (Bundler compatibility)
 	if path := os.Getenv("BUNDLER_AUDIT_DB"); path != "" {
 		return path, nil
 	}

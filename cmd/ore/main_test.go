@@ -97,12 +97,9 @@ func TestConfigOverrides(t *testing.T) {
 
 	var states []envState
 	for _, key := range []string{
-		"ORE_VENDOR_DIR",
-		"ORE_LIGHT_VENDOR_DIR",
-		"ORE_CACHE_DIR",
-		"ORE_LIGHT_CACHE_DIR",
-		"ORE_GEM_MIRROR",
-		"ORE_LIGHT_GEM_MIRROR",
+		"BUNDLE_PATH",
+		"BUNDLE_CACHE_PATH",
+		"BUNDLE_MIRROR",
 	} {
 		value, present := os.LookupEnv(key)
 		states = append(states, envState{key: key, value: value, present: present})

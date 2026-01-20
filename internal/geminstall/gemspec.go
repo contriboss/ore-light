@@ -71,8 +71,8 @@ func stripRubyYAMLTags(data []byte) []byte {
 	// Use regex to remove all Ruby object tags in one pass
 	result := rubyTagPattern.ReplaceAll(data, []byte(""))
 
-	// Debug: log cleaned YAML if ORE_DEBUG_YAML is set
-	if os.Getenv("ORE_DEBUG_YAML") != "" {
+	// Debug: log cleaned YAML if BUNDLE_VERBOSE is set
+	if os.Getenv("BUNDLE_VERBOSE") != "" {
 		fmt.Fprintf(os.Stderr, "=== Cleaned YAML ===\n%s\n=== End ===\n", string(result))
 	}
 
@@ -106,7 +106,7 @@ func WriteGemSpecification(vendorDir string, spec lockfile.GemSpec, metadataYAML
 	var gemMeta gemMetadata
 	if err := yaml.Unmarshal(cleanedYAML, &gemMeta); err != nil {
 		// Debug: log parsing error
-		if os.Getenv("ORE_DEBUG") != "" {
+		if os.Getenv("BUNDLE_VERBOSE") != "" {
 			fmt.Fprintf(os.Stderr, "YAML parse error for %s: %v\n", spec.FullName(), err)
 		}
 		// If parsing fails, use basic metadata
@@ -116,7 +116,7 @@ func WriteGemSpecification(vendorDir string, spec lockfile.GemSpec, metadataYAML
 			Authors: []string{"Gem Authors"},
 			Email:   "ore@example.com",
 		}
-	} else if os.Getenv("ORE_DEBUG") != "" {
+	} else if os.Getenv("BUNDLE_VERBOSE") != "" {
 		// Debug: show extracted metadata
 		fmt.Fprintf(os.Stderr, "Extracted metadata for %s: name=%s version=%s authors=%v email=%v\n",
 			spec.FullName(), gemMeta.Name, gemMeta.Version.String(), gemMeta.Authors, gemMeta.Email)

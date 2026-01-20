@@ -95,9 +95,6 @@ func supportsColor() bool {
 }
 
 func isQuietOutput() bool {
-	if os.Getenv("ORE_QUIET") != "" {
-		return true
-	}
 	if os.Getenv("CI") != "" {
 		return true
 	}

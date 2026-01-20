@@ -288,47 +288,39 @@ func TestShouldSkipExtensions(t *testing.T) {
 			want:    false,
 		},
 		{
-			name: "ORE_SKIP_EXTENSIONS=1",
+			name: "BUNDLE_FORCE_RUBY_PLATFORM=1",
 			envVars: map[string]string{
-				"ORE_SKIP_EXTENSIONS": "1",
+				"BUNDLE_FORCE_RUBY_PLATFORM": "1",
 			},
 			want: true,
 		},
 		{
-			name: "ORE_SKIP_EXTENSIONS=true",
+			name: "BUNDLE_FORCE_RUBY_PLATFORM=true",
 			envVars: map[string]string{
-				"ORE_SKIP_EXTENSIONS": "true",
+				"BUNDLE_FORCE_RUBY_PLATFORM": "true",
 			},
 			want: true,
 		},
 		{
-			name: "ORE_SKIP_EXTENSIONS=yes",
+			name: "BUNDLE_FORCE_RUBY_PLATFORM=yes",
 			envVars: map[string]string{
-				"ORE_SKIP_EXTENSIONS": "yes",
+				"BUNDLE_FORCE_RUBY_PLATFORM": "yes",
 			},
 			want: true,
 		},
 		{
-			name: "ORE_SKIP_EXTENSIONS=0",
+			name: "BUNDLE_FORCE_RUBY_PLATFORM=0",
 			envVars: map[string]string{
-				"ORE_SKIP_EXTENSIONS": "0",
+				"BUNDLE_FORCE_RUBY_PLATFORM": "0",
 			},
 			want: false,
-		},
-		{
-			name: "ORE_LIGHT_SKIP_EXTENSIONS=1",
-			envVars: map[string]string{
-				"ORE_LIGHT_SKIP_EXTENSIONS": "1",
-			},
-			want: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear all relevant env vars first
-			_ = os.Unsetenv("ORE_SKIP_EXTENSIONS")
-			_ = os.Unsetenv("ORE_LIGHT_SKIP_EXTENSIONS")
+			// Clear env var first
+			_ = os.Unsetenv("BUNDLE_FORCE_RUBY_PLATFORM")
 
 			// Set test env vars
 			for k, v := range tt.envVars {

@@ -18,15 +18,11 @@ func DefaultDownloadWorkers(cfg *Config) int {
 }
 
 // ResolveDownloadWorkers returns the resolved worker count and its source.
+// Uses BUNDLE_JOBS for Bundler compatibility.
 func ResolveDownloadWorkers(cfg *Config) (int, string) {
-	if value := os.Getenv("ORE_DOWNLOAD_WORKERS"); value != "" {
+	if value := os.Getenv("BUNDLE_JOBS"); value != "" {
 		if workers, ok := parseWorkerCount(value); ok {
-			return workers, "env:ORE_DOWNLOAD_WORKERS"
-		}
-	}
-	if value := os.Getenv("ORE_LIGHT_DOWNLOAD_WORKERS"); value != "" {
-		if workers, ok := parseWorkerCount(value); ok {
-			return workers, "env:ORE_LIGHT_DOWNLOAD_WORKERS"
+			return workers, "env:BUNDLE_JOBS"
 		}
 	}
 	if cfg != nil && cfg.DownloadWorkers > 0 {

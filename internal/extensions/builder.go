@@ -328,13 +328,11 @@ func getRubyVersion(rubyPath string) (string, error) {
 	return parts[1], nil
 }
 
-// ShouldSkipExtensions checks environment and config to determine if extensions should be skipped
+// ShouldSkipExtensions checks environment and config to determine if extensions should be skipped.
+// Uses BUNDLE_FORCE_RUBY_PLATFORM for Bundler compatibility.
 func ShouldSkipExtensions() bool {
-	// Check environment variable
-	if skip := os.Getenv("ORE_SKIP_EXTENSIONS"); skip != "" {
-		return skip == "1" || strings.ToLower(skip) == "true" || strings.ToLower(skip) == "yes"
-	}
-	if skip := os.Getenv("ORE_LIGHT_SKIP_EXTENSIONS"); skip != "" {
+	// Check Bundler environment variable
+	if skip := os.Getenv("BUNDLE_FORCE_RUBY_PLATFORM"); skip != "" {
 		return skip == "1" || strings.ToLower(skip) == "true" || strings.ToLower(skip) == "yes"
 	}
 	return false

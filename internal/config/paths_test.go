@@ -31,80 +31,51 @@ func TestToMajorMinor(t *testing.T) {
 // This is a regression test for the bug where ore-light ignored BUNDLE_GEMFILE
 // and always fell back to "Gemfile", breaking Appraisal and CI workflows.
 func TestResolveGemfilePath_BundleGemfile(t *testing.T) {
-	// Save original env vars
+	// Save original env var
 	originalBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
-	originalOreGemfile := os.Getenv("ORE_GEMFILE")
 	defer func() {
 		if originalBundleGemfile != "" {
 			os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
 		} else {
 			os.Unsetenv("BUNDLE_GEMFILE")
 		}
-		if originalOreGemfile != "" {
-			os.Setenv("ORE_GEMFILE", originalOreGemfile)
-		} else {
-			os.Unsetenv("ORE_GEMFILE")
-		}
 	}()
 
 	tests := []struct {
-		name               string
-		bundleGemfile      string
-		oreGemfile         string
-		configGemfile      string
-		expectedPath       string
-		expectedSource     string
-		description        string
+		name           string
+		bundleGemfile  string
+		configGemfile  string
+		expectedPath   string
+		expectedSource string
+		description    string
 	}{
 		{
 			name:           "BUNDLE_GEMFILE takes highest priority",
 			bundleGemfile:  "Appraisal.root.gemfile",
-			oreGemfile:     "custom.gemfile",
 			configGemfile:  "config.gemfile",
 			expectedPath:   "Appraisal.root.gemfile",
 			expectedSource: "env:BUNDLE_GEMFILE",
 			description:    "When BUNDLE_GEMFILE is set, it should take precedence over everything",
 		},
 		{
-			name:           "ORE_GEMFILE is second priority",
+			name:           "Config Gemfile is second priority",
 			bundleGemfile:  "",
-			oreGemfile:     "custom.gemfile",
-			configGemfile:  "config.gemfile",
-			expectedPath:   "custom.gemfile",
-			expectedSource: "env:ORE_GEMFILE",
-			description:    "When BUNDLE_GEMFILE is not set, ORE_GEMFILE should be used",
-		},
-		{
-			name:           "Config Gemfile is third priority",
-			bundleGemfile:  "",
-			oreGemfile:     "",
 			configGemfile:  "config.gemfile",
 			expectedPath:   "config.gemfile",
 			expectedSource: "config:ore",
-			description:    "When no env vars are set, config file should be used",
+			description:    "When BUNDLE_GEMFILE is not set, config file should be used",
 		},
 		{
 			name:           "Falls back to Gemfile when nothing is set",
 			bundleGemfile:  "",
-			oreGemfile:     "",
 			configGemfile:  "",
 			expectedPath:   "Gemfile",
 			expectedSource: "default:Gemfile",
 			description:    "When no configuration is provided, default to Gemfile",
 		},
 		{
-			name:           "BUNDLE_GEMFILE overrides ORE_GEMFILE",
-			bundleGemfile:  "bundle.gemfile",
-			oreGemfile:     "ore.gemfile",
-			configGemfile:  "",
-			expectedPath:   "bundle.gemfile",
-			expectedSource: "env:BUNDLE_GEMFILE",
-			description:    "BUNDLE_GEMFILE should win even when ORE_GEMFILE is set",
-		},
-		{
 			name:           "Real-world Appraisal use case",
 			bundleGemfile:  "gemfiles/style.gemfile",
-			oreGemfile:     "",
 			configGemfile:  "",
 			expectedPath:   "gemfiles/style.gemfile",
 			expectedSource: "env:BUNDLE_GEMFILE",
@@ -114,16 +85,12 @@ func TestResolveGemfilePath_BundleGemfile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear all env vars first
+			// Clear env var first
 			os.Unsetenv("BUNDLE_GEMFILE")
-			os.Unsetenv("ORE_GEMFILE")
 
-			// Set test env vars
+			// Set test env var
 			if tt.bundleGemfile != "" {
 				os.Setenv("BUNDLE_GEMFILE", tt.bundleGemfile)
-			}
-			if tt.oreGemfile != "" {
-				os.Setenv("ORE_GEMFILE", tt.oreGemfile)
 			}
 
 			// Create config

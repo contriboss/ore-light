@@ -21,7 +21,7 @@ func TestMirrorEnvOverridesPrimary(t *testing.T) {
 	}))
 	defer primary.Close()
 
-	t.Setenv("ORE_LIGHT_MIRROR", mirror.URL)
+	t.Setenv("BUNDLE_MIRROR", mirror.URL)
 
 	mgr := NewManager([]SourceConfig{{URL: primary.URL}}, nil)
 
@@ -110,7 +110,7 @@ func TestDownloadGemWithHeadersNotModified(t *testing.T) {
 
 // Ensure mirror mapping uses Bundler-style env var names.
 func TestApplyMirrorBundlerEnv(t *testing.T) {
-	t.Setenv("ORE_LIGHT_MIRROR", "")
+	t.Setenv("BUNDLE_MIRROR", "")
 	t.Setenv("BUNDLE_MIRROR__example__com", "https://mirror.example.com")
 
 	mirrors := resolveMirrorMap()

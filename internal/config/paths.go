@@ -86,15 +86,7 @@ func DefaultVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 
 // ResolveVendorDir returns the resolved vendor directory and its source.
 func ResolveVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGemDir func() string) (string, string, error) {
-	// Priority 1: Ore environment variables
-	if env := os.Getenv("ORE_VENDOR_DIR"); env != "" {
-		return env, "env:ORE_VENDOR_DIR", nil
-	}
-	if env := os.Getenv("ORE_LIGHT_VENDOR_DIR"); env != "" {
-		return env, "env:ORE_LIGHT_VENDOR_DIR", nil
-	}
-
-	// Priority 2: Bundler environment variable (BUNDLE_PATH)
+	// Priority 1: Bundler environment variable (BUNDLE_PATH)
 	if bundlePath := os.Getenv("BUNDLE_PATH"); bundlePath != "" {
 		rubyVersion := detectRubyVersion()
 		if rubyVersion != "" {
@@ -103,12 +95,12 @@ func ResolveVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 		return bundlePath, "env:BUNDLE_PATH", nil
 	}
 
-	// Priority 3: Ore config file
+	// Priority 2: Ore config file
 	if cfg != nil && cfg.VendorDir != "" {
 		return cfg.VendorDir, "config:ore", nil
 	}
 
-	// Priority 4: Bundler .bundle/config file
+	// Priority 3: Bundler .bundle/config file
 	if bundlePath := ReadBundleConfigPath(); bundlePath != "" {
 		rubyVersion := detectRubyVersion()
 		if rubyVersion != "" {
@@ -117,22 +109,23 @@ func ResolveVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 		return bundlePath, "bundle-config:BUNDLE_PATH", nil
 	}
 
-	// Priority 5: System gem directory (default - like `gem install`)
+	// Priority 4: System gem directory (default - like `gem install`)
 	return getSystemGemDir(), "system", nil
 }
 
 // ResolveCacheDir returns the resolved cache directory and its source.
 func ResolveCacheDir(cfg *Config) (string, string, error) {
-	if cache := os.Getenv("ORE_CACHE_DIR"); cache != "" {
-		return cache, "env:ORE_CACHE_DIR", nil
+	// Priority 1: BUNDLE_CACHE_PATH (Bundler environment variable)
+	if cache := os.Getenv("BUNDLE_CACHE_PATH"); cache != "" {
+		return cache, "env:BUNDLE_CACHE_PATH", nil
 	}
-	if cache := os.Getenv("ORE_LIGHT_CACHE_DIR"); cache != "" {
-		return cache, "env:ORE_LIGHT_CACHE_DIR", nil
-	}
+
+	// Priority 2: Ore config file
 	if cfg != nil && cfg.CacheDir != "" {
 		return cfg.CacheDir, "config:ore", nil
 	}
 
+	// Priority 3: XDG cache home
 	cacheHome, err := GetXDGCacheHome()
 	if err != nil {
 		return "", "xdg:cache", err
@@ -149,22 +142,17 @@ func ResolveGemfilePath(cfg *Config) (string, string, error) {
 		return env, "env:BUNDLE_GEMFILE", nil
 	}
 
-	// Priority 2: ORE_GEMFILE (ore-specific override)
-	if env := os.Getenv("ORE_GEMFILE"); env != "" {
-		return env, "env:ORE_GEMFILE", nil
-	}
-
-	// Priority 3: Ore config file
+	// Priority 2: Ore config file
 	if cfg != nil && cfg.Gemfile != "" {
 		return cfg.Gemfile, "config:ore", nil
 	}
 
-	// Priority 4: Auto-detect gems.rb (newer Bundler convention)
+	// Priority 3: Auto-detect gems.rb (newer Bundler convention)
 	if _, err := os.Stat("gems.rb"); err == nil {
 		return "gems.rb", "file:gems.rb", nil
 	}
 
-	// Priority 5: Default to Gemfile
+	// Priority 4: Default to Gemfile
 	return "Gemfile", "default:Gemfile", nil
 }
 
