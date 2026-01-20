@@ -541,12 +541,12 @@ type SourceInfo struct {
 
 // resolveMirrorMap builds a map of host -> mirror URL from environment variables.
 // Supports:
-//   - ORE_LIGHT_MIRROR (applies to all sources)
+//   - BUNDLE_MIRROR (applies to all sources)
 //   - BUNDLE_MIRROR__<host> (Bundler-style mirror env, where dots are written as "__")
 func resolveMirrorMap() map[string]string {
 	mirrors := make(map[string]string)
 
-	if all := strings.TrimSpace(os.Getenv("ORE_LIGHT_MIRROR")); all != "" {
+	if all := strings.TrimSpace(os.Getenv("BUNDLE_MIRROR")); all != "" {
 		mirrors["*"] = strings.TrimSuffix(all, "/")
 	}
 

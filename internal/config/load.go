@@ -63,7 +63,7 @@ func (c *Config) merge(other Config) {
 
 // UserConfigPath returns the user-level config path.
 func UserConfigPath() string {
-	if path := os.Getenv("ORE_CONFIG"); path != "" {
+	if path := os.Getenv("BUNDLE_APP_CONFIG"); path != "" {
 		return path
 	}
 

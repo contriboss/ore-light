@@ -15,7 +15,7 @@ services:
     working_dir: /workspace
     user: "${UID:-1000}:${GID:-1000}"
     environment:
-      - ORE_CACHE_DIR=/cache
+      - BUNDLE_CACHE_PATH=/cache
     # Note: Distroless has no shell, override entrypoint carefully
     # For interactive use, switch to alpine-based image or use ore commands directly
 

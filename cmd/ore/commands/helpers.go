@@ -16,7 +16,7 @@ import (
 // Supports both Gemfile and gems.rb naming conventions.
 //
 // Priority:
-// 1. ORE_GEMFILE environment variable
+// 1. BUNDLE_GEMFILE environment variable
 // 2. gems.rb (if exists)
 // 3. Gemfile (default)
 func defaultGemfilePath() string {
@@ -70,10 +70,9 @@ func findLockfilePath(gemfilePath string) (string, error) {
 // Respects project configuration and detects version managers (mise/asdf/rbenv)
 //
 // Priority:
-// 1. ORE_VENDOR_DIR or ORE_LIGHT_VENDOR_DIR environment variable
-// 2. BUNDLE_PATH environment variable
-// 3. .bundle/config BUNDLE_PATH
-// 4. System gem directory (with version manager detection)
+// 1. BUNDLE_PATH environment variable
+// 2. .bundle/config BUNDLE_PATH
+// 3. System gem directory (with version manager detection)
 func defaultVendorDir() string {
 	return config.DefaultVendorDir(loadAppConfig(), getRubyVersion, getSystemGemDir)
 }
@@ -106,9 +105,6 @@ func loadAppConfig() *config.Config {
 }
 
 func quietOutput() bool {
-	if os.Getenv("ORE_QUIET") != "" {
-		return true
-	}
 	if os.Getenv("CI") != "" {
 		return true
 	}

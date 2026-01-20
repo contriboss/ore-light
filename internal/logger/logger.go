@@ -3,7 +3,6 @@ package logger
 import (
 	"log/slog"
 	"os"
-	"strings"
 )
 
 var (
@@ -24,18 +23,9 @@ func SetupLogger(verbose bool) {
 		level = slog.LevelDebug
 	}
 
-	// Check environment variable for log level override
-	if envLevel := os.Getenv("ORE_LOG_LEVEL"); envLevel != "" {
-		switch strings.ToLower(envLevel) {
-		case "debug":
-			level = slog.LevelDebug
-		case "info":
-			level = slog.LevelInfo
-		case "warn", "warning":
-			level = slog.LevelWarn
-		case "error":
-			level = slog.LevelError
-		}
+	// Check environment variable for verbose mode (Bundler compatibility)
+	if os.Getenv("BUNDLE_VERBOSE") != "" {
+		level = slog.LevelDebug
 	}
 
 	opts := &slog.HandlerOptions{

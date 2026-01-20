@@ -138,8 +138,8 @@ Ore Light automatically detects and builds native extensions when installing gem
 # Via flag
 ore install --skip-extensions
 
-# Via environment variable
-export ORE_SKIP_EXTENSIONS=1
+# Via environment variable (Bundler compatible)
+export BUNDLE_FORCE_RUBY_PLATFORM=1
 ore install
 ```
 
@@ -335,7 +335,7 @@ When you run `ore install` or `ore fetch`, Ore Light will:
 
 Ore Light determines where to install gems using this priority order:
 
-1. **Environment variables**: `ORE_VENDOR_DIR` or `ORE_LIGHT_VENDOR_DIR`
+1. **Bundler environment variable**: `BUNDLE_PATH`
 2. **Ore config file**: `vendor_dir` in `.ore.toml` or `~/.config/ore/config.toml`
 3. **Bundler config**: `BUNDLE_PATH` from `.bundle/config`
 4. **System default**: Output of `gem environment gemdir`
@@ -360,8 +360,8 @@ ore config --show
 # Show effective config with sources
 ore config --explain
 
-# Override with environment variable
-ORE_VENDOR_DIR=/tmp/gems ore install
+# Override with environment variable (Bundler compatible)
+BUNDLE_PATH=/tmp/gems ore install
 ```
 
 #### Configuration Files
@@ -406,12 +406,16 @@ url = "https://gem.coop"  # Standalone source without fallback
 - `XDG_CACHE_HOME` - Base directory for cache files (default: `~/.cache`)
 - `XDG_DATA_HOME` - Base directory for data files (default: `~/.local/share`)
 
-**Ore-specific Variables:**
-- `ORE_SKIP_EXTENSIONS` / `ORE_LIGHT_SKIP_EXTENSIONS` - Set to `1`, `true`, or `yes` to skip native extension compilation
-- `ORE_VENDOR_DIR` / `ORE_LIGHT_VENDOR_DIR` - Override default vendor directory
-- `ORE_CACHE_DIR` / `ORE_LIGHT_CACHE_DIR` - Override default cache directory
-- `ORE_CONFIG` - Override config file path
-- `ORE_AUDIT_DB` / `BUNDLER_AUDIT_DB` - Override advisory database path
+**Bundler-compatible Variables:**
+- `BUNDLE_GEMFILE` - Override Gemfile path
+- `BUNDLE_PATH` - Override gem installation directory
+- `BUNDLE_CACHE_PATH` - Override cache directory
+- `BUNDLE_JOBS` - Number of parallel download workers
+- `BUNDLE_FORCE_RUBY_PLATFORM` - Set to `1`, `true`, or `yes` to skip native extension compilation
+- `BUNDLE_MIRROR` - Global gem mirror URL
+- `BUNDLE_VERBOSE` - Enable verbose output
+- `BUNDLE_APP_CONFIG` - Override config file path
+- `BUNDLER_AUDIT_DB` - Override advisory database path
 
 ## Relationship to `ore_reference`
 
@@ -429,7 +433,7 @@ docker run --rm -v $(pwd):/workspace ghcr.io/contriboss/ore-light:latest install
 docker run --rm \
   -v $(pwd):/workspace \
   -v ore-cache:/cache \
-  -e ORE_CACHE_DIR=/cache \
+  -e BUNDLE_CACHE_PATH=/cache \
   ghcr.io/contriboss/ore-light:latest install
 
 # Skip native extensions (no Ruby in image)

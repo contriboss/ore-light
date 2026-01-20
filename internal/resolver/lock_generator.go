@@ -303,7 +303,7 @@ func GenerateLockfileWithPlatforms(gemfilePath string, versionPins map[string]st
 		pubgrub.WithIncompatibilityTracking(true),
 		pubgrub.WithPreferHighestVersions(true),
 	}
-	if os.Getenv("ORE_PUBGRUB_DEBUG") != "" {
+	if os.Getenv("BUNDLE_VERBOSE") != "" {
 		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		solverOptions = append(solverOptions, pubgrub.WithLogger(logger))
 	}
