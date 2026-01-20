@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.18.0](https://github.com/contriboss/ore-light/compare/v0.17.3...v0.18.0) (2026-01-20)
+
+
+### Features
+
+* replace go-github-selfupdate with contriboss/go-update ([#54](https://github.com/contriboss/ore-light/issues/54)) ([aaf70a1](https://github.com/contriboss/ore-light/commit/aaf70a1628b4e64d1262c45d1b070ea70fb9d2be))
+
+
+### Bug Fixes
+
+* Linux libc variant (gnu/musl) - platform selection ([#49](https://github.com/contriboss/ore-light/issues/49)) ([6c950bf](https://github.com/contriboss/ore-light/commit/6c950bfc29c7ce6ade5d46e7b8742ec0dafcfbf5))
+* mirror bundler install detection for native gems ([#53](https://github.com/contriboss/ore-light/issues/53)) ([434a1d0](https://github.com/contriboss/ore-light/commit/434a1d0a4435043252128f3678f9d38f5933a0a1))
+
 ## [0.17.3](https://github.com/contriboss/ore-light/compare/v0.17.2...v0.17.3) (2026-01-15)
 
 
