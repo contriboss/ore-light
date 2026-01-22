@@ -9,6 +9,7 @@ import (
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/internal/config"
+	"github.com/contriboss/ore-light/internal/resolver"
 	"github.com/contriboss/ore-light/internal/ruby"
 )
 
@@ -132,6 +133,48 @@ func loadLockfile(lockfilePath string) (*lockfile.Lockfile, error) {
 	}
 
 	return parsed, nil
+}
+
+// loadOrGenerateLockfile loads an existing lockfile or generates one if missing.
+// This mirrors Bundler's behavior where `bundle install` automatically generates
+// a lockfile when one doesn't exist.
+func loadOrGenerateLockfile(lockfilePath string, quiet bool) (*lockfile.Lockfile, error) {
+	// Check if lockfile exists
+	if _, err := os.Stat(lockfilePath); err == nil {
+		return loadLockfile(lockfilePath)
+	}
+
+	// Generate missing lockfile
+	if !quiet {
+		fmt.Printf("Lockfile not found. Generating %s...\n", filepath.Base(lockfilePath))
+	}
+
+	// Detect Gemfile path from lockfile path
+	gemfilePath := detectGemfileFromLock(lockfilePath)
+	if gemfilePath == "" {
+		// Fallback: try gems.rb first (newer convention), then Gemfile
+		if _, err := os.Stat("gems.rb"); err == nil {
+			gemfilePath = "gems.rb"
+		} else {
+			gemfilePath = "Gemfile"
+		}
+	}
+
+	// Verify Gemfile exists
+	if _, err := os.Stat(gemfilePath); err != nil {
+		return nil, fmt.Errorf("cannot generate lockfile: Gemfile not found at %s (also checked gems.rb)", gemfilePath)
+	}
+
+	// Generate lockfile (nil platforms = auto-detect current platform)
+	if err := resolver.GenerateLockfileWithPlatforms(gemfilePath, nil, nil); err != nil {
+		return nil, fmt.Errorf("failed to generate lockfile: %w", err)
+	}
+
+	if !quiet {
+		fmt.Printf("Generated %s\n", filepath.Base(lockfilePath))
+	}
+
+	return loadLockfile(lockfilePath)
 }
 
 // loadGemSpecs loads gem specs from a lockfile

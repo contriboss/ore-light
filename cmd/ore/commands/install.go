@@ -76,7 +76,7 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 	dm.CheckSourceHealth(ctx)
 
 	// Load both regular gems and git gems from lockfile
-	parsed, err := loadLockfile(*lockfilePath)
+	parsed, err := loadOrGenerateLockfile(*lockfilePath, quiet)
 	if err != nil {
 		return err
 	}
