@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.20.0](https://github.com/contriboss/ore-light/compare/v0.19.0...v0.20.0) (2026-01-23)
+
+
+### Features
+
+* generate lockfile when needed ([#58](https://github.com/contriboss/ore-light/issues/58)) ([2e105c3](https://github.com/contriboss/ore-light/commit/2e105c3280504f47d93263f41e6eb82f0d939ae6))
+
+
+### Bug Fixes
+
+* ore -v shows detected Ruby version and arch instead of hardcoded default ([237e9af](https://github.com/contriboss/ore-light/commit/237e9af82480493160c965eaeafe4ef48464db81))
+* ore install not generating lockfile with BUNDLE_GEMFILE ([#60](https://github.com/contriboss/ore-light/issues/60)) ([eb15ffc](https://github.com/contriboss/ore-light/commit/eb15ffcf7f5f10cc2baa6140d22c2d47b4e9de5b))
+* skip extension building for precompiled platform-specific gems ([b6575c4](https://github.com/contriboss/ore-light/commit/b6575c465c743e8d55bdc972fab7ecebd6d0c748))
+* use gemspec extensions metadata for build detection ([7be4fae](https://github.com/contriboss/ore-light/commit/7be4fae34c725c4f49c80fe94761322b60303f71))
+
 ## [0.19.0](https://github.com/contriboss/ore-light/compare/v0.18.0...v0.19.0) (2026-01-20)
 
 
