@@ -34,6 +34,15 @@ BUNDLED WITH
 		t.Fatalf("Failed to write lockfile: %v", err)
 	}
 
+	// Create a corresponding Gemfile
+	gemfileContent := `source 'https://rubygems.org'
+gem 'rake'
+`
+	gemfilePath := filepath.Join(tmpDir, "Gemfile")
+	if err := os.WriteFile(gemfilePath, []byte(gemfileContent), 0644); err != nil {
+		t.Fatalf("Failed to write Gemfile: %v", err)
+	}
+
 	// Create vendor directory structure
 	vendorDir := filepath.Join(tmpDir, "vendor", "bundle")
 	gemsDir := filepath.Join(vendorDir, "gems")
@@ -47,7 +56,7 @@ BUNDLED WITH
 
 	// Run check
 	args := []string{
-		"-gemfile", lockfilePath,
+		"-gemfile", gemfilePath,
 		"-vendor", vendorDir,
 		"-v",
 	}
