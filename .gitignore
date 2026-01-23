@@ -25,3 +25,6 @@ go.work.sum
 
 # Go build cache
 .gocache/
+
+# Other detritus
+/vendor/

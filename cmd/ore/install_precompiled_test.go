@@ -30,21 +30,18 @@ func TestPrecompiledGemsDoNotNeedBuilding(t *testing.T) {
 
 	// Simulate a platform-specific precompiled gem (like from nokogiri)
 	platformGem := lockfile.GemSpec{
-		Name:     "nokogiri",
-		Version:  "1.19.0",
-		Platform: "x86_64-linux-gnu", // Platform-specific = precompiled!
+		Name:       "nokogiri",
+		Version:    "1.19.0",
+		Platform:   "x86_64-linux-gnu", // Platform-specific = precompiled!
+		Extensions: []string{},         // Precompiled gems have NO extensions to build!
 	}
 
-	// Create the gem directory as if it was extracted from cache
-	// (cache restore extracts gems but doesn't build extensions)
-	gemDir := filepath.Join(vendorDir, "gems", platformGem.FullName())
-	if err := os.MkdirAll(gemDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	// Create a fake cached .gem file (this is what installFromCache expects)
+	gemFileName := platformGem.FullName() + ".gem"
+	cachedGemPath := filepath.Join(cacheDir, gemFileName)
 
-	// Create a fake gemspec file (precompiled gems have these)
-	gemspecPath := filepath.Join(gemDir, platformGem.Name+".gemspec")
-	gemspecContent := `# encoding: utf-8
+	// Precompiled gem has a gemspec in the data.tar.gz
+	gemspecContent := []byte(`# encoding: utf-8
 # stub: nokogiri 1.19.0 x86_64-linux-gnu lib
 
 Gem::Specification.new do |s|
@@ -54,38 +51,48 @@ Gem::Specification.new do |s|
   s.require_paths = ["lib".freeze]
   s.extensions = []  # Precompiled gems have no extensions to build!
 end
-`
-	if err := os.WriteFile(gemspecPath, []byte(gemspecContent), 0644); err != nil {
-		t.Fatal(err)
+`)
+
+	// Create fake gem archive
+	files := map[string][]byte{
+		"nokogiri.gemspec": gemspecContent,
+		"lib/.keep":        []byte(""),
 	}
 
-	// Try to "install" this gem (which is already extracted from cache)
+	// Use nil for metadata - the gemspec in data.tar.gz is what matters
+	if err := createFakeGemArchive(cachedGemPath, files, nil); err != nil {
+		t.Fatalf("Failed to create fake gem: %v", err)
+	}
+
+	// Try to install this precompiled gem
 	ctx := context.Background()
 	extConfig := &extensions.BuildConfig{
-		Verbose: true,
+		SkipExtensions: false, // We want to test that even with extensions enabled, precompiled gems are not built
+		Verbose:        true,
 	}
 
-	report, err := installFromCache(ctx, cacheDir, vendorDir, []lockfile.GemSpec{platformGem}, false, false, extConfig)
+	report, err := installFromCache(ctx, cacheDir, vendorDir, []lockfile.GemSpec{platformGem}, false, true, extConfig)
 
 	if err != nil {
 		t.Fatalf("installFromCache failed: %v", err)
 	}
 
-	// Verify the gem was skipped (already installed) and no extensions were attempted
-	if report.Installed != 0 {
-		t.Errorf("Expected 0 gems installed, got %d", report.Installed)
+	// Verify the gem was installed
+	if report.Installed != 1 {
+		t.Errorf("Expected 1 gem installed, got %d", report.Installed)
 	}
 
-	if report.Skipped != 1 {
-		t.Errorf("Expected 1 gem skipped, got %d", report.Skipped)
-	}
-
-	// Most importantly: no extension builds should have been attempted!
+	// Most importantly: no extension builds should have been attempted for this precompiled gem!
+	// The gem has Extensions: [] (empty), so NeedsBuild should return false
 	if report.ExtensionsBuilt != 0 {
 		t.Errorf("Expected 0 extensions built for precompiled gem, got %d", report.ExtensionsBuilt)
 	}
 
 	if report.ExtensionsFailed != 0 {
 		t.Errorf("Expected 0 extension failures for precompiled gem, got %d", report.ExtensionsFailed)
+	}
+
+	if report.ExtensionsSkipped != 0 {
+		t.Errorf("Expected 0 extensions skipped for precompiled gem (should not even check), got %d", report.ExtensionsSkipped)
 	}
 }

@@ -8,38 +8,59 @@ import (
 	"github.com/contriboss/ore-light/internal/ruby"
 )
 
-// NeedsBuild checks if a gem directory needs extension building.
-// It returns true if the gem has extension sources but no build-complete marker.
+// NeedsBuild checks if a gem directory needs extension building based on gemspec metadata.
+// It returns true if the gem declares extensions but no build-complete marker exists.
 //
-// This mirrors RubyGems/Bundler missing_extensions? logic:
-// - Returns false if no extensions are declared
-// - Returns false if gem.build_complete marker exists in the extensions dir
-// - Returns false if gem is a precompiled platform-specific gem
-func NeedsBuild(gemDir string, platform string, engine ruby.Engine) (bool, error) {
+// This follows RubyGems/Bundler conventions by checking the Extensions field from gemspec metadata
+// as the authoritative source of truth. The presence of an ext/ directory is NOT checked for
+// regular gems, as it may contain documentation, precompiled binaries, or other non-source files.
+//
+// Parameters:
+//   - gemDir: Path to the extracted gem directory
+//   - extensions: Extensions list from gemspec metadata (e.g., ["ext/nokogiri/extconf.rb"]).
+//                 Pass nil for git/path gems where metadata isn't loaded yet (triggers filesystem check).
+//   - engine: Ruby engine (for native extension support check)
+//
+// Returns false if:
+//   - Engine doesn't support native extensions (e.g., standard JRuby)
+//   - No extensions are declared in gemspec metadata (len(extensions) == 0)
+//   - gem.build_complete marker exists (already built)
+//
+// Returns true if:
+//   - Extensions are declared AND no build-complete marker exists
+func NeedsBuild(gemDir string, extensions []string, engine ruby.Engine) (bool, error) {
 	// Short-circuit: Skip engines that don't support native extensions
 	if !engine.SupportsNativeExtensions() {
 		return false, nil
 	}
 
-	// Precompiled platform-specific gems (platform != "" && platform != "ruby")
-	// already have their native extensions compiled. Don't attempt to build them.
-	// Example: nokogiri-1.19.0-x86_64-linux-gnu is a precompiled binary release.
-	if platform != "" && platform != "ruby" {
+	// For git/path gems where metadata isn't available, fall back to filesystem check
+	if extensions == nil {
+		hasExt, _, err := HasExtensions(gemDir, engine)
+		if err != nil || !hasExt {
+			return false, err
+		}
+		// Has extensions - check if already built
+		if hasBuildCompleteMarker(gemDir) {
+			return false, nil
+		}
+		return true, nil
+	}
+
+	// Check gemspec metadata - this is the authoritative source of truth.
+	// If no extensions are declared, nothing needs building, regardless of
+	// whether an ext/ directory exists (it may contain docs, precompiled binaries, etc.)
+	if len(extensions) == 0 {
 		return false, nil
 	}
 
-	// Check if gem has extensions at all
-	hasExt, _, err := HasExtensions(gemDir, engine)
-	if err != nil || !hasExt {
-		return false, err
-	}
-
-	// Check for gem.build_complete marker file (RubyGems/Bundler convention)
+	// Extensions are declared - check if already built
+	// RubyGems/Bundler create this marker file after successful extension build
 	if hasBuildCompleteMarker(gemDir) {
 		return false, nil
 	}
 
-	// Without a build-complete marker, consider extensions missing.
+	// Extensions declared but not yet built
 	return true, nil
 }
 

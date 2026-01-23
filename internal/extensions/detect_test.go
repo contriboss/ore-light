@@ -13,10 +13,7 @@ func TestHasBuildCompleteMarker_StandardGem(t *testing.T) {
 	fullName := "nokogiri-1.19.0-x86_64-linux-gnu"
 	gemDir := filepath.Join(baseDir, "gems", fullName)
 
-	if err := os.MkdirAll(filepath.Join(gemDir, "ext", "nokogiri"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
+	// Only create the build_complete marker - ext/ directory is irrelevant
 	extDir := filepath.Join(baseDir, "extensions", "x86_64-linux", "3.4.0", fullName)
 	if err := os.MkdirAll(extDir, 0755); err != nil {
 		t.Fatal(err)
@@ -35,10 +32,7 @@ func TestHasBuildCompleteMarker_BundlerGitGem(t *testing.T) {
 	fullName := "mygem-abcdef123456"
 	gemDir := filepath.Join(baseDir, "ruby", "3.4.0", "bundler", "gems", fullName)
 
-	if err := os.MkdirAll(filepath.Join(gemDir, "ext", "mygem"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
+	// Only create the build_complete marker - ext/ directory is irrelevant
 	extDir := filepath.Join(baseDir, "ruby", "3.4.0", "extensions", "x86_64-linux", "3.4.0", fullName)
 	if err := os.MkdirAll(extDir, 0755); err != nil {
 		t.Fatal(err)
@@ -58,14 +52,7 @@ func TestNeedsBuild_WithBuildCompleteMarker(t *testing.T) {
 	fullName := "myext-1.0.0"
 	gemDir := filepath.Join(baseDir, "gems", fullName)
 
-	extDir := filepath.Join(gemDir, "ext", "myext")
-	if err := os.MkdirAll(extDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(extDir, "extconf.rb"), []byte("# extconf"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
+	// Create a build_complete marker
 	extMarkerDir := filepath.Join(baseDir, "extensions", "x86_64-linux", "3.4.0", fullName)
 	if err := os.MkdirAll(extMarkerDir, 0755); err != nil {
 		t.Fatal(err)
@@ -74,7 +61,9 @@ func TestNeedsBuild_WithBuildCompleteMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	needsBuild, err := NeedsBuild(gemDir, "ruby", engine)
+	// Gem declares extensions in metadata
+	extensions := []string{"ext/myext/extconf.rb"}
+	needsBuild, err := NeedsBuild(gemDir, extensions, engine)
 	if err != nil {
 		t.Fatalf("NeedsBuild returned error: %v", err)
 	}
@@ -89,121 +78,113 @@ func TestNeedsBuild_IgnoresCompiledArtifactsWithoutMarker(t *testing.T) {
 	fullName := "myext-1.0.0"
 	gemDir := filepath.Join(baseDir, "gems", fullName)
 
-	extDir := filepath.Join(gemDir, "ext", "myext")
-	if err := os.MkdirAll(extDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(extDir, "extconf.rb"), []byte("# extconf"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	// NO build_complete marker exists
+	// This tests that NeedsBuild returns true when extensions are declared but not built
 
-	// Compiled artifact exists in lib/, but no gem.build_complete marker.
-	libDir := filepath.Join(gemDir, "lib")
-	if err := os.MkdirAll(libDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(libDir, "myext.so"), []byte("binary"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	needsBuild, err := NeedsBuild(gemDir, "ruby", engine)
+	// Gem declares extensions in metadata
+	extensions := []string{"ext/myext/extconf.rb"}
+	needsBuild, err := NeedsBuild(gemDir, extensions, engine)
 	if err != nil {
 		t.Fatalf("NeedsBuild returned error: %v", err)
 	}
 	if !needsBuild {
-		t.Fatalf("expected NeedsBuild to be true without gem.build_complete, even if .so exists")
+		t.Fatalf("expected NeedsBuild to be true without gem.build_complete marker")
 	}
 }
 
-// TestNeedsBuildSkipsPrecompiledGems verifies that platform-specific precompiled gems
-// (platform != "ruby" and platform != "") are NOT queued for extension building.
-func TestNeedsBuildSkipsPrecompiledGems(t *testing.T) {
+// TestNeedsBuildWithExtensionsMetadata verifies that gems with extensions in metadata
+// are correctly identified as needing builds, while gems without extensions are not.
+func TestNeedsBuildWithExtensionsMetadata(t *testing.T) {
 	engine := ruby.Engine{
 		Name:    ruby.EngineMRI,
 		Version: "3.4.0",
 	}
 
 	tests := []struct {
-		name     string
-		platform string
-		want     bool // Should we build extensions?
+		name       string
+		extensions []string
+		want       bool // Should we build extensions?
 	}{
 		{
-			name:     "precompiled x86_64-linux-gnu",
-			platform: "x86_64-linux-gnu",
-			want:     false, // Precompiled, don't build
+			name:       "gem with C extensions declared",
+			extensions: []string{"ext/myext/extconf.rb"},
+			want:       true, // Has extensions, needs build
 		},
 		{
-			name:     "precompiled arm64-darwin",
-			platform: "arm64-darwin",
-			want:     false, // Precompiled, don't build
+			name:       "gem with multiple extensions",
+			extensions: []string{"ext/foo/extconf.rb", "ext/bar/extconf.rb"},
+			want:       true, // Has extensions, needs build
 		},
 		{
-			name:     "precompiled x86_64-linux",
-			platform: "x86_64-linux",
-			want:     false, // Precompiled, don't build
+			name:       "pure Ruby gem (no extensions)",
+			extensions: []string{},
+			want:       false, // No extensions, don't build
 		},
 		{
-			name:     "ruby platform (source gem)",
-			platform: "ruby",
-			want:     false, // Source gem but no extensions in this test
-		},
-		{
-			name:     "empty platform (source gem)",
-			platform: "",
-			want:     false, // Source gem but no extensions in this test
+			name:       "precompiled gem (empty extensions list)",
+			extensions: []string{},
+			want:       false, // No extensions declared, already precompiled
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use a temporary directory (won't have extensions)
 			tmpDir := t.TempDir()
 
-			needsBuild, err := NeedsBuild(tmpDir, tt.platform, engine)
+			needsBuild, err := NeedsBuild(tmpDir, tt.extensions, engine)
 			if err != nil {
 				t.Fatalf("NeedsBuild() error = %v", err)
 			}
 
 			if needsBuild != tt.want {
-				t.Errorf("NeedsBuild() = %v, want %v for platform %q", needsBuild, tt.want, tt.platform)
+				t.Errorf("NeedsBuild() = %v, want %v for extensions %v", needsBuild, tt.want, tt.extensions)
 			}
 		})
 	}
 }
 
-// TestNeedsBuildPrecompiledGemsNeverBuild verifies that even if a precompiled gem
-// has an ext/ directory (which it shouldn't in real life), we still don't try to build it.
-func TestNeedsBuildPrecompiledGemsNeverBuild(t *testing.T) {
+// TestNeedsBuildWithFilesystemCheck verifies that passing nil for extensions
+// triggers a filesystem check for git/path gems
+func TestNeedsBuildWithFilesystemCheck(t *testing.T) {
 	engine := ruby.Engine{
 		Name:    ruby.EngineMRI,
 		Version: "3.4.0",
 	}
 
-	// Precompiled platforms should NEVER trigger extension builds
-	precompiledPlatforms := []string{
-		"x86_64-linux-gnu",
-		"arm64-darwin",
-		"x86_64-darwin",
-		"x86_64-linux",
-		"arm-linux",
-		"java", // JRuby precompiled
-	}
+	t.Run("git gem with ext dir", func(t *testing.T) {
+		tmpDir := t.TempDir()
 
-	for _, platform := range precompiledPlatforms {
-		t.Run("platform_"+platform, func(t *testing.T) {
-			tmpDir := t.TempDir()
+		// Create ext/ directory with extconf.rb
+		extDir := filepath.Join(tmpDir, "ext", "myext")
+		if err := os.MkdirAll(extDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(extDir, "extconf.rb"), []byte("# extconf"), 0644); err != nil {
+			t.Fatal(err)
+		}
 
-			// Even with no extensions present, verify the logic short-circuits
-			needsBuild, err := NeedsBuild(tmpDir, platform, engine)
-			if err != nil {
-				t.Fatalf("NeedsBuild() error = %v", err)
-			}
+		// Pass nil to trigger a filesystem check
+		needsBuild, err := NeedsBuild(tmpDir, nil, engine)
+		if err != nil {
+			t.Fatalf("NeedsBuild() error = %v", err)
+		}
 
-			if needsBuild {
-				t.Errorf("NeedsBuild() = true for precompiled platform %q, want false", platform)
-				t.Errorf("Precompiled gems should NEVER need extension building!")
-			}
-		})
-	}
+		if !needsBuild {
+			t.Errorf("NeedsBuild() = false, want true for git gem with ext/ directory")
+		}
+	})
+
+	t.Run("git gem without ext dir", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Pass nil to trigger filesystem check
+		needsBuild, err := NeedsBuild(tmpDir, nil, engine)
+		if err != nil {
+			t.Fatalf("NeedsBuild() error = %v", err)
+		}
+
+		if needsBuild {
+			t.Errorf("NeedsBuild() = true, want false for git gem without ext/ directory")
+		}
+	})
 }
