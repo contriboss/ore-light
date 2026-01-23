@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/contriboss/gemfile-go/lockfile"
@@ -97,7 +98,14 @@ func printVersion() {
 
 func versionInfo() string {
 	hash := shortHash(buildCommit)
-	return fmt.Sprintf("ore %s (%s) default-ruby %s", version, hash, ruby.DefaultRubyVersion)
+	arch := fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
+	// Use identity function to get actual version without normalization for display
+	identity := func(v string) string { return v }
+	detectedVersion := ruby.DetectRubyVersion(defaultLockfilePath(), defaultGemfilePath(), identity, ruby.DefaultRubyVersion)
+	if detectedVersion == ruby.DefaultRubyVersion {
+		return fmt.Sprintf("ore %s (%s) %s default-ruby %s", version, hash, arch, ruby.DefaultRubyVersion)
+	}
+	return fmt.Sprintf("ore %s (%s) %s ruby %s", version, hash, arch, detectedVersion)
 }
 
 func shortHash(commit string) string {
