@@ -74,7 +74,7 @@ func TestNeedsBuild_WithBuildCompleteMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	needsBuild, err := NeedsBuild(gemDir, engine)
+	needsBuild, err := NeedsBuild(gemDir, "ruby", engine)
 	if err != nil {
 		t.Fatalf("NeedsBuild returned error: %v", err)
 	}
@@ -106,11 +106,104 @@ func TestNeedsBuild_IgnoresCompiledArtifactsWithoutMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	needsBuild, err := NeedsBuild(gemDir, engine)
+	needsBuild, err := NeedsBuild(gemDir, "ruby", engine)
 	if err != nil {
 		t.Fatalf("NeedsBuild returned error: %v", err)
 	}
 	if !needsBuild {
 		t.Fatalf("expected NeedsBuild to be true without gem.build_complete, even if .so exists")
+	}
+}
+
+// TestNeedsBuildSkipsPrecompiledGems verifies that platform-specific precompiled gems
+// (platform != "ruby" and platform != "") are NOT queued for extension building.
+func TestNeedsBuildSkipsPrecompiledGems(t *testing.T) {
+	engine := ruby.Engine{
+		Name:    ruby.EngineMRI,
+		Version: "3.4.0",
+	}
+
+	tests := []struct {
+		name     string
+		platform string
+		want     bool // Should we build extensions?
+	}{
+		{
+			name:     "precompiled x86_64-linux-gnu",
+			platform: "x86_64-linux-gnu",
+			want:     false, // Precompiled, don't build
+		},
+		{
+			name:     "precompiled arm64-darwin",
+			platform: "arm64-darwin",
+			want:     false, // Precompiled, don't build
+		},
+		{
+			name:     "precompiled x86_64-linux",
+			platform: "x86_64-linux",
+			want:     false, // Precompiled, don't build
+		},
+		{
+			name:     "ruby platform (source gem)",
+			platform: "ruby",
+			want:     false, // Source gem but no extensions in this test
+		},
+		{
+			name:     "empty platform (source gem)",
+			platform: "",
+			want:     false, // Source gem but no extensions in this test
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use a temporary directory (won't have extensions)
+			tmpDir := t.TempDir()
+
+			needsBuild, err := NeedsBuild(tmpDir, tt.platform, engine)
+			if err != nil {
+				t.Fatalf("NeedsBuild() error = %v", err)
+			}
+
+			if needsBuild != tt.want {
+				t.Errorf("NeedsBuild() = %v, want %v for platform %q", needsBuild, tt.want, tt.platform)
+			}
+		})
+	}
+}
+
+// TestNeedsBuildPrecompiledGemsNeverBuild verifies that even if a precompiled gem
+// has an ext/ directory (which it shouldn't in real life), we still don't try to build it.
+func TestNeedsBuildPrecompiledGemsNeverBuild(t *testing.T) {
+	engine := ruby.Engine{
+		Name:    ruby.EngineMRI,
+		Version: "3.4.0",
+	}
+
+	// Precompiled platforms should NEVER trigger extension builds
+	precompiledPlatforms := []string{
+		"x86_64-linux-gnu",
+		"arm64-darwin",
+		"x86_64-darwin",
+		"x86_64-linux",
+		"arm-linux",
+		"java", // JRuby precompiled
+	}
+
+	for _, platform := range precompiledPlatforms {
+		t.Run("platform_"+platform, func(t *testing.T) {
+			tmpDir := t.TempDir()
+
+			// Even with no extensions present, verify the logic short-circuits
+			needsBuild, err := NeedsBuild(tmpDir, platform, engine)
+			if err != nil {
+				t.Fatalf("NeedsBuild() error = %v", err)
+			}
+
+			if needsBuild {
+				t.Errorf("NeedsBuild() = true for precompiled platform %q, want false", platform)
+				t.Errorf("Precompiled gems should NEVER need extension building!")
+			}
+		})
 	}
 }

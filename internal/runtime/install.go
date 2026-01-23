@@ -69,7 +69,7 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {
-				needsBuild, err := extensions.NeedsBuild(destDir, engine)
+				needsBuild, err := extensions.NeedsBuild(destDir, gem.Platform, engine)
 				if err != nil {
 					return InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gem.FullName(), err)
 				}
@@ -136,7 +136,7 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 
 		// Only add to extension targets if the gem actually needs building
 		// Precompiled native gems already have their .so files and should not trigger builds
-		needsBuild, err := extensions.NeedsBuild(destDir, engine)
+		needsBuild, err := extensions.NeedsBuild(destDir, gem.Platform, engine)
 		if err != nil {
 			// Log warning but don't fail - extension building is best-effort
 			if extConfig != nil && extConfig.Verbose {
@@ -186,7 +186,7 @@ func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs [
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {
-				needsBuild, err := extensions.NeedsBuild(destDir, engine)
+				needsBuild, err := extensions.NeedsBuild(destDir, "", engine)
 				if err != nil {
 					return InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
 				}
@@ -252,7 +252,7 @@ func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {
-				needsBuild, err := extensions.NeedsBuild(destDir, engine)
+				needsBuild, err := extensions.NeedsBuild(destDir, "", engine)
 				if err != nil {
 					return InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gemName, err)
 				}

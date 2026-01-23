@@ -14,9 +14,17 @@ import (
 // This mirrors RubyGems/Bundler missing_extensions? logic:
 // - Returns false if no extensions are declared
 // - Returns false if gem.build_complete marker exists in the extensions dir
-func NeedsBuild(gemDir string, engine ruby.Engine) (bool, error) {
+// - Returns false if gem is a precompiled platform-specific gem
+func NeedsBuild(gemDir string, platform string, engine ruby.Engine) (bool, error) {
 	// Short-circuit: Skip engines that don't support native extensions
 	if !engine.SupportsNativeExtensions() {
+		return false, nil
+	}
+
+	// Precompiled platform-specific gems (platform != "" && platform != "ruby")
+	// already have their native extensions compiled. Don't attempt to build them.
+	// Example: nokogiri-1.19.0-x86_64-linux-gnu is a precompiled binary release.
+	if platform != "" && platform != "ruby" {
 		return false, nil
 	}
 
