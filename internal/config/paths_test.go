@@ -165,3 +165,156 @@ func TestResolveGemfilePath_BundleGemfile_Regression(t *testing.T) {
 			source, "env:BUNDLE_GEMFILE")
 	}
 }
+
+// TestDefaultLockfilePath_BundleGemfile tests that BUNDLE_GEMFILE is respected
+// for lockfile path resolution. This is the critical regression test for the bug
+// where ore-light would fall back to Gemfile.lock even when BUNDLE_GEMFILE pointed
+// to a different Gemfile (e.g., Appraisal.root.gemfile).
+func TestDefaultLockfilePath_BundleGemfile(t *testing.T) {
+	// Save original env var
+	originalBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
+	defer func() {
+		if originalBundleGemfile != "" {
+			os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
+		} else {
+			os.Unsetenv("BUNDLE_GEMFILE")
+		}
+	}()
+
+	tests := []struct {
+		name              string
+		bundleGemfile     string
+		expectedLockfile  string
+		description       string
+	}{
+		{
+			name:              "Appraisal.root.gemfile derives Appraisal.root.gemfile.lock",
+			bundleGemfile:     "Appraisal.root.gemfile",
+			expectedLockfile:  "Appraisal.root.gemfile.lock",
+			description:       "When BUNDLE_GEMFILE=Appraisal.root.gemfile, lockfile should be Appraisal.root.gemfile.lock",
+		},
+		{
+			name:              "gemfiles/style.gemfile derives gemfiles/style.gemfile.lock",
+			bundleGemfile:     "gemfiles/style.gemfile",
+			expectedLockfile:  "gemfiles/style.gemfile.lock",
+			description:       "When BUNDLE_GEMFILE=gemfiles/style.gemfile, lockfile should be gemfiles/style.gemfile.lock",
+		},
+		{
+			name:              "custom/path/TestGemfile derives custom/path/TestGemfile.lock",
+			bundleGemfile:     "custom/path/TestGemfile",
+			expectedLockfile:  "custom/path/TestGemfile.lock",
+			description:       "When BUNDLE_GEMFILE=custom/path/TestGemfile, lockfile should be custom/path/TestGemfile.lock",
+		},
+		{
+			name:              "gems.rb derives gems.locked",
+			bundleGemfile:     "gems.rb",
+			expectedLockfile:  "gems.locked",
+			description:       "When BUNDLE_GEMFILE=gems.rb, lockfile should be gems.locked (newer Bundler convention)",
+		},
+		{
+			name:              "path/to/gems.rb derives path/to/gems.locked",
+			bundleGemfile:     "path/to/gems.rb",
+			expectedLockfile:  "path/to/gems.locked",
+			description:       "When BUNDLE_GEMFILE=path/to/gems.rb, lockfile should be path/to/gems.locked",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set BUNDLE_GEMFILE
+			os.Setenv("BUNDLE_GEMFILE", tt.bundleGemfile)
+
+			// Call DefaultLockfilePath
+			lockfilePath := DefaultLockfilePath()
+
+			// Verify lockfile path
+			if lockfilePath != tt.expectedLockfile {
+				t.Errorf("DefaultLockfilePath() = %q, expected %q\n"+
+					"BUNDLE_GEMFILE = %q\n"+
+					"Description: %s",
+					lockfilePath, tt.expectedLockfile, tt.bundleGemfile, tt.description)
+			}
+		})
+	}
+}
+
+// TestDefaultLockfilePath_NoFallback_Regression is a specific regression test
+// for the critical bug where ore-light would ignore BUNDLE_GEMFILE and fall back
+// to Gemfile.lock when the expected lockfile didn't exist.
+//
+// This bug caused CI failures in tree_haver when using Appraisal because:
+// 1. BUNDLE_GEMFILE=Appraisal.root.gemfile (no lockfile committed)
+// 2. ore-light would find Gemfile.lock in current directory
+// 3. ore-light would install gems from Gemfile.lock (tree_stump, nokogiri, etc.)
+// 4. Build would fail because those gems weren't supposed to be installed
+func TestDefaultLockfilePath_NoFallback_Regression(t *testing.T) {
+	// Save original env var
+	originalBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
+	defer func() {
+		if originalBundleGemfile != "" {
+			os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
+		} else {
+			os.Unsetenv("BUNDLE_GEMFILE")
+		}
+	}()
+
+	// Simulate the EXACT scenario from tree_haver CI failure
+	// where BUNDLE_GEMFILE=Appraisal.root.gemfile but that lockfile doesn't exist
+	os.Setenv("BUNDLE_GEMFILE", "Appraisal.root.gemfile")
+
+	lockfilePath := DefaultLockfilePath()
+
+	// THE CRITICAL ASSERTION: When BUNDLE_GEMFILE is set, lockfile path
+	// must be derived from it, NEVER fall back to Gemfile.lock!
+	expectedLockfile := "Appraisal.root.gemfile.lock"
+	if lockfilePath != expectedLockfile {
+		t.Errorf("CRITICAL REGRESSION: DefaultLockfilePath() fell back to wrong lockfile!\n"+
+			"Got lockfilePath = %q\n"+
+			"Expected lockfilePath = %q\n"+
+			"BUNDLE_GEMFILE = %q\n\n"+
+			"When BUNDLE_GEMFILE is set, there must be NO fallback to Gemfile.lock!\n"+
+			"This breaks Appraisal and CI workflows that use BUNDLE_GEMFILE without lockfiles.\n"+
+			"Even if the lockfile doesn't exist, return the expected path so ore can create it.",
+			lockfilePath, expectedLockfile, "Appraisal.root.gemfile")
+	}
+
+	// Additional check: ensure we're not returning "Gemfile.lock"
+	if lockfilePath == "Gemfile.lock" {
+		t.Errorf("CRITICAL BUG: DefaultLockfilePath() returned Gemfile.lock despite BUNDLE_GEMFILE being set!\n"+
+			"BUNDLE_GEMFILE = %q\n"+
+			"This is exactly the bug that broke tree_haver CI.\n"+
+			"When BUNDLE_GEMFILE is set, Gemfile.lock should NEVER be returned.",
+			"Appraisal.root.gemfile")
+	}
+}
+
+// TestDefaultLockfilePath_UnsetBundleGemfile tests the fallback behavior
+// when BUNDLE_GEMFILE is NOT set (normal operation without appraisal)
+func TestDefaultLockfilePath_UnsetBundleGemfile(t *testing.T) {
+	// Save original env var
+	originalBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
+	defer func() {
+		if originalBundleGemfile != "" {
+			os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
+		} else {
+			os.Unsetenv("BUNDLE_GEMFILE")
+		}
+	}()
+
+	// Unset BUNDLE_GEMFILE to test default behavior
+	os.Unsetenv("BUNDLE_GEMFILE")
+
+	lockfilePath := DefaultLockfilePath()
+
+	// When BUNDLE_GEMFILE is not set, should fall back to auto-detection
+	// We expect either "Gemfile.lock" or "gems.locked" depending on what exists
+	// For this test, we just verify it returns something reasonable
+	if lockfilePath == "" {
+		t.Error("DefaultLockfilePath() returned empty string when BUNDLE_GEMFILE not set")
+	}
+
+	// Verify it's a reasonable default (should end with .lock or .locked)
+	if lockfilePath != "Gemfile.lock" && lockfilePath != "gems.locked" {
+		t.Logf("DefaultLockfilePath() = %q (may be fine if auto-detected)", lockfilePath)
+	}
+}

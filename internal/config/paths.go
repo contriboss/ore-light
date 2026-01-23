@@ -52,23 +52,45 @@ type Config struct {
 }
 
 // DefaultLockfilePath returns the default lockfile path
+//
+// This function MUST handle the case where BUNDLE_GEMFILE is set but the
+// lockfile doesn't exist yet (e.g., in appraisal workflows with unlocked deps).
+// In such cases, it should return the EXPECTED lockfile path so ore can create it.
+//
+// The key issue: lockfile.FindLockfileOnly() is too strict - it requires the
+// lockfile to exist and returns an error if it doesn't. But ore needs the path
+// even when the file doesn't exist yet.
+//
+// Solution: Call lockfile.FindGemfiles() which respects BUNDLE_GEMFILE and
+// returns the lockfile path without requiring it to exist (when BUNDLE_GEMFILE is set).
 func DefaultLockfilePath() string {
-	// Try to auto-detect Gemfile.lock or gems.locked
-	// This respects BUNDLE_GEMFILE if set
-	lockPath, err := lockfile.FindLockfileOnly()
+	// Priority 1: Try FindGemfiles() - it respects BUNDLE_GEMFILE
+	paths, err := lockfile.FindGemfiles()
 	if err == nil {
-		return lockPath
-	}
-
-	// If lockfile doesn't exist, derive its path from the Gemfile
-	// This handles BUNDLE_GEMFILE correctly (e.g., TestGemfile -> TestGemfile.lock)
-	paths, gemErr := lockfile.FindGemfiles()
-	if gemErr == nil {
-		// FindGemfiles already computed the correct lockfile path
+		// Success! FindGemfiles found the Gemfile and computed the lockfile path
+		// Note: The lockfile might not exist yet, but that's okay - ore can create it
 		return paths.GemfileLock
 	}
 
-	// Fallback to Gemfile.lock for backward compatibility
+	// Priority 2: If FindGemfiles() failed but BUNDLE_GEMFILE is set,
+	// derive the lockfile path manually (for edge cases / tests where Gemfile doesn't exist yet)
+	if bundleGemfile := os.Getenv("BUNDLE_GEMFILE"); bundleGemfile != "" {
+		dir := filepath.Dir(bundleGemfile)
+		base := filepath.Base(bundleGemfile)
+
+		// Determine lockfile name based on Gemfile name
+		var lockfileName string
+		if base == "gems.rb" {
+			lockfileName = "gems.locked"
+		} else {
+			lockfileName = base + ".lock"
+		}
+
+		return filepath.Join(dir, lockfileName)
+	}
+
+	// Priority 3: Fallback to Gemfile.lock for backward compatibility
+	// This only happens if FindGemfiles() fails completely (no Gemfile found at all)
 	return "Gemfile.lock"
 }
 
