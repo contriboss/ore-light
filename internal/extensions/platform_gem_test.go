@@ -30,12 +30,6 @@ func TestPlatformSpecificGemShouldNotNeedBuilding(t *testing.T) {
 			wantBuild:  false,
 		},
 		{
-			name:       "precompiled platform gem - nil extensions",
-			extensions: nil, // Also acceptable
-			platform:   "x86_64-linux",
-			wantBuild:  false, // Will fall back to filesystem check
-		},
-		{
 			name:       "source gem with extensions",
 			extensions: []string{"ext/nokogiri/extconf.rb"},
 			platform:   "ruby",

@@ -290,14 +290,34 @@ func showDebugInfo(ctx context.Context, client *registry.Client, gems []string, 
 		// Platform-specific behavior analysis
 		fmt.Printf("🎯 Platform-Specific Behavior:\n")
 
-		isPlatformSpecific := requestedPlatform != "" && requestedPlatform != "ruby"
+		// Base analysis on what's actually available, not just what was requested
+		isPlatformSpecific := platformGemExists && requestedPlatform != "" && requestedPlatform != "ruby"
 
-		if isPlatformSpecific {
-			fmt.Printf("   Platform gem:       YES (%s)\n", requestedPlatform)
-			fmt.Printf("   Precompiled:        Assumed YES (platform-specific gems are precompiled)\n")
-			fmt.Printf("   Build from source:  NO (will use precompiled binaries)\n")
+		if requestedPlatform != "" && requestedPlatform != "ruby" {
+			// User requested a platform-specific gem
+			if platformGemExists {
+				fmt.Printf("   Requested platform: %s\n", requestedPlatform)
+				fmt.Printf("   Platform gem:       ✅ Available\n")
+				fmt.Printf("   Precompiled:        Assumed YES (platform-specific gems are precompiled)\n")
+				fmt.Printf("   Build from source:  NO (will use precompiled binaries)\n")
+			} else {
+				// Platform gem not available
+				fmt.Printf("   Requested platform: %s\n", requestedPlatform)
+				fmt.Printf("   Platform gem:       ❌ NOT Available\n")
+				if rubyGemExists {
+					fmt.Printf("   Fallback:           Ruby platform gem available\n")
+					if hasExtensions {
+						fmt.Printf("   Build from source:  YES (ruby gem has extensions)\n")
+					} else {
+						fmt.Printf("   Build from source:  NO (pure Ruby gem)\n")
+					}
+				} else {
+					fmt.Printf("   Fallback:           No gems cached\n")
+				}
+			}
 		} else {
-			fmt.Printf("   Platform gem:       NO (ruby platform)\n")
+			// Ruby platform
+			fmt.Printf("   Platform:           ruby (default)\n")
 			if rubyGemExists || platformGemExists {
 				if hasExtensions {
 					fmt.Printf("   Precompiled:        NO\n")
@@ -316,16 +336,27 @@ func showDebugInfo(ctx context.Context, client *registry.Client, gems []string, 
 		fmt.Printf("🏗️  Extension Build Analysis:\n")
 
 		// Create mock GemSpec for analysis
+		// Use the platform of the gem that's actually available
+		actualPlatform := requestedPlatform
+		if !isPlatformSpecific && rubyGemExists {
+			actualPlatform = "ruby"
+		}
+
 		mockSpec := lockfile.GemSpec{
 			Name:       gemName,
 			Version:    targetVersion,
-			Platform:   requestedPlatform,
+			Platform:   actualPlatform,
 			Extensions: gemExtensions, // Use extensions from cached gem if available
 		}
 
 		// Check if extensions would be built
-		if platformInstalled {
-			needsBuild, err := extensions.NeedsBuild(platformInstallDir, mockSpec.Extensions, mockSpec.Platform, engine)
+		checkDir := platformInstallDir
+		if !isPlatformSpecific {
+			checkDir = rubyInstallDir
+		}
+
+		if (isPlatformSpecific && platformInstalled) || (!isPlatformSpecific && rubyInstalled) {
+			needsBuild, err := extensions.NeedsBuild(checkDir, mockSpec.Extensions, mockSpec.Platform, engine)
 			if err != nil {
 				fmt.Printf("   ⚠️  Error checking build status: %v\n", err)
 			} else {
@@ -333,7 +364,7 @@ func showDebugInfo(ctx context.Context, client *registry.Client, gems []string, 
 				if needsBuild {
 					fmt.Printf("   Reason:             Extensions declared but not built\n")
 				} else if isPlatformSpecific {
-					fmt.Printf("   Reason:             Platform-specific gem (precompiled)\n")
+					fmt.Printf("   Reason:             Platform-specific gem is precompiled\n")
 				} else if !hasExtensions {
 					fmt.Printf("   Reason:             No extensions declared\n")
 				} else {
@@ -343,8 +374,22 @@ func showDebugInfo(ctx context.Context, client *registry.Client, gems []string, 
 		} else {
 			// Predict what would happen on install
 			if isPlatformSpecific {
+				// Platform gem exists and would be used
 				fmt.Printf("   Would build:        NO\n")
-				fmt.Printf("   Reason:             Platform-specific gems are precompiled\n")
+				fmt.Printf("   Reason:             Platform-specific gem is precompiled\n")
+			} else if requestedPlatform != "" && requestedPlatform != "ruby" && !platformGemExists {
+				// User requested platform but it doesn't exist - would fall back to ruby gem
+				fmt.Printf("   Would build:        ")
+				if !hasExtensions {
+					fmt.Printf("NO\n")
+					fmt.Printf("   Reason:             Ruby gem has no extensions (platform gem unavailable)\n")
+				} else if !engine.SupportsNativeExtensions() {
+					fmt.Printf("NO\n")
+					fmt.Printf("   Reason:             Engine doesn't support native extensions\n")
+				} else {
+					fmt.Printf("YES\n")
+					fmt.Printf("   Reason:             Ruby gem has extensions (platform gem unavailable)\n")
+				}
 			} else if !hasExtensions {
 				fmt.Printf("   Would build:        NO\n")
 				fmt.Printf("   Reason:             No extensions declared\n")
@@ -397,11 +442,18 @@ func showDebugInfo(ctx context.Context, client *registry.Client, gems []string, 
 		if !rubyInstalled && !platformInstalled {
 			fmt.Printf("   → Run `ore install` to install gem\n")
 		}
-		if hasExtensions && !isPlatformSpecific && engine.SupportsNativeExtensions() {
+		if requestedPlatform != "" && requestedPlatform != "ruby" && !platformGemExists {
+			fmt.Printf("   → Platform-specific gem for %s not available\n", requestedPlatform)
+			if rubyGemExists && hasExtensions {
+				fmt.Printf("   → Will fall back to building ruby gem from source\n")
+				fmt.Printf("   → Ensure build tools are installed (gcc, make, ruby-dev)\n")
+			}
+		}
+		if hasExtensions && !isPlatformSpecific && engine.SupportsNativeExtensions() && (rubyGemExists || rubyInstalled) {
 			fmt.Printf("   → Ensure build tools are installed (gcc, make, ruby-dev)\n")
 		}
 		if isPlatformSpecific {
-			fmt.Printf("   → Use platform-specific gem for faster installation (no compilation)\n")
+			fmt.Printf("   → Using platform-specific gem - no compilation needed\n")
 		}
 		fmt.Println()
 	}
