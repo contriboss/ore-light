@@ -65,7 +65,7 @@ func TestNeedsBuildUsesMetadataNotLockfile(t *testing.T) {
 	}
 }
 
-// TestNeedsBuildWithBuildCompleteMarker verifies that gems with a build_complete
+// TestNeedsBuildWithBuildCompleteMarkerFromMetadata verifies that gems with a build_complete
 // marker are not rebuilt even if extensions are declared in metadata.
 func TestNeedsBuildWithBuildCompleteMarkerFromMetadata(t *testing.T) {
 	engine := ruby.Engine{Name: ruby.EngineMRI, Version: "3.4.0"}
