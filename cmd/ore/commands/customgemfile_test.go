@@ -55,8 +55,8 @@ gem 'rake'
 		t.Errorf("Expected %s to be created, but it doesn't exist", lockfilePath)
 	}
 
-	// Now simulate what happens in CI: ore list and ore check use defaultLockfilePath()
-	// which should find TestGemfile.lock via BUNDLE_GEMFILE
+	// Now simulate what happens in CI: ore list and ore check resolve the lockfile
+	// via the Gemfile (respecting BUNDLE_GEMFILE) and lockfile discovery helpers.
 	t.Run("FindLockfileOnly", func(t *testing.T) {
 		foundLockfile, err := lockfile.FindLockfileOnly()
 		if err != nil {
