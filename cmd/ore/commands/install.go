@@ -64,6 +64,12 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 
 	quiet := quietOutput()
 
+	// Debug: show which lockfile we're using
+	if !quiet || os.Getenv("ORE_DEBUG") != "" {
+		fmt.Printf("DEBUG: BUNDLE_GEMFILE=%s\n", os.Getenv("BUNDLE_GEMFILE"))
+		fmt.Printf("DEBUG: Using lockfile: %s\n", *lockfilePath)
+	}
+
 	dm, err := callbacks.GetDownloadManager(*workers)
 	if err != nil {
 		return err
@@ -79,6 +85,20 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 	parsed, err := loadOrGenerateLockfile(*lockfilePath, quiet)
 	if err != nil {
 		return err
+	}
+
+	// Debug: show parsed gem counts
+	if !quiet || os.Getenv("ORE_DEBUG") != "" {
+		fmt.Printf("DEBUG: Parsed lockfile - GemSpecs: %d, GitSpecs: %d, PathSpecs: %d\n",
+			len(parsed.GemSpecs), len(parsed.GitSpecs), len(parsed.PathSpecs))
+		if len(parsed.GemSpecs) > 0 {
+			fmt.Printf("DEBUG: First few gems: ")
+			for i, g := range parsed.GemSpecs {
+				if i >= 5 { break }
+				fmt.Printf("%s ", g.FullName())
+			}
+			fmt.Println()
+		}
 	}
 
 	if len(parsed.GemSpecs) == 0 && len(parsed.GitSpecs) == 0 {
