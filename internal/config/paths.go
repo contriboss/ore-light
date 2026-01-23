@@ -60,6 +60,14 @@ func DefaultLockfilePath() string {
 		return lockPath
 	}
 
+	// If lockfile doesn't exist, derive its path from the Gemfile
+	// This handles BUNDLE_GEMFILE correctly (e.g., TestGemfile -> TestGemfile.lock)
+	paths, gemErr := lockfile.FindGemfiles()
+	if gemErr == nil {
+		// FindGemfiles already computed the correct lockfile path
+		return paths.GemfileLock
+	}
+
 	// Fallback to Gemfile.lock for backward compatibility
 	return "Gemfile.lock"
 }
