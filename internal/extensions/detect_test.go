@@ -63,7 +63,7 @@ func TestNeedsBuild_WithBuildCompleteMarker(t *testing.T) {
 
 	// Gem declares extensions in metadata
 	extensions := []string{"ext/myext/extconf.rb"}
-	needsBuild, err := NeedsBuild(gemDir, extensions, engine)
+	needsBuild, err := NeedsBuild(gemDir, extensions, "ruby", engine)
 	if err != nil {
 		t.Fatalf("NeedsBuild returned error: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestNeedsBuild_IgnoresCompiledArtifactsWithoutMarker(t *testing.T) {
 
 	// Gem declares extensions in metadata
 	extensions := []string{"ext/myext/extconf.rb"}
-	needsBuild, err := NeedsBuild(gemDir, extensions, engine)
+	needsBuild, err := NeedsBuild(gemDir, extensions, "ruby", engine)
 	if err != nil {
 		t.Fatalf("NeedsBuild returned error: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestNeedsBuildWithExtensionsMetadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 
-			needsBuild, err := NeedsBuild(tmpDir, tt.extensions, engine)
+			needsBuild, err := NeedsBuild(tmpDir, tt.extensions, "ruby", engine)
 			if err != nil {
 				t.Fatalf("NeedsBuild() error = %v", err)
 			}
@@ -164,7 +164,8 @@ func TestNeedsBuildWithFilesystemCheck(t *testing.T) {
 		}
 
 		// Pass nil to trigger a filesystem check
-		needsBuild, err := NeedsBuild(tmpDir, nil, engine)
+		// Git gems are pure Ruby, so pass empty platform
+		needsBuild, err := NeedsBuild(tmpDir, nil, "", engine)
 		if err != nil {
 			t.Fatalf("NeedsBuild() error = %v", err)
 		}
@@ -178,7 +179,7 @@ func TestNeedsBuildWithFilesystemCheck(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		// Pass nil to trigger filesystem check
-		needsBuild, err := NeedsBuild(tmpDir, nil, engine)
+		needsBuild, err := NeedsBuild(tmpDir, nil, "", engine)
 		if err != nil {
 			t.Fatalf("NeedsBuild() error = %v", err)
 		}
