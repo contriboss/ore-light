@@ -35,7 +35,9 @@ func Build() error {
 func Test() error {
 	fmt.Println("🧪 Running tests…")
 
-	cmd := exec.Command("go", "test", "./...")
+	// Use -mod=mod to bypass vendor for CGO dependencies (tree-sitter)
+	// that have C source files not included in vendor
+	cmd := exec.Command("go", "test", "-mod=mod", "./...")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

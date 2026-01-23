@@ -27,7 +27,7 @@ jobs:
       run: go mod download
 
     - name: Run tests
-      run: go test -v ./...
+      run: go test -mod=mod -v ./...
 
     - name: Build binary
       run: go build -o orelight ./cmd/ore
