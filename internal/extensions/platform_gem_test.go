@@ -48,7 +48,7 @@ func TestPlatformSpecificGemShouldNotNeedBuilding(t *testing.T) {
 			// Use empty gemDir since we're testing metadata-based detection
 			gemDir := t.TempDir()
 
-			needsBuild, err := NeedsBuild(gemDir, tt.extensions, tt.platform, engine)
+			needsBuild, err := NeedsBuild(gemDir, tt.extensions, engine)
 			if err != nil {
 				t.Fatalf("NeedsBuild() error = %v", err)
 			}

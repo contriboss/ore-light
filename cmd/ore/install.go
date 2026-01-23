@@ -192,7 +192,7 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 					}
 				}
 
-				needsBuild, err := extensions.NeedsBuild(destDir, parsedExtensions, gem.Platform, engine)
+				needsBuild, err := extensions.NeedsBuild(destDir, parsedExtensions, engine)
 				if err != nil {
 					return report, fmt.Errorf("failed to check if %s needs extension build: %w", gem.FullName(), err)
 				}
@@ -272,7 +272,7 @@ func installFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 
 		// Only add to extension targets if the gem actually needs building
 		// Use parsedExtensions from gem metadata (authoritative), not gem.Extensions from lockfile
-		needsBuild, err := extensions.NeedsBuild(destDir, parsedExtensions, gem.Platform, engine)
+		needsBuild, err := extensions.NeedsBuild(destDir, parsedExtensions, engine)
 		if err != nil {
 			// Log warning but don't fail - extension building is best-effort
 			if extConfig != nil && extConfig.Verbose {

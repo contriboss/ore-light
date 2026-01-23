@@ -19,7 +19,6 @@ import (
 //   - gemDir: Path to the extracted gem directory
 //   - extensions: Extensions list from gemspec metadata (e.g., ["ext/nokogiri/extconf.rb"]).
 //     Pass nil for git/path gems where metadata isn't loaded yet (triggers filesystem check).
-//   - platform: Gem platform (unused, kept for API compatibility)
 //   - engine: Ruby engine (for native extension support check)
 //
 // Returns false if:
@@ -35,7 +34,7 @@ import (
 //   - Non-empty extensions = needs building from source
 //
 // Platform in gem name (e.g., x86_64-linux-gnu) does NOT determine if building is needed.
-func NeedsBuild(gemDir string, extensions []string, platform string, engine ruby.Engine) (bool, error) {
+func NeedsBuild(gemDir string, extensions []string, engine ruby.Engine) (bool, error) {
 
 	// Short-circuit: Skip engines that don't support native extensions
 	if !engine.SupportsNativeExtensions() {

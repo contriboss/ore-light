@@ -356,7 +356,7 @@ func showDebugInfo(ctx context.Context, client *registry.Client, gems []string, 
 		}
 
 		if (isPlatformSpecific && platformInstalled) || (!isPlatformSpecific && rubyInstalled) {
-			needsBuild, err := extensions.NeedsBuild(checkDir, mockSpec.Extensions, mockSpec.Platform, engine)
+			needsBuild, err := extensions.NeedsBuild(checkDir, mockSpec.Extensions, engine)
 			if err != nil {
 				fmt.Printf("   ⚠️  Error checking build status: %v\n", err)
 			} else {

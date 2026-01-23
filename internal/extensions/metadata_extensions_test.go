@@ -52,7 +52,7 @@ func TestNeedsBuildUsesMetadataNotLockfile(t *testing.T) {
 
 			// Call NeedsBuild with the metadata extensions
 			// The platform parameter is unused (kept for API compatibility)
-			needsBuild, err := NeedsBuild(gemDir, tt.metadataExtensions, "ruby", engine)
+			needsBuild, err := NeedsBuild(gemDir, tt.metadataExtensions, engine)
 			if err != nil {
 				t.Fatalf("NeedsBuild() error = %v", err)
 			}
@@ -90,7 +90,7 @@ func TestNeedsBuildWithBuildCompleteMarkerFromMetadata(t *testing.T) {
 	// Gem metadata declares extensions (would normally need building)
 	metadataExtensions := []string{"ext/nokogiri/extconf.rb"}
 
-	needsBuild, err := NeedsBuild(gemDir, metadataExtensions, "ruby", engine)
+	needsBuild, err := NeedsBuild(gemDir, metadataExtensions, engine)
 	if err != nil {
 		t.Fatalf("NeedsBuild() error = %v", err)
 	}
@@ -142,7 +142,7 @@ func TestPlatformSpecificPrecompiledGemDoesNotBuild(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gemDir := t.TempDir()
 
-			needsBuild, err := NeedsBuild(gemDir, tt.metadataExtensions, tt.platform, engine)
+			needsBuild, err := NeedsBuild(gemDir, tt.metadataExtensions, engine)
 			if err != nil {
 				t.Fatalf("NeedsBuild() error = %v", err)
 			}
@@ -173,7 +173,7 @@ func TestNilExtensionsTriggersFilesystemCheckBehavior(t *testing.T) {
 		}
 
 		// Pass nil to trigger filesystem check
-		needsBuild, err := NeedsBuild(gemDir, nil, "", engine)
+		needsBuild, err := NeedsBuild(gemDir, nil, engine)
 		if err != nil {
 			t.Fatalf("NeedsBuild() error = %v", err)
 		}
@@ -187,7 +187,7 @@ func TestNilExtensionsTriggersFilesystemCheckBehavior(t *testing.T) {
 		gemDir := t.TempDir()
 
 		// No ext/ directory
-		needsBuild, err := NeedsBuild(gemDir, nil, "", engine)
+		needsBuild, err := NeedsBuild(gemDir, nil, engine)
 		if err != nil {
 			t.Fatalf("NeedsBuild() error = %v", err)
 		}
@@ -233,7 +233,7 @@ func TestBundlerParityExtensionsCheck(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gemDir := t.TempDir()
 
-			needsBuild, err := NeedsBuild(gemDir, tt.extensions, "ruby", engine)
+			needsBuild, err := NeedsBuild(gemDir, tt.extensions, engine)
 			if err != nil {
 				t.Fatalf("NeedsBuild() error = %v", err)
 			}
@@ -269,7 +269,7 @@ func TestEngineWithoutNativeExtensionSupportSkipsBuild(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gemDir := t.TempDir()
 
-			needsBuild, err := NeedsBuild(gemDir, tt.extensions, "ruby", jrubyEngine)
+			needsBuild, err := NeedsBuild(gemDir, tt.extensions, jrubyEngine)
 			if err != nil {
 				t.Fatalf("NeedsBuild() error = %v", err)
 			}
