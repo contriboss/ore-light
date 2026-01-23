@@ -35,7 +35,9 @@ func Build() error {
 func Test() error {
 	fmt.Println("🧪 Running tests…")
 
-	cmd := exec.Command("go", "test", "./...")
+	// Use -mod=mod to bypass vendor for CGO dependencies (tree-sitter)
+	// that have C source files not included in vendor
+	cmd := exec.Command("go", "test", "-mod=mod", "./...")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -88,22 +90,35 @@ func Install() error {
 	return nil
 }
 
-// Fmt runs gofmt on all Go files
+// Fmt runs gofmt on all Go files (excluding tmp/ and vendor/)
 func Fmt() error {
 	fmt.Println("Formatting code...")
-	return sh.Run("go", "fmt", "./...")
+	// Use -mod=mod to bypass vendor for CGO dependencies (tree-sitter)
+	// Format only the directories we care about, excluding tmp/
+	cmd := exec.Command("go", "fmt", "-mod=mod", "./cmd/...", "./internal/...")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // Vet runs go vet on all Go files
 func Vet() error {
 	fmt.Println("Vetting code...")
-	return sh.Run("go", "vet", "./...")
+	// Use -mod=mod to bypass vendor for CGO dependencies (tree-sitter)
+	cmd := exec.Command("go", "vet", "-mod=mod", "./...")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // Bench runs benchmarks
 func Bench() error {
 	fmt.Println("Running benchmarks...")
-	return sh.Run("go", "test", "-bench=.", "./...")
+	// Use -mod=mod to bypass vendor for CGO dependencies (tree-sitter)
+	cmd := exec.Command("go", "test", "-mod=mod", "-bench=.", "./...")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // Deps downloads dependencies

@@ -164,6 +164,7 @@ func TestNeedsBuildWithFilesystemCheck(t *testing.T) {
 		}
 
 		// Pass nil to trigger a filesystem check
+		// Git gems are pure Ruby, so pass empty platform
 		needsBuild, err := NeedsBuild(tmpDir, nil, engine)
 		if err != nil {
 			t.Fatalf("NeedsBuild() error = %v", err)

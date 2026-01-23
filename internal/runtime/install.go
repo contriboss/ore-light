@@ -69,7 +69,22 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {
-				needsBuild, err := extensions.NeedsBuild(destDir, gem.Extensions, engine)
+				// Extract metadata to get authoritative extensions list
+				metadata, err := geminstall.ExtractMetadataOnly(gemPath)
+				if err != nil {
+					return InstallReport{}, fmt.Errorf("failed to extract metadata from %s: %w", gem.FullName(), err)
+				}
+
+				var parsedExtensions []string
+				if len(metadata) > 0 {
+					parsedExtensions, err = geminstall.ParseExtensionsFromMetadata(metadata)
+					if err != nil {
+						// On parse error, assume extensions exist
+						parsedExtensions = []string{"ext/extconf.rb"}
+					}
+				}
+
+				needsBuild, err := extensions.NeedsBuild(destDir, parsedExtensions, engine)
 				if err != nil {
 					return InstallReport{}, fmt.Errorf("failed to check if %s needs extension build: %w", gem.FullName(), err)
 				}
@@ -89,6 +104,8 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 			return InstallReport{}, fmt.Errorf("failed to extract metadata from %s: %w", gem.FullName(), err)
 		}
 
+		// Parse extensions from gem metadata - this is the authoritative source
+		var parsedExtensions []string
 		if len(metadata) > 0 {
 			gemWithExtensions := gem
 			extensions, err := geminstall.ParseExtensionsFromMetadata(metadata)
@@ -97,8 +114,10 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 					fmt.Fprintf(os.Stderr, "⚠️  Warning: %s metadata parse error: %v (assuming native extensions)\n", gem.FullName(), err)
 				}
 				gemWithExtensions.Extensions = []string{"ext/extconf.rb"}
-			} else if len(extensions) > 0 {
+				parsedExtensions = []string{"ext/extconf.rb"}
+			} else {
 				gemWithExtensions.Extensions = extensions
+				parsedExtensions = extensions
 			}
 
 			if !engineChecker.IsCompatible(gemWithExtensions) {
@@ -135,8 +154,8 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 		}
 
 		// Only add to extension targets if the gem actually needs building
-		// Precompiled native gems already have their .so files and should not trigger builds
-		needsBuild, err := extensions.NeedsBuild(destDir, gem.Extensions, engine)
+		// Use parsedExtensions from gem metadata (authoritative), not gem.Extensions from lockfile
+		needsBuild, err := extensions.NeedsBuild(destDir, parsedExtensions, engine)
 		if err != nil {
 			// Log warning but don't fail - extension building is best-effort
 			if extConfig != nil && extConfig.Verbose {
