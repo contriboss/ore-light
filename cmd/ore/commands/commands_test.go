@@ -326,6 +326,11 @@ func TestPlatformMatches(t *testing.T) {
 		{"darwin versioned match", "arm64-darwin-24", "arm64-darwin", true},
 		{"darwin versioned match 2", "arm64-darwin", "arm64-darwin-24", true},
 		{"darwin versioned exact", "arm64-darwin-24", "arm64-darwin-24", true},
+		// Darwin version without hyphen separator (Ruby 4.0 reports arm64-darwin23)
+		{"darwin no-hyphen version match", "arm64-darwin", "arm64-darwin23", true},
+		{"darwin no-hyphen version match reverse", "arm64-darwin23", "arm64-darwin", true},
+		{"darwin no-hyphen version exact", "arm64-darwin23", "arm64-darwin23", true},
+		{"x86_64 darwin no-hyphen version", "x86_64-darwin", "x86_64-darwin24", true},
 
 		// Architecture mismatches
 		{"arch mismatch", "aarch64-linux-gnu", "x86_64-linux-gnu", false},

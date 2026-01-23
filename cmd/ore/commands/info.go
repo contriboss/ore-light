@@ -412,8 +412,14 @@ func displayPlatformBehavior(gem *gemDebugInfo, ctx debugContext) {
 		if gem.platformGemExists {
 			fmt.Printf("   Requested platform: %s\n", ctx.requestedPlatform)
 			fmt.Printf("   Platform gem:       ✅ Available\n")
-			fmt.Printf("   Precompiled:        Assumed YES (platform-specific gems are precompiled)\n")
-			fmt.Printf("   Build from source:  NO (will use precompiled binaries)\n")
+			// Determine whether the platform gem appears to be precompiled by checking metadata
+			if !gem.hasExtensions {
+				fmt.Printf("   Precompiled:        YES (platform gem declares no extensions)\n")
+				fmt.Printf("   Build from source:  NO (will use precompiled binaries)\n")
+			} else {
+				fmt.Printf("   Precompiled:        NO (platform gem declares extensions)\n")
+				fmt.Printf("   Build from source:  YES (platform gem contains native extensions)\n")
+			}
 		} else {
 			// Platform gem not available
 			fmt.Printf("   Requested platform: %s\n", ctx.requestedPlatform)
@@ -434,10 +440,10 @@ func displayPlatformBehavior(gem *gemDebugInfo, ctx debugContext) {
 		fmt.Printf("   Platform:           ruby (default)\n")
 		if gem.rubyGemExists || gem.platformGemExists {
 			if gem.hasExtensions {
-				fmt.Printf("   Precompiled:        NO\n")
+				fmt.Printf("   Precompiled:        N/A (ruby/platform gem declares extensions)\n")
 				fmt.Printf("   Build from source:  YES (has extensions)\n")
 			} else {
-				fmt.Printf("   Precompiled:        N/A (pure Ruby)\n")
+				fmt.Printf("   Precompiled:        N/A (pure Ruby or precompiled)\n")
 				fmt.Printf("   Build from source:  NO (no extensions)\n")
 			}
 		} else {
@@ -480,10 +486,8 @@ func displayExtensionBuildAnalysis(gem *gemDebugInfo, ctx debugContext) {
 			fmt.Printf("   Needs building:     %v\n", needsBuild)
 			if needsBuild {
 				fmt.Printf("   Reason:             Extensions declared but not built\n")
-			} else if gem.isPlatformSpecific {
-				fmt.Printf("   Reason:             Platform-specific gem is precompiled\n")
 			} else if !gem.hasExtensions {
-				fmt.Printf("   Reason:             No extensions declared\n")
+				fmt.Printf("   Reason:             No extensions declared (pure Ruby or precompiled)\n")
 			} else {
 				fmt.Printf("   Reason:             Already built (gem.build_complete marker exists)\n")
 			}
@@ -497,12 +501,20 @@ func displayExtensionBuildAnalysis(gem *gemDebugInfo, ctx debugContext) {
 
 // predictBuildBehavior predicts what would happen during installation
 func predictBuildBehavior(gem *gemDebugInfo, ctx debugContext) {
-	if gem.isPlatformSpecific {
-		// Platform gem exists and would be used
-		fmt.Printf("   Would build:        NO\n")
-		fmt.Printf("   Reason:             Platform-specific gem is precompiled\n")
+	if ctx.requestedPlatform != "" && ctx.requestedPlatform != "ruby" && gem.platformGemExists {
+		// Platform gem exists - decide based on metadata
+		if !gem.hasExtensions {
+			fmt.Printf("   Would build:        NO\n")
+			fmt.Printf("   Reason:             Platform gem declares no extensions (precompiled)\n")
+		} else if !ctx.engine.SupportsNativeExtensions() {
+			fmt.Printf("   Would build:        NO\n")
+			fmt.Printf("   Reason:             Engine doesn't support native extensions\n")
+		} else {
+			fmt.Printf("   Would build:        YES\n")
+			fmt.Printf("   Reason:             Platform gem declares extensions and would need building\n")
+		}
 	} else if ctx.requestedPlatform != "" && ctx.requestedPlatform != "ruby" && !gem.platformGemExists {
-		// User requested platform but it doesn't exist - would fall back to ruby gem
+		// User requested a platform, but it doesn't exist - would fall back to ruby gem
 		fmt.Printf("   Would build:        ")
 		if !gem.hasExtensions {
 			fmt.Printf("NO\n")

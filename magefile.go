@@ -25,7 +25,8 @@ func Build() error {
 
 	ldflags := buildLdflags()
 
-	cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", filepath.Join("bin", "ore"), "./cmd/ore")
+	// Use -mod=mod to bypass vendor when building (avoids using vendored copies for CGO deps)
+	cmd := exec.Command("go", "build", "-mod=mod", "-ldflags", ldflags, "-o", filepath.Join("bin", "ore"), "./cmd/ore")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

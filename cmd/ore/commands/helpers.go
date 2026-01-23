@@ -294,8 +294,19 @@ func platformMatches(gemPlatform, currentPlatform string) bool {
 		return false
 	}
 
+	// Normalize Darwin OS component: strip numeric version suffix
+	// Ruby reports platform as arm64-darwin23 but gems use arm64-darwin
+	gemOS := gemParts[1]
+	currentOS := currentParts[1]
+	if strings.HasPrefix(currentOS, "darwin") {
+		currentOS = "darwin"
+	}
+	if strings.HasPrefix(gemOS, "darwin") {
+		gemOS = "darwin"
+	}
+
 	// Must match arch and os (first two components)
-	if gemParts[0] != currentParts[0] || gemParts[1] != currentParts[1] {
+	if gemParts[0] != currentParts[0] || gemOS != currentOS {
 		return false
 	}
 
