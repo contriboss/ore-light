@@ -268,7 +268,7 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 	name, _ := data["name"].(string)
 	version := extractVersionString(data["version"])
 	platform, _ := data["platform"].(string)
-	if platform == "" {
+	if platform == "" || platform == "ruby" {
 		platform = "ruby"
 	}
 
@@ -290,20 +290,54 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 
 	fmt.Fprintf(&buf, "Gem::Specification.new do |s|\n")
 
-	// Sort keys for deterministic output
+	// Defined preferred order for Bundler parity
+	preferredOrder := []string{
+		"name",
+		"version",
+		"installed_by_version",
+		"authors",
+		"email",
+		"description",
+		"summary",
+		"homepage",
+		"licenses",
+		"bindir",
+		"executables",
+		"require_paths",
+	}
+	preferredMap := make(map[string]int)
+	for i, k := range preferredOrder {
+		preferredMap[k] = i
+	}
+
+	// Sort keys for deterministic output with preference
 	var keys []string
 	for k := range data {
+		if k == "dependencies" {
+			continue // Handled at end
+		}
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+
+	sort.Slice(keys, func(i, j int) bool {
+		ki, kj := keys[i], keys[j]
+		pi, oki := preferredMap[ki]
+		pj, okj := preferredMap[kj]
+
+		if oki && okj {
+			return pi < pj
+		}
+		if oki {
+			return true
+		}
+		if okj {
+			return false
+		}
+		return ki < kj
+	})
 
 	for _, k := range keys {
 		val := data[k]
-
-		if k == "dependencies" {
-			writeDependencies(&buf, val)
-			continue
-		}
 
 		var rubyVal string
 		var err error
@@ -311,12 +345,12 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 		switch k {
 		case "version":
 			v := extractVersionString(val)
-			rubyVal = fmt.Sprintf("%q", v)
+			rubyVal = fmt.Sprintf("%q.freeze", v)
 		case "platform":
 			if val == "ruby" || val == nil {
 				continue
 			}
-			rubyVal = fmt.Sprintf("%q", val)
+			rubyVal = fmt.Sprintf("%q.freeze", val)
 		case "required_ruby_version", "required_rubygems_version":
 			rubyVal = formatRequirement(val)
 			if rubyVal != "" {
@@ -326,6 +360,12 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 			continue
 		case "metadata":
 			rubyVal = formatMap(val)
+		case "installed_by_version":
+			if vStr, ok := val.(string); ok {
+				rubyVal = fmt.Sprintf("%q.freeze", vStr)
+			} else {
+				rubyVal, _ = formatValue(val)
+			}
 		default:
 			rubyVal, err = formatValue(val)
 			if err != nil {
@@ -341,7 +381,12 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 
 	// Always add installed_by_version if not present
 	if _, ok := data["installed_by_version"]; !ok {
-		fmt.Fprintf(&buf, "  s.installed_by_version = %q\n", ruby.DefaultRubyGemsVersion)
+		fmt.Fprintf(&buf, "  s.installed_by_version = %q.freeze\n", ruby.DefaultRubyGemsVersion)
+	}
+
+	// Dependencies last
+	if deps, ok := data["dependencies"]; ok {
+		writeDependencies(&buf, deps)
 	}
 
 	fmt.Fprintf(&buf, "end\n")
@@ -351,7 +396,7 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 func formatValue(v interface{}) (string, error) {
 	switch val := v.(type) {
 	case string:
-		return fmt.Sprintf("%q", val), nil
+		return fmt.Sprintf("%q.freeze", val), nil
 	case []interface{}:
 		var parts []string
 		for _, item := range val {
@@ -360,7 +405,10 @@ func formatValue(v interface{}) (string, error) {
 				parts = append(parts, s)
 			}
 		}
-		return "[" + strings.Join(parts, ", ") + "]", nil
+		if len(parts) == 0 {
+			return "[].freeze", nil
+		}
+		return "[" + strings.Join(parts, ", ") + "].freeze", nil
 	case bool:
 		if val {
 			return "true", nil
@@ -393,7 +441,7 @@ func formatMap(v interface{}) string {
 	for _, k := range keys {
 		valStr, err := formatValue(m[k])
 		if err == nil {
-			parts = append(parts, fmt.Sprintf("%q => %s", k, valStr))
+			parts = append(parts, fmt.Sprintf("%q.freeze => %s", k, valStr))
 		}
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
@@ -438,7 +486,7 @@ func formatRequirement(v interface{}) string {
 			verStr := extractVersionString(pair[1])
 
 			if op != "" && verStr != "" {
-				rubyReqs = append(rubyReqs, fmt.Sprintf("%q", op+" "+verStr))
+				rubyReqs = append(rubyReqs, fmt.Sprintf("%q.freeze", op+" "+verStr))
 			}
 		}
 	}
@@ -462,6 +510,17 @@ func writeDependencies(buf *bytes.Buffer, v interface{}) {
 		fmt.Fprintf(buf, "\n")
 	}
 
+	sort.Slice(deps, func(i, j int) bool {
+		d1, ok1 := deps[i].(map[string]interface{})
+		d2, ok2 := deps[j].(map[string]interface{})
+		if !ok1 || !ok2 {
+			return false
+		}
+		n1, _ := d1["name"].(string)
+		n2, _ := d2["name"].(string)
+		return n1 < n2
+	})
+
 	for _, item := range deps {
 		dep, ok := item.(map[string]interface{})
 		if !ok {
@@ -484,9 +543,9 @@ func writeDependencies(buf *bytes.Buffer, v interface{}) {
 		}
 
 		if reqStr == "" {
-			reqStr = "\">= 0\""
+			reqStr = "\">= 0.freeze\""
 		}
 
-		fmt.Fprintf(buf, "  s.%s(%q, %s)\n", method, name, reqStr)
+		fmt.Fprintf(buf, "  s.%s(%q.freeze, %s)\n", method, name, reqStr)
 	}
 }
