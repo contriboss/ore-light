@@ -92,6 +92,18 @@ func ParseExtensionsFromMetadata(metadataYAML []byte) ([]string, error) {
 	return gemMeta.Extensions, nil
 }
 
+// GemspecIsValid checks if a gemspec file contains the installed_by_version field
+// which is required for Bundler to recognize the gem as properly installed.
+// Returns true if the gemspec is valid, false if it needs regeneration.
+func GemspecIsValid(specPath string) bool {
+	content, err := os.ReadFile(specPath)
+	if err != nil {
+		return false
+	}
+	// Check for installed_by_version - this is the critical field that bundler needs
+	return bytes.Contains(content, []byte("installed_by_version"))
+}
+
 // WriteGemSpecification writes a gemspec file for the given gem
 func WriteGemSpecification(vendorDir string, spec lockfile.GemSpec, metadataYAML []byte) error {
 	specDir := filepath.Join(vendorDir, "specifications")
@@ -155,6 +167,8 @@ Gem::Specification.new do |s|
 {{- if .Extensions}}
   s.extensions = [{{range $i, $e := .Extensions}}{{if $i}}, {{end}}{{printf "%q" $e}}{{end}}]
 {{- end}}
+
+  s.installed_by_version = "{{.RubygemsVersion}}"
 {{- if .Dependencies}}
 
 {{- range .Dependencies}}
