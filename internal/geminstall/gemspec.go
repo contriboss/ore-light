@@ -58,6 +58,8 @@ func (r *requirementField) UnmarshalYAML(node *yaml.Node) error {
 	var simple string
 	if err := node.Decode(&simple); err == nil && simple != "" {
 		// Just a version string? Treat as >= string
+		// Was: r.Requirements = [][]interface{}{{">=", simple}}
+		// This creates ONE requirement: [">=", "version"]
 		r.Requirements = [][]interface{}{{">=", simple}}
 		return nil
 	}
@@ -255,9 +257,37 @@ end
 
 func filterAndNormalize(data map[string]interface{}) {
 	// Fields to remove entirely
-	removals := []string{"date", "specification_version", "test_files", "rubyforge_project"}
+	removals := []string{"specification_version", "test_files", "rubyforge_project"}
 	for _, key := range removals {
 		delete(data, key)
+	}
+
+	// Remove empty list fields to cleaner output (Bundler parity)
+	// Bundler often omits empty arrays like executables, extensions, requirements
+	// if they are empty.
+	emptyChecks := []string{"executables", "extensions", "requirements", "extra_rdoc_files", "rdoc_options"}
+	for _, key := range emptyChecks {
+		if list, ok := data[key].([]interface{}); ok && len(list) == 0 {
+			delete(data, key)
+		} else if list, ok := data[key].([]string); ok && len(list) == 0 {
+			// In case it was parsed as []string
+			delete(data, key)
+		}
+	}
+
+	// Use date from metadata if available, otherwise static.
+	// Bundler preserves the release date of the gem from metadata.
+	// Format is typically YYYY-MM-DD.
+	if dateVal, ok := data["date"].(string); ok && dateVal != "" {
+		// Clean up date format if needed.
+		// YAML often gives "2025-08-20 00:00:00.000000000 Z".
+		// We want "2025-08-20".
+		if len(dateVal) >= 10 {
+			data["date"] = dateVal[:10]
+		}
+	} else {
+		// Fallback if missing
+		data["date"] = "1980-01-02"
 	}
 }
 
@@ -291,19 +321,38 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 	fmt.Fprintf(&buf, "Gem::Specification.new do |s|\n")
 
 	// Defined preferred order for Bundler parity
+	// Note: Bundler puts executables/extensions even if empty?
+	// The diff shows Ore + s.executables = [] + s.extensions = [] + s.requirements = []
+	// Bundler (Left) does NOT have these lines.
+	// So we SHOULD remove them if empty.
 	preferredOrder := []string{
 		"name",
 		"version",
-		"installed_by_version",
+		"required_rubygems_version",
+		"metadata",
+		"require_paths",
 		"authors",
-		"email",
+		"bindir",
+		"cert_chain",
+		"date",
 		"description",
-		"summary",
+		"email",
+		"executables",
+		"extensions",
+		"extra_rdoc_files",
+		"files",
 		"homepage",
 		"licenses",
-		"bindir",
-		"executables",
-		"require_paths",
+		"rdoc_options",
+		"required_ruby_version",
+		"requirements",
+		"rubygems_version",
+		"signing_key",
+		"summary",
+		"test_files",
+		"specification_version",
+		"installed_by_version",
+		"post_install_message",
 	}
 	preferredMap := make(map[string]int)
 	for i, k := range preferredOrder {
@@ -351,15 +400,33 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 				continue
 			}
 			rubyVal = fmt.Sprintf("%q.freeze", val)
-		case "required_ruby_version", "required_rubygems_version":
+		case "required_ruby_version":
 			rubyVal = formatRequirement(val)
 			if rubyVal != "" {
 				fmt.Fprintf(&buf, "  s.%s = Gem::Requirement.new(%s)\n", k, rubyVal)
 				continue
 			}
 			continue
+		case "required_rubygems_version":
+			rubyVal = formatRequirement(val)
+
+			if rubyVal != "" {
+				fmt.Fprintf(&buf, "  s.%s = Gem::Requirement.new(%s) if s.respond_to? :required_rubygems_version=\n", k, rubyVal)
+				continue
+			}
+			continue
 		case "metadata":
 			rubyVal = formatMap(val)
+			if rubyVal != "" {
+				fmt.Fprintf(&buf, "  s.%s = %s if s.respond_to? :metadata=\n", k, rubyVal)
+				continue
+			}
+			continue // Don't write empty
+		case "specification_version":
+			rubyVal = "4"
+		case "date":
+			// Bundler output: s.date = "2025-08-20" (no freeze)
+			rubyVal = fmt.Sprintf("%q", val)
 		case "installed_by_version":
 			if vStr, ok := val.(string); ok {
 				rubyVal = fmt.Sprintf("%q.freeze", vStr)
@@ -379,12 +446,18 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 		fmt.Fprintf(&buf, "  s.%s = %s\n", k, rubyVal)
 	}
 
-	// Always add installed_by_version if not present
+	// Always add specification_version if not present/written
+	// (Note: we deleted it in filterAndNormalize, so it won't be in keys loop unless we accidentally put it back.
+	// But let's verify if `keys` loop handles it. If keys doesn't contain "specification_version", we write it here.)
 	if _, ok := data["installed_by_version"]; !ok {
-		fmt.Fprintf(&buf, "  s.installed_by_version = %q.freeze\n", ruby.DefaultRubyGemsVersion)
+		fmt.Fprintf(&buf, "\n  s.installed_by_version = %q.freeze\n", ruby.DefaultRubyGemsVersion)
 	}
 
-	// Dependencies last
+	if _, ok := data["specification_version"]; !ok {
+		// Bundler puts it AFTER installed_by_version
+		fmt.Fprintf(&buf, "\n  s.specification_version = 4\n")
+	}
+
 	if deps, ok := data["dependencies"]; ok {
 		writeDependencies(&buf, deps)
 	}
@@ -393,10 +466,36 @@ func generateGenericGemspec(data map[string]interface{}) (string, error) {
 	return buf.String(), nil
 }
 
+func quoteRubyString(s string) string {
+	var b bytes.Buffer
+	b.WriteByte('"')
+	for _, r := range s {
+		if r == '"' {
+			b.WriteString(`\"`)
+		} else if r == '\\' {
+			b.WriteString(`\\`)
+		} else if r == '#' {
+			b.WriteString("#") // No special escaping unless needed, usually safe as is
+		} else if r == '\n' {
+			b.WriteString(`\n`)
+		} else if r == '\r' {
+			b.WriteString(`\r`)
+		} else if r == '\t' {
+			b.WriteString(`\t`)
+		} else if r < 32 || r > 126 {
+			fmt.Fprintf(&b, "\\u{%X}", r)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
 func formatValue(v interface{}) (string, error) {
 	switch val := v.(type) {
 	case string:
-		return fmt.Sprintf("%q.freeze", val), nil
+		return quoteRubyString(val) + ".freeze", nil
 	case []interface{}:
 		var parts []string
 		for _, item := range val {
@@ -406,9 +505,11 @@ func formatValue(v interface{}) (string, error) {
 			}
 		}
 		if len(parts) == 0 {
-			return "[].freeze", nil
+			return "[]", nil
 		}
-		return "[" + strings.Join(parts, ", ") + "].freeze", nil
+		// Bundler parity: arrays are NOT frozen, but elements ARE.
+		// e.g. ["lib".freeze]
+		return "[" + strings.Join(parts, ", ") + "]", nil
 	case bool:
 		if val {
 			return "true", nil
@@ -439,12 +540,41 @@ func formatMap(v interface{}) string {
 	sort.Strings(keys)
 
 	for _, k := range keys {
+		// Keys and values in s.metadata are NOT frozen in Bundler output usually.
+		// formatValue freezes everything by default.
+		// Let's manually format strings here without freeze if possible?
+		// But formatMap is generic.
+		// However, s.metadata is the main map we output.
+		// Let's assume map values should NOT be frozen?
+		// Or maybe just metadata.
+		// Bundler's gemspec template usually freezes strings.
+		// But `s.metadata` might be special.
+		// Let's modify formatMap to invoke a non-freezing formatter or just strip .freeze.
+		// Or update formatValue to take an option?
+		// Simpler: Just rely on the user's report that Bundler output didn't have frozen values in metadata.
+		// The diff showed: `s.metadata = { "key" => "value" }` vs `... { "key" => "value".freeze }`.
+
 		valStr, err := formatValue(m[k])
 		if err == nil {
-			parts = append(parts, fmt.Sprintf("%q.freeze => %s", k, valStr))
+			// Keys are NOT frozen in Bundler output
+			keyStr, _ := formatValue(k)
+			keyStr = strings.TrimSuffix(keyStr, ".freeze") // hackily remove freeze for key
+
+			// Values: If it's a string, formatValue added .freeze.
+			// Let's remove it for map values to match observed Bundler behavior.
+			// This might be risky if there are maps where values MUST be frozen,
+			// but gemspecs rarely use maps other than metadata.
+			if strings.HasSuffix(valStr, ".freeze") {
+				valStr = strings.TrimSuffix(valStr, ".freeze")
+			}
+			parts = append(parts, fmt.Sprintf("%s => %s", keyStr, valStr))
 		}
 	}
-	return "{" + strings.Join(parts, ", ") + "}"
+	// Bundler puts spaces inside the braces: { "key" => "val", ... }
+	if len(parts) == 0 {
+		return "{}"
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
 }
 
 func extractVersionString(v interface{}) string {
@@ -486,6 +616,8 @@ func formatRequirement(v interface{}) string {
 			verStr := extractVersionString(pair[1])
 
 			if op != "" && verStr != "" {
+				// Requirements: `["~> 1.1".freeze, ...]`
+				// Using plain string quoting with freeze
 				rubyReqs = append(rubyReqs, fmt.Sprintf("%q.freeze", op+" "+verStr))
 			}
 		}
@@ -494,6 +626,8 @@ func formatRequirement(v interface{}) string {
 	if len(rubyReqs) == 0 {
 		return ""
 	}
+
+	// Default to single string if one requirement, matching Bundler's behavior for Gem::Requirement.new
 	if len(rubyReqs) == 1 {
 		return rubyReqs[0]
 	}
@@ -510,15 +644,22 @@ func writeDependencies(buf *bytes.Buffer, v interface{}) {
 		fmt.Fprintf(buf, "\n")
 	}
 
-	sort.Slice(deps, func(i, j int) bool {
-		d1, ok1 := deps[i].(map[string]interface{})
-		d2, ok2 := deps[j].(map[string]interface{})
-		if !ok1 || !ok2 {
-			return false
+	// We need stable sort to preserve original order within types
+	sort.SliceStable(deps, func(i, j int) bool {
+		d1, _ := deps[i].(map[string]interface{})
+		d2, _ := deps[j].(map[string]interface{})
+		t1 := fmt.Sprintf("%v", d1["type"])
+		t2 := fmt.Sprintf("%v", d2["type"])
+
+		isDev1 := strings.Contains(t1, "development")
+		isDev2 := strings.Contains(t2, "development")
+
+		if isDev1 != isDev2 {
+			// Runtime (false) < Development (true)
+			return !isDev1
 		}
-		n1, _ := d1["name"].(string)
-		n2, _ := d2["name"].(string)
-		return n1 < n2
+		// If same type, maintain original order
+		return false
 	})
 
 	for _, item := range deps {
@@ -530,10 +671,18 @@ func writeDependencies(buf *bytes.Buffer, v interface{}) {
 		name, _ := dep["name"].(string)
 		typeStr, _ := dep["type"].(string)
 
-		method := "add_dependency"
-		if typeStr == ":development" {
+		method := "add_runtime_dependency"
+		if strings.Contains(typeStr, "development") {
 			method = "add_development_dependency"
+		} else {
+			method = "add_runtime_dependency" // Bundler default output explicit? NO, it uses add_runtime_dependency
 		}
+		// Actually Bundler uses add_dependency for runtime?
+		// Diff showed:
+		// - s.add_runtime_dependency(%q<version_gem>.freeze...
+		// + s.add_dependency("version_gem".freeze...
+		// So Bundler used `add_runtime_dependency`. Ore used `add_dependency`.
+		// Parity requirement: use `add_runtime_dependency`.
 
 		var reqStr string
 		if reqObj, ok := dep["requirement"]; ok {
@@ -543,9 +692,17 @@ func writeDependencies(buf *bytes.Buffer, v interface{}) {
 		}
 
 		if reqStr == "" {
-			reqStr = "\">= 0.freeze\""
+			reqStr = "Gem::Requirement.new(\">= 0\".freeze)"
+		} else {
+			// Bundler parity: add_dependency ALWAYS uses array notation, even for single items.
+			// formatRequirement returns a single string if there's only one item (e.g. ">= 1.0".freeze).
+			// We must wrap it in brackets if it's not already wrapped.
+			if !strings.HasPrefix(reqStr, "[") {
+				reqStr = "[" + reqStr + "]"
+			}
 		}
 
-		fmt.Fprintf(buf, "  s.%s(%q.freeze, %s)\n", method, name, reqStr)
+		// Bundler uses %q<name>.freeze
+		fmt.Fprintf(buf, "  s.%s(%%q<%s>.freeze, %s)\n", method, name, reqStr)
 	}
 }

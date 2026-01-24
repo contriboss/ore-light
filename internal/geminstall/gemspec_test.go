@@ -49,9 +49,9 @@ dependencies:
 		{"Has installed_by_version", "s.installed_by_version =", false}, // It should be added if missing, or present
 		{"Removes date", "s.date =", true},
 		{"Removes specification_version", "s.specification_version =", true},
-		{"Converts runtime dep to add_dependency", `s.add_dependency("dep1", ">= 1.0")`, false},
-		{"Converts dev dep to add_development_dependency", `s.add_development_dependency("dep2", ">= 2.0")`, false},
-		{"Handles authors array", `s.authors = ["Author A", "Author B"]`, false},
+		{"Converts runtime dep to add_dependency", `s.add_dependency("dep1".freeze, ">= 1.0".freeze)`, false},
+		{"Converts dev dep to add_development_dependency", `s.add_development_dependency("dep2".freeze, ">= 2.0".freeze)`, false},
+		{"Handles authors array", `s.authors = ["Author A".freeze, "Author B".freeze].freeze`, false},
 	}
 
 	for _, check := range checks {
