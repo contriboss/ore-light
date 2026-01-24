@@ -6,7 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"text/template"
+	"sort"
+	"strings"
 
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/internal/ruby"
@@ -15,19 +16,108 @@ import (
 
 // gemMetadata represents extracted metadata from YAML
 type gemMetadata struct {
-	Name        string       `yaml:"name"`
-	Version     versionField `yaml:"version"`
-	Authors     []string     `yaml:"authors"`
-	Author      string       `yaml:"author"`
-	Email       interface{}  `yaml:"email"` // Can be string or []string
-	Homepage    string       `yaml:"homepage"`
-	Summary     string       `yaml:"summary"`
-	Description string       `yaml:"description"`
-	Licenses    []string     `yaml:"licenses"`
-	License     string       `yaml:"license"`
-	Platform    string       `yaml:"platform"`
-	Extensions  []string     `yaml:"extensions"` // Native C extensions
+	Name                     string            `yaml:"name"`
+	Version                  versionField      `yaml:"version"`
+	Authors                  []string          `yaml:"authors"`
+	Author                   string            `yaml:"author"`
+	Email                    interface{}       `yaml:"email"` // Can be string or []string
+	Homepage                 string            `yaml:"homepage"`
+	Summary                  string            `yaml:"summary"`
+	Description              string            `yaml:"description"`
+	Licenses                 []string          `yaml:"licenses"`
+	License                  string            `yaml:"license"`
+	Platform                 string            `yaml:"platform"`
+	Bindir                   string            `yaml:"bindir"`
+	CertChain                []string          `yaml:"cert_chain"`
+	Date                     string            `yaml:"date"` // 2025-08-20 00:00:00.000000000 Z
+	Executables              []string          `yaml:"executables"`
+	Extensions               []string          `yaml:"extensions"` // Native C extensions
+	ExtraRdocFiles           []string          `yaml:"extra_rdoc_files"`
+	Files                    []string          `yaml:"files"`
+	Metadata                 map[string]string `yaml:"metadata"`
+	PostInstallMessage       string            `yaml:"post_install_message"`
+	RdocOptions              []string          `yaml:"rdoc_options"`
+	RequirePaths             []string          `yaml:"require_paths"`
+	RequiredRubyVersion      requirementField  `yaml:"required_ruby_version"`
+	RequiredRubygemsVersion  requirementField  `yaml:"required_rubygems_version"`
+	Requirements             []string          `yaml:"requirements"`
+	RubygemsVersion          string            `yaml:"rubygems_version"`
+	SigningKey               string            `yaml:"signing_key"`
+	SpecificationVersion     int               `yaml:"specification_version"`
+	TestFiles                []string          `yaml:"test_files"`
 }
+
+// requirementField handles Gem::Requirement which is a struct with a list of requirements
+type requirementField struct {
+	Requirements [][]interface{} `yaml:"requirements"`
+}
+
+// UnmarshalYAML for requirementField
+func (r *requirementField) UnmarshalYAML(node *yaml.Node) error {
+	// A requirement might be single string (simple scalar) or object
+	var simple string
+	if err := node.Decode(&simple); err == nil && simple != "" {
+		// Just a version string? Treat as >= string
+		r.Requirements = [][]interface{}{{">=", simple}}
+		return nil
+	}
+
+	var obj struct {
+		Requirements [][]interface{} `yaml:"requirements"`
+	}
+	if err := node.Decode(&obj); err == nil {
+		r.Requirements = obj.Requirements
+		return nil
+	}
+	return nil
+}
+
+// String converting requirements back to valid Ruby code params for Gem::Requirement.new
+// e.g. '">= 2.3.0"' or '">= 2.3.0", "< 3.0"'
+func (r requirementField) ToRuby() string {
+	if len(r.Requirements) == 0 {
+		return ">= 0"
+	}
+	var parts []string
+	for _, req := range r.Requirements {
+		if len(req) == 2 {
+			op, opOk := req[0].(string)
+			// ver might be a map {version: "2.3.0"} or string
+			var verStr string
+			if s, ok := req[1].(string); ok {
+				verStr = s
+			} else if m, ok := req[1].(map[string]interface{}); ok {
+				if v, ok := m["version"].(string); ok {
+					verStr = v
+				}
+			}
+
+			if opOk && verStr != "" {
+				parts = append(parts, fmt.Sprintf("%q", op+" "+verStr))
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return ">= 0"
+	}
+	// Gem::Requirement.new([req1, req2]) works
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return "[" + getJoin(parts, ", ") + "]"
+}
+
+func getJoin(items []string, sep string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	res := items[0]
+	for _, item := range items[1:] {
+		res += sep + item
+	}
+	return res
+}
+
 
 // versionField handles both nested and simple version formats
 // After stripping Ruby tags, "version: !ruby/object:Gem::Version\n  version: 2.7.3"
@@ -94,48 +184,49 @@ func ParseExtensionsFromMetadata(metadataYAML []byte) ([]string, error) {
 
 // GemspecIsValid checks if a gemspec file contains the installed_by_version field
 // which is required for Bundler to recognize the gem as properly installed.
-// Returns true if the gemspec is valid, false if it needs regeneration.
 func GemspecIsValid(specPath string) bool {
 	content, err := os.ReadFile(specPath)
 	if err != nil {
 		return false
 	}
-	// Check for installed_by_version - this is the critical field that bundler needs
 	return bytes.Contains(content, []byte("installed_by_version"))
 }
 
-// WriteGemSpecification writes a gemspec file for the given gem
+// WriteGemSpecification writes a gemspec file for the given gem using a generic map approach
 func WriteGemSpecification(vendorDir string, spec lockfile.GemSpec, metadataYAML []byte) error {
 	specDir := filepath.Join(vendorDir, "specifications")
 	if err := EnsureDir(specDir); err != nil {
 		return err
 	}
 
-	// Parse YAML metadata to extract real gem info
-	// Strip Ruby-specific YAML tags that yaml.v3 can't parse
 	cleanedYAML := stripRubyYAMLTags(metadataYAML)
 
-	var gemMeta gemMetadata
-	if err := yaml.Unmarshal(cleanedYAML, &gemMeta); err != nil {
-		// Debug: log parsing error
+	// Unmarshal into generic map
+	var rawData map[string]interface{}
+	if err := yaml.Unmarshal(cleanedYAML, &rawData); err != nil {
+		// Log error if verbose
 		if os.Getenv("BUNDLE_VERBOSE") != "" {
-			fmt.Fprintf(os.Stderr, "YAML parse error for %s: %v\n", spec.FullName(), err)
+			fmt.Fprintf(os.Stderr, "YAML parse error for %s: %v. Falling back to basic gemspec.\n", spec.FullName(), err)
 		}
-		// If parsing fails, use basic metadata
-		gemMeta = gemMetadata{
-			Name:    spec.Name,
-			Version: versionField{Version: spec.Version},
-			Authors: []string{"Gem Authors"},
-			Email:   "ore@example.com",
-		}
-	} else if os.Getenv("BUNDLE_VERBOSE") != "" {
-		// Debug: show extracted metadata
-		fmt.Fprintf(os.Stderr, "Extracted metadata for %s: name=%s version=%s authors=%v email=%v\n",
-			spec.FullName(), gemMeta.Name, gemMeta.Version.String(), gemMeta.Authors, gemMeta.Email)
+		return writeBasicGemspec(vendorDir, spec)
 	}
 
-	// Build proper Ruby gemspec code
-	rubyCode := generateGemspecCode(spec, &gemMeta)
+	// Apply filtering and normalization
+	filterAndNormalize(rawData)
+
+	// Ensure crucial fields are present
+	if _, ok := rawData["name"]; !ok {
+		rawData["name"] = spec.Name
+	}
+	if _, ok := rawData["version"]; !ok {
+		rawData["version"] = spec.Version
+	}
+
+	// Generate Ruby code
+	rubyCode, err := generateGenericGemspec(rawData)
+	if err != nil {
+		return fmt.Errorf("failed to generate gemspec ruby for %s: %w", spec.FullName(), err)
+	}
 
 	specPath := filepath.Join(specDir, fmt.Sprintf("%s.gemspec", spec.FullName()))
 	if err := os.WriteFile(specPath, []byte(rubyCode), 0o644); err != nil {
@@ -145,165 +236,257 @@ func WriteGemSpecification(vendorDir string, spec lockfile.GemSpec, metadataYAML
 	return nil
 }
 
-// gemspecTemplate is the template for generating RubyGems-compatible gemspec files
-const gemspecTemplate = `# -*- encoding: utf-8 -*-
-# stub: {{.Name}} {{.Version}} {{.Platform}} lib
+func writeBasicGemspec(vendorDir string, spec lockfile.GemSpec) error {
+	specDir := filepath.Join(vendorDir, "specifications")
+	specPath := filepath.Join(specDir, fmt.Sprintf("%s.gemspec", spec.FullName()))
 
-Gem::Specification.new do |s|
-  s.name = {{printf "%q" .Name}}
-  s.version = {{printf "%q" .Version}}
-{{- if ne .Platform "ruby"}}
-  s.platform = {{printf "%q" .Platform}}
-{{- end}}
-  s.authors = [{{range $i, $a := .Authors}}{{if $i}}, {{end}}{{printf "%q" $a}}{{end}}]
-  s.email = {{printf "%q" .Email}}
-  s.homepage = {{printf "%q" .Homepage}}
-  s.licenses = [{{range $i, $l := .Licenses}}{{if $i}}, {{end}}{{printf "%q" $l}}{{end}}]
-  s.required_rubygems_version = Gem::Requirement.new(">= 0")
-  s.require_paths = ["lib"]
-  s.rubygems_version = "{{.RubygemsVersion}}"
-  s.summary = {{printf "%q" .Summary}}
-  s.description = {{printf "%q" .Description}}
-{{- if .Extensions}}
-  s.extensions = [{{range $i, $e := .Extensions}}{{if $i}}, {{end}}{{printf "%q" $e}}{{end}}]
-{{- end}}
-
-  s.installed_by_version = "{{.RubygemsVersion}}"
-{{- if .Dependencies}}
-
-{{- range .Dependencies}}
-  s.add_runtime_dependency({{printf "%q" .Name}}{{if .Constraints}}, [{{range $i, $c := .Constraints}}{{if $i}}, {{end}}{{printf "%q" $c}}{{end}}]{{end}})
-{{- end}}
-{{- end}}
-end
-`
-
-var gemspecTmpl = template.Must(template.New("gemspec").Parse(gemspecTemplate))
-
-// gemspecData is the data structure passed to the gemspec template
-type gemspecData struct {
-	Name            string
-	Version         string
-	Platform        string
-	Authors         []string
-	Email           string
-	Homepage        string
-	Licenses        []string
-	Summary         string
-	Description     string
-	Dependencies    []lockfile.Dependency
-	RubygemsVersion string
-	Extensions      []string // Native C extensions
-}
-
-// extractEmail handles both string and array email types from YAML
-func extractEmail(emailField interface{}) string {
-	switch v := emailField.(type) {
-	case string:
-		return v
-	case []interface{}:
-		// Array of emails - return first non-empty
-		for _, e := range v {
-			if s, ok := e.(string); ok && s != "" {
-				return s
-			}
-		}
-	case []string:
-		// Already string array
-		for _, s := range v {
-			if s != "" {
-				return s
-			}
-		}
-	}
-	return ""
-}
-
-func generateGemspecCode(spec lockfile.GemSpec, meta *gemMetadata) string {
-	// Handle authors - array or single
-	authors := meta.Authors
-	if len(authors) == 0 && meta.Author != "" {
-		authors = []string{meta.Author}
-	}
-	if len(authors) == 0 {
-		authors = []string{"Gem Authors"}
-	}
-
-	// Handle licenses - array or single
-	licenses := meta.Licenses
-	if len(licenses) == 0 && meta.License != "" {
-		licenses = []string{meta.License}
-	}
-	if len(licenses) == 0 {
-		licenses = []string{"MIT"}
-	}
-
-	// Platform defaults
-	platform := meta.Platform
-	if platform == "" {
-		platform = spec.Platform
-	}
-	if platform == "" {
-		platform = "ruby"
-	}
-
-	// Email default - handle both string and array types
-	email := extractEmail(meta.Email)
-	if email == "" {
-		email = "ore@example.com"
-	}
-
-	// Homepage default
-	homepage := meta.Homepage
-	if homepage == "" {
-		homepage = fmt.Sprintf("https://rubygems.org/gems/%s", spec.Name)
-	}
-
-	// Summary default
-	summary := meta.Summary
-	if summary == "" {
-		summary = fmt.Sprintf("Gem %s", spec.Name)
-	}
-
-	// Description default
-	description := meta.Description
-	if description == "" {
-		description = fmt.Sprintf("Gem %s version %s installed by Ore", spec.Name, spec.Version)
-	}
-
-	// Extensions - use from metadata if available, otherwise from spec
-	extensions := meta.Extensions
-	if len(extensions) == 0 && len(spec.Extensions) > 0 {
-		extensions = spec.Extensions
-	}
-
-	data := gemspecData{
-		Name:            spec.Name,
-		Version:         spec.Version,
-		Platform:        platform,
-		Authors:         authors,
-		Email:           email,
-		Homepage:        homepage,
-		Licenses:        licenses,
-		Summary:         summary,
-		Description:     description,
-		Dependencies:    spec.Dependencies,
-		RubygemsVersion: ruby.DefaultRubyGemsVersion,
-		Extensions:      extensions,
-	}
-
-	var buf bytes.Buffer
-	if err := gemspecTmpl.Execute(&buf, data); err != nil {
-		// Fallback to basic gemspec if template fails
-		return fmt.Sprintf(`# -*- encoding: utf-8 -*-
+	rubyCode := fmt.Sprintf(`# -*- encoding: utf-8 -*-
 # stub: %s %s ruby lib
 
 Gem::Specification.new do |s|
   s.name = %q
   s.version = %q
+  s.installed_by_version = %q
 end
-`, spec.Name, spec.Version, spec.Name, spec.Version)
+`, spec.Name, spec.Version, spec.Name, spec.Version, ruby.DefaultRubyGemsVersion)
+
+	return os.WriteFile(specPath, []byte(rubyCode), 0o644)
+}
+
+func filterAndNormalize(data map[string]interface{}) {
+	// Fields to remove entirely
+	removals := []string{"date", "specification_version", "test_files", "rubyforge_project"}
+	for _, key := range removals {
+		delete(data, key)
+	}
+}
+
+func generateGenericGemspec(data map[string]interface{}) (string, error) {
+	var buf bytes.Buffer
+
+	// Extract header info
+	name, _ := data["name"].(string)
+	version := extractVersionString(data["version"])
+	platform, _ := data["platform"].(string)
+	if platform == "" {
+		platform = "ruby"
 	}
 
-	return buf.String()
+	// Calculate require_paths for stub header
+	var reqPaths []string
+	if rp, ok := data["require_paths"].([]interface{}); ok {
+		for _, p := range rp {
+			if s, ok := p.(string); ok {
+				reqPaths = append(reqPaths, s)
+			}
+		}
+	} else {
+		reqPaths = []string{"lib"}
+	}
+
+	// Write Stub Header
+	fmt.Fprintf(&buf, "# -*- encoding: utf-8 -*-\n")
+	fmt.Fprintf(&buf, "# stub: %s %s %s %s\n\n", name, version, platform, strings.Join(reqPaths, " "))
+
+	fmt.Fprintf(&buf, "Gem::Specification.new do |s|\n")
+
+	// Sort keys for deterministic output
+	var keys []string
+	for k := range data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		val := data[k]
+
+		if k == "dependencies" {
+			writeDependencies(&buf, val)
+			continue
+		}
+
+		var rubyVal string
+		var err error
+
+		switch k {
+		case "version":
+			v := extractVersionString(val)
+			rubyVal = fmt.Sprintf("%q", v)
+		case "platform":
+			if val == "ruby" || val == nil {
+				continue
+			}
+			rubyVal = fmt.Sprintf("%q", val)
+		case "required_ruby_version", "required_rubygems_version":
+			rubyVal = formatRequirement(val)
+			if rubyVal != "" {
+				fmt.Fprintf(&buf, "  s.%s = Gem::Requirement.new(%s)\n", k, rubyVal)
+				continue
+			}
+			continue
+		case "metadata":
+			rubyVal = formatMap(val)
+		default:
+			rubyVal, err = formatValue(val)
+			if err != nil {
+				continue
+			}
+			if rubyVal == "" {
+				continue
+			}
+		}
+
+		fmt.Fprintf(&buf, "  s.%s = %s\n", k, rubyVal)
+	}
+
+	// Always add installed_by_version if not present
+	if _, ok := data["installed_by_version"]; !ok {
+		fmt.Fprintf(&buf, "  s.installed_by_version = %q\n", ruby.DefaultRubyGemsVersion)
+	}
+
+	fmt.Fprintf(&buf, "end\n")
+	return buf.String(), nil
+}
+
+func formatValue(v interface{}) (string, error) {
+	switch val := v.(type) {
+	case string:
+		return fmt.Sprintf("%q", val), nil
+	case []interface{}:
+		var parts []string
+		for _, item := range val {
+			s, err := formatValue(item)
+			if err == nil && s != "" {
+				parts = append(parts, s)
+			}
+		}
+		return "[" + strings.Join(parts, ", ") + "]", nil
+	case bool:
+		if val {
+			return "true", nil
+		}
+		return "false", nil
+	case int, int64, float64:
+		return fmt.Sprintf("%v", val), nil
+	case nil:
+		return "nil", nil
+	default:
+		if m, ok := val.(map[string]interface{}); ok {
+			return formatMap(m), nil
+		}
+		return "", fmt.Errorf("unsupported type %T", v)
+	}
+}
+
+func formatMap(v interface{}) string {
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return "{}"
+	}
+	var parts []string
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		valStr, err := formatValue(m[k])
+		if err == nil {
+			parts = append(parts, fmt.Sprintf("%q => %s", k, valStr))
+		}
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+func extractVersionString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	if m, ok := v.(map[string]interface{}); ok {
+		if ver, ok := m["version"]; ok {
+			if s, ok := ver.(string); ok {
+				return s
+			}
+		}
+	}
+	return "0.0.0"
+}
+
+func formatRequirement(v interface{}) string {
+	var reqs []interface{}
+
+	if m, ok := v.(map[string]interface{}); ok {
+		if r, ok := m["requirements"]; ok {
+			if list, ok := r.([]interface{}); ok {
+				reqs = list
+			}
+		}
+	} else if list, ok := v.([]interface{}); ok {
+		reqs = list
+	}
+
+	if len(reqs) == 0 {
+		return ""
+	}
+
+	var rubyReqs []string
+
+	for _, reqItem := range reqs {
+		if pair, ok := reqItem.([]interface{}); ok && len(pair) == 2 {
+			op, _ := pair[0].(string)
+			verStr := extractVersionString(pair[1])
+
+			if op != "" && verStr != "" {
+				rubyReqs = append(rubyReqs, fmt.Sprintf("%q", op+" "+verStr))
+			}
+		}
+	}
+
+	if len(rubyReqs) == 0 {
+		return ""
+	}
+	if len(rubyReqs) == 1 {
+		return rubyReqs[0]
+	}
+	return "[" + strings.Join(rubyReqs, ", ") + "]"
+}
+
+func writeDependencies(buf *bytes.Buffer, v interface{}) {
+	deps, ok := v.([]interface{})
+	if !ok {
+		return
+	}
+
+	if len(deps) > 0 {
+		fmt.Fprintf(buf, "\n")
+	}
+
+	for _, item := range deps {
+		dep, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		name, _ := dep["name"].(string)
+		typeStr, _ := dep["type"].(string)
+
+		method := "add_dependency"
+		if typeStr == ":development" {
+			method = "add_development_dependency"
+		}
+
+		var reqStr string
+		if reqObj, ok := dep["requirement"]; ok {
+			reqStr = formatRequirement(reqObj)
+		} else if reqObj, ok := dep["version_requirements"]; ok {
+			reqStr = formatRequirement(reqObj)
+		}
+
+		if reqStr == "" {
+			reqStr = "\">= 0\""
+		}
+
+		fmt.Fprintf(buf, "  s.%s(%q, %s)\n", method, name, reqStr)
+	}
 }
