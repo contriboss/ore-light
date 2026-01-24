@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/internal/config"
@@ -220,6 +222,7 @@ func debugGem(ctx context.Context, client *registry.Client, gemName, requestedVe
 	displayVersionInfo(gemInfo)
 	displayCacheStatus(gemInfo, debugCtx)
 	displayInstallationStatus(gemInfo, debugCtx)
+	displayBundlerCompatibility(gemInfo, debugCtx) // NEW: Compare ore vs bundler
 	displayExtensionInfo(gemInfo)
 	displayPlatformBehavior(gemInfo, debugCtx)
 	displayExtensionBuildAnalysis(gemInfo, debugCtx)
@@ -379,6 +382,434 @@ func displayInstallationStatus(gem *gemDebugInfo, ctx debugContext) {
 		}
 	}
 	fmt.Println()
+}
+
+// displayBundlerCompatibility shows detailed comparison of ore install vs bundler expectations
+func displayBundlerCompatibility(gem *gemDebugInfo, ctx debugContext) {
+	fmt.Printf("🔍 BUNDLER COMPATIBILITY CHECK:\n")
+	fmt.Println("   (This section helps diagnose why bundle exec might fail after ore install)")
+	fmt.Println()
+
+	// Check which install directory to inspect
+	var installDir string
+	var gemFullName string
+	if gem.platformInstalled {
+		installDir = gem.platformInstallDir
+		gemFullName = filepath.Base(gem.platformInstallDir)
+	} else if gem.rubyInstalled {
+		installDir = gem.rubyInstallDir
+		gemFullName = filepath.Base(gem.rubyInstallDir)
+	} else {
+		fmt.Printf("   ⚠️  Gem not installed - nothing to check\n\n")
+		return
+	}
+
+	specDir := filepath.Join(ctx.vendorDir, "specifications")
+	specPath := filepath.Join(specDir, gemFullName+".gemspec")
+
+	fmt.Printf("   Gem Full Name:      %s\n", gemFullName)
+	fmt.Printf("   Install Directory:  %s\n", installDir)
+	fmt.Printf("   Gemspec Path:       %s\n", specPath)
+	fmt.Println()
+
+	// 1. Check gemspec exists
+	fmt.Printf("   [1] GEMSPEC FILE:\n")
+	if fileExists(specPath) {
+		fmt.Printf("       ✅ Exists: %s\n", specPath)
+
+		// Read and display first 20 lines of gemspec
+		content, err := os.ReadFile(specPath)
+		if err != nil {
+			fmt.Printf("       ❌ Error reading: %v\n", err)
+		} else {
+			lines := splitLines(string(content))
+			fmt.Printf("       Content (first 20 lines):\n")
+			for i, line := range lines {
+				if i >= 20 {
+					fmt.Printf("       ... (%d more lines)\n", len(lines)-20)
+					break
+				}
+				fmt.Printf("       %3d: %s\n", i+1, line)
+			}
+
+			// Check for critical fields
+			fmt.Printf("\n       Critical Field Checks:\n")
+			checkGemspecField(content, "installed_by_version", "Required for Bundler to recognize as installed")
+			checkGemspecField(content, "s.name", "Gem name declaration")
+			checkGemspecField(content, "s.version", "Version declaration")
+			checkGemspecField(content, "s.require_paths", "Load path configuration")
+			checkGemspecField(content, "# stub:", "RubyGems stub line for fast loading")
+		}
+	} else {
+		fmt.Printf("       ❌ MISSING: %s\n", specPath)
+		fmt.Printf("       This is the PRIMARY reason bundle exec would fail!\n")
+	}
+	fmt.Println()
+
+	// 2. Check gem directory structure
+	fmt.Printf("   [2] GEM DIRECTORY STRUCTURE:\n")
+	if dirExists(installDir) {
+		fmt.Printf("       ✅ Gem directory exists: %s\n", installDir)
+
+		// List contents
+		entries, err := os.ReadDir(installDir)
+		if err != nil {
+			fmt.Printf("       ❌ Error reading directory: %v\n", err)
+		} else {
+			fmt.Printf("       Contents (%d items):\n", len(entries))
+			for _, entry := range entries {
+				entryType := "📄"
+				if entry.IsDir() {
+					entryType = "📁"
+				}
+				fmt.Printf("         %s %s\n", entryType, entry.Name())
+			}
+
+			// Check for lib directory (critical for require_paths)
+			libDir := filepath.Join(installDir, "lib")
+			if dirExists(libDir) {
+				fmt.Printf("       ✅ lib/ directory exists (required for require_paths)\n")
+
+				// List lib contents
+				libEntries, err := os.ReadDir(libDir)
+				if err == nil && len(libEntries) > 0 {
+					fmt.Printf("       lib/ contents:\n")
+					for i, entry := range libEntries {
+						if i >= 10 {
+							fmt.Printf("         ... (%d more)\n", len(libEntries)-10)
+							break
+						}
+						fmt.Printf("         - %s\n", entry.Name())
+					}
+				}
+			} else {
+				fmt.Printf("       ⚠️  lib/ directory missing - check require_paths in gemspec\n")
+			}
+		}
+	} else {
+		fmt.Printf("       ❌ MISSING: %s\n", installDir)
+	}
+	fmt.Println()
+
+	// 3. Check Gem.path includes vendor directory
+	fmt.Printf("   [3] GEM PATH ANALYSIS:\n")
+	gemPath := os.Getenv("GEM_PATH")
+	gemHome := os.Getenv("GEM_HOME")
+	fmt.Printf("       GEM_HOME: %s\n", gemHome)
+	fmt.Printf("       GEM_PATH: %s\n", gemPath)
+	fmt.Printf("       Vendor dir (should be in GEM_HOME or GEM_PATH): %s\n", ctx.vendorDir)
+
+	if gemHome == ctx.vendorDir {
+		fmt.Printf("       ✅ GEM_HOME matches vendor directory\n")
+	} else if gemHome != "" && filepath.Clean(gemHome) == filepath.Clean(ctx.vendorDir) {
+		fmt.Printf("       ✅ GEM_HOME matches vendor directory (after normalization)\n")
+	} else {
+		fmt.Printf("       ⚠️  GEM_HOME does NOT match vendor directory\n")
+		fmt.Printf("          Bundler may not find gems installed by ore!\n")
+	}
+	fmt.Println()
+
+	// 4. Check bundler-specific files
+	fmt.Printf("   [4] BUNDLER-SPECIFIC FILES:\n")
+
+	// Check for gem.build_complete (for gems with extensions)
+	if gem.hasExtensions {
+		buildComplete := filepath.Join(ctx.vendorDir, "extensions", ctx.currentPlatform, gem.name+"-"+gem.targetVersion, "gem.build_complete")
+		// Also check common extension paths
+		extDirs := []string{
+			filepath.Join(ctx.vendorDir, "extensions"),
+		}
+		fmt.Printf("       Has extensions: YES\n")
+		for _, extDir := range extDirs {
+			if dirExists(extDir) {
+				fmt.Printf("       Extensions dir exists: %s\n", extDir)
+			}
+		}
+		if fileExists(buildComplete) {
+			fmt.Printf("       ✅ gem.build_complete exists\n")
+		} else {
+			fmt.Printf("       ⚠️  gem.build_complete NOT found at expected location\n")
+			fmt.Printf("          Expected: %s\n", buildComplete)
+		}
+	} else {
+		fmt.Printf("       Has extensions: NO (gem.build_complete not required)\n")
+	}
+
+	// Check for cache/*.gem
+	cacheDir := filepath.Join(ctx.vendorDir, "cache")
+	cachedGem := filepath.Join(cacheDir, gemFullName+".gem")
+	if fileExists(cachedGem) {
+		fmt.Printf("       ✅ Cached .gem file: %s\n", cachedGem)
+	} else {
+		fmt.Printf("       ⚠️  No cached .gem in vendor/cache (may affect bundle install --local)\n")
+	}
+	fmt.Println()
+
+	// 5. Compare with what a bundle install would create
+	fmt.Printf("   [5] BUNDLE INSTALL COMPARISON:\n")
+	fmt.Printf("       What bundle install creates that ore MIGHT be missing:\n")
+	fmt.Printf("       • specifications/*.gemspec - CHECKED ABOVE\n")
+	fmt.Printf("       • gems/<name>-<version>/ - CHECKED ABOVE\n")
+	fmt.Printf("       • cache/<name>-<version>.gem - CHECKED ABOVE\n")
+	fmt.Printf("       • bin/ executables (if gem has them)\n")
+	fmt.Printf("       • doc/ documentation (if not --no-document)\n")
+	fmt.Printf("       • extensions/ (if gem has native extensions)\n")
+	fmt.Println()
+
+	// Check bin directory for executables
+	binDir := filepath.Join(ctx.vendorDir, "bin")
+	if dirExists(binDir) {
+		fmt.Printf("       Bin directory exists: %s\n", binDir)
+	}
+	fmt.Println()
+
+	// 6. Run Ruby diagnostic to check what RubyGems/Bundler actually sees
+	fmt.Printf("   [6] RUBY/BUNDLER DIAGNOSTIC:\n")
+	fmt.Printf("       Running Ruby to check what RubyGems actually sees...\n\n")
+	runRubyDiagnostic(gem.name, gem.targetVersion, ctx.vendorDir)
+	fmt.Println()
+}
+
+// checkGemspecField checks if a field exists in gemspec content
+func checkGemspecField(content []byte, field, description string) {
+	if containsBytes(content, []byte(field)) {
+		fmt.Printf("         ✅ %s - %s\n", field, description)
+	} else {
+		fmt.Printf("         ❌ %s MISSING - %s\n", field, description)
+	}
+}
+
+// containsBytes checks if b contains substr
+func containsBytes(b, substr []byte) bool {
+	return len(substr) > 0 && len(b) >= len(substr) && bytesContains(b, substr)
+}
+
+// bytesContains is a simple contains check
+func bytesContains(b, substr []byte) bool {
+	for i := 0; i <= len(b)-len(substr); i++ {
+		if bytesEqual(b[i:i+len(substr)], substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// bytesEqual checks if two byte slices are equal
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// splitLines splits a string into lines
+func splitLines(s string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
+}
+
+// runRubyDiagnostic runs a Ruby script to check what RubyGems/Bundler actually sees
+func runRubyDiagnostic(gemName, version, vendorDir string) {
+	// Comprehensive Ruby diagnostic script
+	rubyScript := fmt.Sprintf(`
+require 'rubygems'
+require 'pp'
+
+gem_name = %q
+gem_version = %q
+vendor_dir = %q
+
+puts "=" * 60
+puts "RUBYGEMS DIAGNOSTIC FOR: #{gem_name}-#{gem_version}"
+puts "=" * 60
+puts
+
+# 1. Environment
+puts "[A] ENVIRONMENT:"
+puts "   GEM_HOME:      #{ENV['GEM_HOME']}"
+puts "   GEM_PATH:      #{ENV['GEM_PATH']}"
+puts "   Gem.dir:       #{Gem.dir}"
+puts "   Gem.path:      #{Gem.path.join(':')}"
+puts "   Gem.user_dir:  #{Gem.user_dir}"
+puts
+
+# 2. Specification directories
+puts "[B] SPECIFICATION DIRECTORIES:"
+Gem::Specification.dirs.each_with_index do |dir, i|
+  exists = File.directory?(dir) ? "EXISTS" : "MISSING"
+  puts "   #{i+1}. #{dir} [#{exists}]"
+end
+puts
+
+# 3. Search for this gem in stubs
+puts "[C] SEARCHING FOR GEM IN STUBS:"
+begin
+  stubs = Gem::Specification.stubs_for(gem_name)
+  if stubs.empty?
+    puts "   ❌ NO STUBS FOUND for #{gem_name}"
+    puts "   This means RubyGems cannot find the gem at all!"
+  else
+    puts "   Found #{stubs.count} stub(s):"
+    stubs.each do |stub|
+      puts "   - #{stub.full_name}"
+      puts "     loaded_from: #{stub.loaded_from}"
+      puts "     full_gem_path: #{stub.full_gem_path}"
+      path_exists = File.directory?(stub.full_gem_path) ? "EXISTS" : "MISSING"
+      puts "     path exists: #{path_exists}"
+      puts "     valid?: #{stub.valid?}"
+      puts "     stubbed?: #{stub.stubbed?}" if stub.respond_to?(:stubbed?)
+      puts
+    end
+  end
+rescue => e
+  puts "   Error getting stubs: #{e.message}"
+end
+puts
+
+# 4. Try to find the specific version
+puts "[D] FINDING SPECIFIC VERSION #{gem_version}:"
+begin
+  specs = Gem::Specification.find_all_by_name(gem_name, "= #{gem_version}")
+  if specs.empty?
+    puts "   ❌ NOT FOUND"
+
+    # Try without version constraint
+    all_specs = Gem::Specification.find_all_by_name(gem_name)
+    if all_specs.any?
+      puts "   But found these versions:"
+      all_specs.each { |s| puts "     - #{s.version}" }
+    end
+  else
+    specs.each do |spec|
+      puts "   ✅ FOUND: #{spec.full_name}"
+      puts "      loaded_from:            #{spec.loaded_from}"
+      puts "      full_gem_path:          #{spec.full_gem_path}"
+      puts "      gem_dir:                #{spec.gem_dir}"
+      puts "      require_paths:          #{spec.require_paths.inspect}"
+      puts "      full_require_paths:     #{spec.full_require_paths.inspect}"
+      puts "      installation_missing?:  #{spec.respond_to?(:installation_missing?) ? spec.installation_missing? : 'N/A'}"
+      puts "      default_gem?:           #{spec.default_gem?}"
+      puts "      installed_by_version:   #{spec.installed_by_version rescue 'N/A'}"
+      puts
+
+      # Check if full_gem_path exists
+      if File.directory?(spec.full_gem_path)
+        puts "      Gem directory contents:"
+        Dir.entries(spec.full_gem_path).reject { |e| e.start_with?('.') }.each do |entry|
+          type = File.directory?(File.join(spec.full_gem_path, entry)) ? "📁" : "📄"
+          puts "        #{type} #{entry}"
+        end
+      else
+        puts "      ❌ full_gem_path DOES NOT EXIST!"
+      end
+    end
+  end
+rescue => e
+  puts "   Error: #{e.message}"
+  puts e.backtrace.first(5).join("\n")
+end
+puts
+
+# 5. Check the actual gemspec file content
+puts "[E] GEMSPEC FILE ANALYSIS:"
+spec_path = File.join(vendor_dir, "specifications", "#{gem_name}-#{gem_version}.gemspec")
+if File.exist?(spec_path)
+  puts "   Found: #{spec_path}"
+  puts "   First 15 lines:"
+  File.readlines(spec_path).first(15).each_with_index do |line, i|
+    puts "   #{(i+1).to_s.rjust(3)}: #{line.chomp}"
+  end
+
+  # Try to load the gemspec
+  puts
+  puts "   Attempting to load gemspec..."
+  begin
+    loaded_spec = Gem::Specification.load(spec_path)
+    if loaded_spec
+      puts "   ✅ Gemspec loads successfully"
+      puts "      name: #{loaded_spec.name}"
+      puts "      version: #{loaded_spec.version}"
+      puts "      platform: #{loaded_spec.platform}"
+    else
+      puts "   ❌ Gemspec.load returned nil!"
+    end
+  rescue => e
+    puts "   ❌ Error loading gemspec: #{e.message}"
+  end
+else
+  puts "   ❌ Gemspec NOT FOUND at #{spec_path}"
+end
+puts
+
+# 6. Bundler check (if available)
+puts "[F] BUNDLER CHECK:"
+begin
+  require 'bundler'
+  puts "   Bundler version: #{Bundler::VERSION}"
+  puts "   Bundle path: #{Bundler.bundle_path rescue 'N/A'}"
+  puts "   Bundler settings: #{Bundler.settings.path rescue 'N/A'}"
+
+  if defined?(Bundler::Definition)
+    puts "   Attempting to check Bundler's view..."
+    begin
+      # Just check installed_specs
+      installed = Bundler.rubygems.installed_specs.select { |s| s.name == gem_name }
+      if installed.any?
+        puts "   ✅ Bundler sees #{installed.count} installed version(s) of #{gem_name}:"
+        installed.each { |s| puts "      - #{s.full_name} at #{s.loaded_from}" }
+      else
+        puts "   ❌ Bundler does NOT see #{gem_name} as installed!"
+        puts "      This explains why bundle exec fails!"
+      end
+    rescue => e
+      puts "   Error checking Bundler: #{e.message}"
+    end
+  end
+rescue LoadError
+  puts "   Bundler not available"
+rescue => e
+  puts "   Error: #{e.message}"
+end
+puts
+
+puts "=" * 60
+puts "END DIAGNOSTIC"
+puts "=" * 60
+`, gemName, version, vendorDir)
+
+	cmd := exec.Command("ruby", "-e", rubyScript)
+	cmd.Env = os.Environ()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("       ⚠️  Ruby diagnostic failed: %v\n", err)
+		if len(output) > 0 {
+			fmt.Printf("       Output:\n")
+			for _, line := range strings.Split(string(output), "\n") {
+				fmt.Printf("       %s\n", line)
+			}
+		}
+		return
+	}
+
+	// Print output with indentation
+	for _, line := range strings.Split(string(output), "\n") {
+		fmt.Printf("       %s\n", line)
+	}
 }
 
 // displayExtensionInfo shows extension details

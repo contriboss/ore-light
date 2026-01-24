@@ -66,8 +66,25 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 		}
 
 		destDir := filepath.Join(vendorDir, "gems", gem.FullName())
+		specPath := filepath.Join(vendorDir, "specifications", gem.FullName()+".gemspec")
 
-		if _, err := os.Stat(destDir); err == nil && !force {
+		// Check if gem is FULLY installed: both gem directory AND gemspec must exist
+		// A gem directory without a gemspec is not usable by Bundler
+		gemDirExists := false
+		if _, err := os.Stat(destDir); err == nil {
+			gemDirExists = true
+		}
+		gemspecExists := false
+		if _, err := os.Stat(specPath); err == nil {
+			gemspecExists = true
+		}
+
+		// Check if gemspec is valid (has installed_by_version)
+		// Old gemspecs from earlier ore versions may be missing this critical field
+		gemspecValid := gemspecExists && geminstall.GemspecIsValid(specPath)
+
+		// Only skip if gem dir exists AND gemspec is valid - otherwise we need to reinstall
+		if gemDirExists && gemspecValid && !force {
 			if buildExtensions {
 				// Extract metadata to get authoritative extensions list
 				metadata, err := geminstall.ExtractMetadataOnly(gemPath)
@@ -97,6 +114,23 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 			}
 			report.Skipped++
 			continue
+		}
+
+		// Debug: explain why we're installing instead of skipping
+		if os.Getenv("ORE_DEBUG") != "" {
+			reason := ""
+			if !gemDirExists && !gemspecExists {
+				reason = "neither gem dir nor gemspec exist"
+			} else if !gemDirExists {
+				reason = "gem dir missing (gemspec exists)"
+			} else if !gemspecExists {
+				reason = "gemspec missing (gem dir exists)"
+			} else if !gemspecValid {
+				reason = "gemspec invalid (missing installed_by_version)"
+			} else if force {
+				reason = "force reinstall requested"
+			}
+			fmt.Printf("DEBUG: Installing %s: %s\n", gem.FullName(), reason)
 		}
 
 		metadata, err := geminstall.ExtractMetadataOnly(gemPath)
