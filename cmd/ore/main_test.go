@@ -78,6 +78,19 @@ func TestVersionInfo(t *testing.T) {
 }
 
 func TestConfigOverrides(t *testing.T) {
+	// Save and restore original working directory to isolate from any local .bundle/config
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get current directory: %v", err)
+	}
+
+	// Change to a clean temp directory
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
 	origCfg := appConfig
 	appConfig = &config.Config{
 		VendorDir: "/tmp/vendor-test",
@@ -100,6 +113,7 @@ func TestConfigOverrides(t *testing.T) {
 		"BUNDLE_PATH",
 		"BUNDLE_CACHE_PATH",
 		"BUNDLE_MIRROR",
+		"BUNDLE_GEMFILE", // Must unset this to test config priority
 	} {
 		value, present := os.LookupEnv(key)
 		states = append(states, envState{key: key, value: value, present: present})

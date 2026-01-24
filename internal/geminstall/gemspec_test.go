@@ -47,11 +47,11 @@ dependencies:
 		exclude  bool
 	}{
 		{"Has installed_by_version", "s.installed_by_version =", false}, // It should be added if missing, or present
-		{"Removes date", "s.date =", true},
-		{"Removes specification_version", "s.specification_version =", true},
-		{"Converts runtime dep to add_dependency", `s.add_dependency("dep1".freeze, ">= 1.0".freeze)`, false},
-		{"Converts dev dep to add_development_dependency", `s.add_development_dependency("dep2".freeze, ">= 2.0".freeze)`, false},
-		{"Handles authors array", `s.authors = ["Author A".freeze, "Author B".freeze].freeze`, false},
+		{"Keeps date for bundler parity", `s.date = "2025-01-01"`, false},
+		{"Keeps specification_version for bundler parity", "s.specification_version = 4", false},
+		{"Uses add_runtime_dependency for bundler parity", `s.add_runtime_dependency(%q<dep1>.freeze, [">= 1.0".freeze])`, false},
+		{"Uses add_development_dependency for bundler parity", `s.add_development_dependency(%q<dep2>.freeze, [">= 2.0".freeze])`, false},
+		{"Handles authors array without outer freeze", `s.authors = ["Author A".freeze, "Author B".freeze]`, false},
 	}
 
 	for _, check := range checks {
