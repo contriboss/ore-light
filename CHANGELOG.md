@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.20.1](https://github.com/contriboss/ore-light/compare/v0.20.0...v0.20.1) (2026-01-24)
+
+
+### Bug Fixes
+
+* Extension Building Logic ([883ebab](https://github.com/contriboss/ore-light/commit/883ebabc38a6faca7997c3301f53e77ac910d262))
+* Respect BUNDLE_GEMFILE when resolving lockfile path ([acb03b5](https://github.com/contriboss/ore-light/commit/acb03b546f5c5d987e25929cd50c313213a1909e))
+* use -mod=mod for test commands ([7cc1517](https://github.com/contriboss/ore-light/commit/7cc1517ef4d1d25c7310009203618897b0e2d98d))
+
 ## [0.20.0](https://github.com/contriboss/ore-light/compare/v0.19.0...v0.20.0) (2026-01-23)
 
 
