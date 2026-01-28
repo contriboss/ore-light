@@ -256,7 +256,13 @@ end
 
 func filterAndNormalize(data map[string]interface{}) {
 	// Fields to remove entirely
-	removals := []string{"specification_version", "test_files", "rubyforge_project", "has_rdoc"}
+	removals := []string{
+		"default_executable",
+		"has_rdoc",
+		"rubyforge_project",
+		"specification_version",
+		"test_files",
+	}
 	for _, key := range removals {
 		delete(data, key)
 	}

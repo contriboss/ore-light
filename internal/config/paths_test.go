@@ -182,40 +182,40 @@ func TestDefaultLockfilePath_BundleGemfile(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name              string
-		bundleGemfile     string
-		expectedLockfile  string
-		description       string
+		name             string
+		bundleGemfile    string
+		expectedLockfile string
+		description      string
 	}{
 		{
-			name:              "Appraisal.root.gemfile derives Appraisal.root.gemfile.lock",
-			bundleGemfile:     "Appraisal.root.gemfile",
-			expectedLockfile:  "Appraisal.root.gemfile.lock",
-			description:       "When BUNDLE_GEMFILE=Appraisal.root.gemfile, lockfile should be Appraisal.root.gemfile.lock",
+			name:             "Appraisal.root.gemfile derives Appraisal.root.gemfile.lock",
+			bundleGemfile:    "Appraisal.root.gemfile",
+			expectedLockfile: "Appraisal.root.gemfile.lock",
+			description:      "When BUNDLE_GEMFILE=Appraisal.root.gemfile, lockfile should be Appraisal.root.gemfile.lock",
 		},
 		{
-			name:              "gemfiles/style.gemfile derives gemfiles/style.gemfile.lock",
-			bundleGemfile:     "gemfiles/style.gemfile",
-			expectedLockfile:  "gemfiles/style.gemfile.lock",
-			description:       "When BUNDLE_GEMFILE=gemfiles/style.gemfile, lockfile should be gemfiles/style.gemfile.lock",
+			name:             "gemfiles/style.gemfile derives gemfiles/style.gemfile.lock",
+			bundleGemfile:    "gemfiles/style.gemfile",
+			expectedLockfile: "gemfiles/style.gemfile.lock",
+			description:      "When BUNDLE_GEMFILE=gemfiles/style.gemfile, lockfile should be gemfiles/style.gemfile.lock",
 		},
 		{
-			name:              "custom/path/TestGemfile derives custom/path/TestGemfile.lock",
-			bundleGemfile:     "custom/path/TestGemfile",
-			expectedLockfile:  "custom/path/TestGemfile.lock",
-			description:       "When BUNDLE_GEMFILE=custom/path/TestGemfile, lockfile should be custom/path/TestGemfile.lock",
+			name:             "custom/path/TestGemfile derives custom/path/TestGemfile.lock",
+			bundleGemfile:    "custom/path/TestGemfile",
+			expectedLockfile: "custom/path/TestGemfile.lock",
+			description:      "When BUNDLE_GEMFILE=custom/path/TestGemfile, lockfile should be custom/path/TestGemfile.lock",
 		},
 		{
-			name:              "gems.rb derives gems.locked",
-			bundleGemfile:     "gems.rb",
-			expectedLockfile:  "gems.locked",
-			description:       "When BUNDLE_GEMFILE=gems.rb, lockfile should be gems.locked (newer Bundler convention)",
+			name:             "gems.rb derives gems.locked",
+			bundleGemfile:    "gems.rb",
+			expectedLockfile: "gems.locked",
+			description:      "When BUNDLE_GEMFILE=gems.rb, lockfile should be gems.locked (newer Bundler convention)",
 		},
 		{
-			name:              "path/to/gems.rb derives path/to/gems.locked",
-			bundleGemfile:     "path/to/gems.rb",
-			expectedLockfile:  "path/to/gems.locked",
-			description:       "When BUNDLE_GEMFILE=path/to/gems.rb, lockfile should be path/to/gems.locked",
+			name:             "path/to/gems.rb derives path/to/gems.locked",
+			bundleGemfile:    "path/to/gems.rb",
+			expectedLockfile: "path/to/gems.locked",
+			description:      "When BUNDLE_GEMFILE=path/to/gems.rb, lockfile should be path/to/gems.locked",
 		},
 	}
 
