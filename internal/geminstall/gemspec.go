@@ -16,35 +16,35 @@ import (
 
 // gemMetadata represents extracted metadata from YAML
 type gemMetadata struct {
-	Name                     string            `yaml:"name"`
-	Version                  versionField      `yaml:"version"`
-	Authors                  []string          `yaml:"authors"`
-	Author                   string            `yaml:"author"`
-	Email                    interface{}       `yaml:"email"` // Can be string or []string
-	Homepage                 string            `yaml:"homepage"`
-	Summary                  string            `yaml:"summary"`
-	Description              string            `yaml:"description"`
-	Licenses                 []string          `yaml:"licenses"`
-	License                  string            `yaml:"license"`
-	Platform                 string            `yaml:"platform"`
-	Bindir                   string            `yaml:"bindir"`
-	CertChain                []string          `yaml:"cert_chain"`
-	Date                     string            `yaml:"date"` // 2025-08-20 00:00:00.000000000 Z
-	Executables              []string          `yaml:"executables"`
-	Extensions               []string          `yaml:"extensions"` // Native C extensions
-	ExtraRdocFiles           []string          `yaml:"extra_rdoc_files"`
-	Files                    []string          `yaml:"files"`
-	Metadata                 map[string]string `yaml:"metadata"`
-	PostInstallMessage       string            `yaml:"post_install_message"`
-	RdocOptions              []string          `yaml:"rdoc_options"`
-	RequirePaths             []string          `yaml:"require_paths"`
-	RequiredRubyVersion      requirementField  `yaml:"required_ruby_version"`
-	RequiredRubygemsVersion  requirementField  `yaml:"required_rubygems_version"`
-	Requirements             []string          `yaml:"requirements"`
-	RubygemsVersion          string            `yaml:"rubygems_version"`
-	SigningKey               string            `yaml:"signing_key"`
-	SpecificationVersion     int               `yaml:"specification_version"`
-	TestFiles                []string          `yaml:"test_files"`
+	Name                    string            `yaml:"name"`
+	Version                 versionField      `yaml:"version"`
+	Authors                 []string          `yaml:"authors"`
+	Author                  string            `yaml:"author"`
+	Email                   interface{}       `yaml:"email"` // Can be string or []string
+	Homepage                string            `yaml:"homepage"`
+	Summary                 string            `yaml:"summary"`
+	Description             string            `yaml:"description"`
+	Licenses                []string          `yaml:"licenses"`
+	License                 string            `yaml:"license"`
+	Platform                string            `yaml:"platform"`
+	Bindir                  string            `yaml:"bindir"`
+	CertChain               []string          `yaml:"cert_chain"`
+	Date                    string            `yaml:"date"` // 2025-08-20 00:00:00.000000000 Z
+	Executables             []string          `yaml:"executables"`
+	Extensions              []string          `yaml:"extensions"` // Native C extensions
+	ExtraRdocFiles          []string          `yaml:"extra_rdoc_files"`
+	Files                   []string          `yaml:"files"`
+	Metadata                map[string]string `yaml:"metadata"`
+	PostInstallMessage      string            `yaml:"post_install_message"`
+	RdocOptions             []string          `yaml:"rdoc_options"`
+	RequirePaths            []string          `yaml:"require_paths"`
+	RequiredRubyVersion     requirementField  `yaml:"required_ruby_version"`
+	RequiredRubygemsVersion requirementField  `yaml:"required_rubygems_version"`
+	Requirements            []string          `yaml:"requirements"`
+	RubygemsVersion         string            `yaml:"rubygems_version"`
+	SigningKey              string            `yaml:"signing_key"`
+	SpecificationVersion    int               `yaml:"specification_version"`
+	TestFiles               []string          `yaml:"test_files"`
 }
 
 // requirementField handles Gem::Requirement which is a struct with a list of requirements
@@ -119,7 +119,6 @@ func getJoin(items []string, sep string) string {
 	}
 	return res
 }
-
 
 // versionField handles both nested and simple version formats
 // After stripping Ruby tags, "version: !ruby/object:Gem::Version\n  version: 2.7.3"
@@ -257,7 +256,7 @@ end
 
 func filterAndNormalize(data map[string]interface{}) {
 	// Fields to remove entirely
-	removals := []string{"specification_version", "test_files", "rubyforge_project"}
+	removals := []string{"specification_version", "test_files", "rubyforge_project", "has_rdoc"}
 	for _, key := range removals {
 		delete(data, key)
 	}
