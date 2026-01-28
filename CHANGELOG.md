@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.2](https://github.com/contriboss/ore-light/compare/v0.20.1...v0.20.2) (2026-01-28)
+
+
+### Bug Fixes
+
+* 🐛 Prevent default_executable from polluting gemspecs ([d9f4084](https://github.com/contriboss/ore-light/commit/d9f40844cb676a1653ecec424d4f91c45a009d2b))
+
 ## [0.20.1](https://github.com/contriboss/ore-light/compare/v0.20.0...v0.20.1) (2026-01-24)
 
 
