@@ -94,7 +94,9 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		if len(parsed.GemSpecs) > 0 {
 			fmt.Printf("DEBUG: First few gems: ")
 			for i, g := range parsed.GemSpecs {
-				if i >= 5 { break }
+				if i >= 5 {
+					break
+				}
 				fmt.Printf("%s ", g.FullName())
 			}
 			fmt.Println()
