@@ -1,6 +1,7 @@
 package geminstall
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -184,13 +185,49 @@ func ParseExtensionsFromMetadata(metadataYAML []byte) ([]string, error) {
 }
 
 // GemspecIsValid checks if a gemspec file contains the installed_by_version field
-// which is required for Bundler to recognize the gem as properly installed.
-func GemspecIsValid(specPath string) bool {
+// and its stub platform matches the lockfile spec (Bundler materializes by platform).
+func GemspecIsValid(specPath string, spec lockfile.GemSpec) bool {
 	content, err := os.ReadFile(specPath)
 	if err != nil {
 		return false
 	}
-	return bytes.Contains(content, []byte("installed_by_version"))
+	if !bytes.Contains(content, []byte("installed_by_version")) {
+		return false
+	}
+	if stubPlatformMatches(content, spec) {
+		return true
+	}
+	if os.Getenv("ORE_DEBUG") != "" {
+		fmt.Printf("DEBUG: gemspec platform mismatch %s lock=%q stub=%q\n", spec.FullName(), spec.Platform, stubPlatform(content))
+	}
+	return false
+}
+
+func stubPlatformMatches(content []byte, spec lockfile.GemSpec) bool {
+	expected := spec.Platform
+	if expected == "" {
+		expected = "ruby"
+	}
+
+	return stubPlatform(content) == expected
+}
+
+func stubPlatform(content []byte) string {
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "# stub: ") {
+			continue
+		}
+		rest := strings.TrimPrefix(line, "# stub: ")
+		parts := strings.SplitN(rest, " ", 4)
+		if len(parts) < 3 {
+			return ""
+		}
+		return parts[2]
+	}
+
+	return ""
 }
 
 // WriteGemSpecification writes a gemspec file for the given gem using a generic map approach
@@ -222,6 +259,12 @@ func WriteGemSpecification(vendorDir string, spec lockfile.GemSpec, metadataYAML
 	if _, ok := rawData["version"]; !ok {
 		rawData["version"] = spec.Version
 	}
+	originalPlatform, _ := rawData["platform"].(string)
+	normalizePlatformForLockfile(spec, rawData)
+	if os.Getenv("ORE_DEBUG") != "" {
+		normalizedPlatform, _ := rawData["platform"].(string)
+		fmt.Printf("DEBUG: gemspec platform %s lock=%q metadata=%q normalized=%q\n", spec.FullName(), spec.Platform, originalPlatform, normalizedPlatform)
+	}
 
 	// Generate Ruby code
 	rubyCode, err := generateGenericGemspec(rawData)
@@ -241,15 +284,29 @@ func writeBasicGemspec(vendorDir string, spec lockfile.GemSpec) error {
 	specDir := filepath.Join(vendorDir, "specifications")
 	specPath := filepath.Join(specDir, fmt.Sprintf("%s.gemspec", spec.FullName()))
 
+	platform := spec.Platform
+	if platform == "" {
+		platform = "ruby"
+	}
+
+	platformLine := ""
+	if platform != "" && platform != "ruby" {
+		platformLine = fmt.Sprintf("  s.platform = %q\n", platform)
+	}
+	if os.Getenv("ORE_DEBUG") != "" {
+		fmt.Printf("DEBUG: gemspec platform %s lock=%q metadata=%q normalized=%q\n", spec.FullName(), spec.Platform, "", platform)
+	}
+
 	rubyCode := fmt.Sprintf(`# -*- encoding: utf-8 -*-
-# stub: %s %s ruby lib
+# stub: %s %s %s lib
 
 Gem::Specification.new do |s|
   s.name = %q
   s.version = %q
+%s
   s.installed_by_version = %q
 end
-`, spec.Name, spec.Version, spec.Name, spec.Version, ruby.DefaultRubyGemsVersion)
+`, spec.Name, spec.Version, platform, spec.Name, spec.Version, platformLine, ruby.DefaultRubyGemsVersion)
 
 	return os.WriteFile(specPath, []byte(rubyCode), 0o644)
 }
@@ -293,6 +350,17 @@ func filterAndNormalize(data map[string]interface{}) {
 	} else {
 		// Fallback if missing
 		data["date"] = "1980-01-02"
+	}
+}
+
+func normalizePlatformForLockfile(spec lockfile.GemSpec, data map[string]interface{}) {
+	if spec.Platform != "" && spec.Platform != "ruby" {
+		data["platform"] = spec.Platform
+		return
+	}
+
+	if platform, ok := data["platform"].(string); ok && platform != "" && platform != "ruby" {
+		data["platform"] = "ruby"
 	}
 }
 

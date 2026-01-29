@@ -29,6 +29,7 @@ func NewBuildEnv(cfg *Config) func(vendorDir string, specs []lockfile.GemSpec) (
 			env = setEnv(env, "GEM_HOME", vendorDir)
 			env = setEnv(env, "GEM_PATH", vendorDir)
 			env = setEnv(env, "BUNDLE_GEMFILE", "")
+			env = clearBundlePathIfGemHome(env, vendorDir)
 		}
 
 		env = prependPath(env, filepath.Join(vendorDir, "bin"))
@@ -66,6 +67,31 @@ func setEnv(env []string, key, value string) []string {
 		}
 	}
 	return append(env, prefix+value)
+}
+
+func clearBundlePathIfGemHome(env []string, gemHome string) []string {
+	bundlePath, ok := getEnvValue(env, "BUNDLE_PATH")
+	if !ok || bundlePath == "" {
+		return env
+	}
+	if samePath(bundlePath, gemHome) || looksLikeGemHome(bundlePath) {
+		return setEnv(env, "BUNDLE_PATH", "")
+	}
+	return env
+}
+
+func samePath(a, b string) bool {
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+func looksLikeGemHome(path string) bool {
+	if _, err := os.Stat(filepath.Join(path, "specifications")); err == nil {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join(path, "gems")); err == nil {
+		return true
+	}
+	return false
 }
 
 func prependPath(env []string, path string) []string {

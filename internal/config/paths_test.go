@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -235,6 +236,129 @@ func TestDefaultLockfilePath_BundleGemfile(t *testing.T) {
 					lockfilePath, tt.expectedLockfile, tt.bundleGemfile, tt.description)
 			}
 		})
+	}
+}
+
+func TestResolveVendorDir_BundlePathGemHome(t *testing.T) {
+	originalBundlePath := os.Getenv("BUNDLE_PATH")
+	defer func() {
+		if originalBundlePath != "" {
+			os.Setenv("BUNDLE_PATH", originalBundlePath)
+		} else {
+			os.Unsetenv("BUNDLE_PATH")
+		}
+	}()
+
+	gemHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(gemHome, "specifications"), 0755); err != nil {
+		t.Fatalf("failed to create specifications dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(gemHome, "gems"), 0755); err != nil {
+		t.Fatalf("failed to create gems dir: %v", err)
+	}
+
+	if err := os.Setenv("BUNDLE_PATH", gemHome); err != nil {
+		t.Fatalf("failed to set BUNDLE_PATH: %v", err)
+	}
+
+	got, source, err := ResolveVendorDir(nil, func() string { return "4.0.0" }, func() string { return "/system" })
+	if err != nil {
+		t.Fatalf("ResolveVendorDir() returned error: %v", err)
+	}
+	if got != gemHome {
+		t.Fatalf("ResolveVendorDir() = %q, want %q", got, gemHome)
+	}
+	if source != "env:BUNDLE_PATH" {
+		t.Fatalf("ResolveVendorDir() source = %q, want env:BUNDLE_PATH", source)
+	}
+}
+
+func TestResolveVendorDir_BundlePathGemsDir(t *testing.T) {
+	originalBundlePath := os.Getenv("BUNDLE_PATH")
+	defer func() {
+		if originalBundlePath != "" {
+			os.Setenv("BUNDLE_PATH", originalBundlePath)
+		} else {
+			os.Unsetenv("BUNDLE_PATH")
+		}
+	}()
+
+	gemHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(gemHome, "gems"), 0755); err != nil {
+		t.Fatalf("failed to create gems dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(gemHome, "cache"), 0755); err != nil {
+		t.Fatalf("failed to create cache dir: %v", err)
+	}
+
+	if err := os.Setenv("BUNDLE_PATH", gemHome); err != nil {
+		t.Fatalf("failed to set BUNDLE_PATH: %v", err)
+	}
+
+	got, source, err := ResolveVendorDir(nil, func() string { return "4.0.0" }, func() string { return "/system" })
+	if err != nil {
+		t.Fatalf("ResolveVendorDir() returned error: %v", err)
+	}
+	if got != gemHome {
+		t.Fatalf("ResolveVendorDir() = %q, want %q", got, gemHome)
+	}
+	if source != "env:BUNDLE_PATH" {
+		t.Fatalf("ResolveVendorDir() source = %q, want env:BUNDLE_PATH", source)
+	}
+}
+
+func TestResolveVendorDir_BundlePathBaseDir(t *testing.T) {
+	originalBundlePath := os.Getenv("BUNDLE_PATH")
+	defer func() {
+		if originalBundlePath != "" {
+			os.Setenv("BUNDLE_PATH", originalBundlePath)
+		} else {
+			os.Unsetenv("BUNDLE_PATH")
+		}
+	}()
+
+	base := t.TempDir()
+	if err := os.Setenv("BUNDLE_PATH", base); err != nil {
+		t.Fatalf("failed to set BUNDLE_PATH: %v", err)
+	}
+
+	got, source, err := ResolveVendorDir(nil, func() string { return "4.0.0" }, func() string { return "/system" })
+	if err != nil {
+		t.Fatalf("ResolveVendorDir() returned error: %v", err)
+	}
+	want := filepath.Join(base, "ruby", "4.0.0")
+	if got != want {
+		t.Fatalf("ResolveVendorDir() = %q, want %q", got, want)
+	}
+	if source != "env:BUNDLE_PATH" {
+		t.Fatalf("ResolveVendorDir() source = %q, want env:BUNDLE_PATH", source)
+	}
+}
+
+func TestResolveVendorDir_BundlePathBaseDir_NoRubyVersion(t *testing.T) {
+	originalBundlePath := os.Getenv("BUNDLE_PATH")
+	defer func() {
+		if originalBundlePath != "" {
+			os.Setenv("BUNDLE_PATH", originalBundlePath)
+		} else {
+			os.Unsetenv("BUNDLE_PATH")
+		}
+	}()
+
+	base := t.TempDir()
+	if err := os.Setenv("BUNDLE_PATH", base); err != nil {
+		t.Fatalf("failed to set BUNDLE_PATH: %v", err)
+	}
+
+	got, source, err := ResolveVendorDir(nil, func() string { return "" }, func() string { return "/system" })
+	if err != nil {
+		t.Fatalf("ResolveVendorDir() returned error: %v", err)
+	}
+	if got != base {
+		t.Fatalf("ResolveVendorDir() = %q, want %q", got, base)
+	}
+	if source != "env:BUNDLE_PATH" {
+		t.Fatalf("ResolveVendorDir() source = %q, want env:BUNDLE_PATH", source)
 	}
 }
 

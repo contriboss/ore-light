@@ -118,6 +118,9 @@ func DefaultVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 func ResolveVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGemDir func() string) (string, string, error) {
 	// Priority 1: Bundler environment variable (BUNDLE_PATH)
 	if bundlePath := os.Getenv("BUNDLE_PATH"); bundlePath != "" {
+		if looksLikeGemHome(bundlePath) {
+			return bundlePath, "env:BUNDLE_PATH", nil
+		}
 		rubyVersion := detectRubyVersion()
 		if rubyVersion != "" {
 			return filepath.Join(bundlePath, "ruby", rubyVersion), "env:BUNDLE_PATH", nil
@@ -132,6 +135,9 @@ func ResolveVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 
 	// Priority 3: Bundler .bundle/config file
 	if bundlePath := ReadBundleConfigPath(); bundlePath != "" {
+		if looksLikeGemHome(bundlePath) {
+			return bundlePath, "bundle-config:BUNDLE_PATH", nil
+		}
 		rubyVersion := detectRubyVersion()
 		if rubyVersion != "" {
 			return filepath.Join(bundlePath, "ruby", rubyVersion), "bundle-config:BUNDLE_PATH", nil
@@ -141,6 +147,29 @@ func ResolveVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 
 	// Priority 4: System gem directory (default - like `gem install`)
 	return getSystemGemDir(), "system", nil
+}
+
+func looksLikeGemHome(path string) bool {
+	expectedDirs := []string{
+		"specifications",
+		"gems",
+		"doc",
+		"extensions",
+		"build_info",
+		"cache",
+	}
+
+	matchCount := 0
+	for _, name := range expectedDirs {
+		if _, err := os.Stat(filepath.Join(path, name)); err == nil {
+			matchCount++
+			if matchCount >= 2 {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // ResolveCacheDir returns the resolved cache directory and its source.

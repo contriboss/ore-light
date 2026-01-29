@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/contriboss/gemfile-go/lockfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -65,5 +66,46 @@ dependencies:
 				t.Errorf("Expected gemspec to contain %q (%s), but it didn't.\nGenerated Code:\n%s", check.contains, check.desc, rubyCode)
 			}
 		}
+	}
+}
+
+func TestNormalizePlatformForLockfile(t *testing.T) {
+	t.Run("coerces metadata platform to ruby when lockfile is ruby", func(t *testing.T) {
+		spec := lockfile.GemSpec{Name: "kettle-dev", Version: "1.2.4"}
+		data := map[string]interface{}{"platform": "x86_64-linux"}
+		normalizePlatformForLockfile(spec, data)
+		if got, _ := data["platform"].(string); got != "ruby" {
+			t.Fatalf("expected platform to be ruby, got %q", got)
+		}
+	})
+
+	t.Run("overrides metadata platform with lockfile platform", func(t *testing.T) {
+		spec := lockfile.GemSpec{Name: "nokogiri", Version: "1.16.0", Platform: "x86_64-linux"}
+		data := map[string]interface{}{"platform": "ruby"}
+		normalizePlatformForLockfile(spec, data)
+		if got, _ := data["platform"].(string); got != "x86_64-linux" {
+			t.Fatalf("expected platform to be x86_64-linux, got %q", got)
+		}
+	})
+}
+
+func TestGemspecIsValidChecksPlatform(t *testing.T) {
+	spec := lockfile.GemSpec{Name: "kettle-dev", Version: "1.2.4"}
+	content := []byte(`# -*- encoding: utf-8 -*-
+# stub: kettle-dev 1.2.4 x86_64-linux lib
+
+Gem::Specification.new do |s|
+  s.name = "kettle-dev"
+  s.version = "1.2.4"
+  s.installed_by_version = "4.0.5"
+end
+`)
+	if stubPlatformMatches(content, spec) {
+		t.Fatal("expected platform mismatch for ruby lockfile spec")
+	}
+
+	spec.Platform = "x86_64-linux"
+	if !stubPlatformMatches(content, spec) {
+		t.Fatal("expected platform to match lockfile spec")
 	}
 }

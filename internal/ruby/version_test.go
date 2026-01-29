@@ -276,6 +276,28 @@ func TestWalkUpForFile(t *testing.T) {
 	}
 }
 
+func TestGetSystemGemDir_UsesGemHomeEvenIfMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	nonexistentGemHome := filepath.Join(tmpDir, "gems", "4.0.0")
+
+	oldGemHome := os.Getenv("GEM_HOME")
+	defer func() {
+		if oldGemHome == "" {
+			_ = os.Unsetenv("GEM_HOME")
+		} else {
+			_ = os.Setenv("GEM_HOME", oldGemHome)
+		}
+	}()
+	if err := os.Setenv("GEM_HOME", nonexistentGemHome); err != nil {
+		t.Fatal(err)
+	}
+
+	got := GetSystemGemDir(func() string { return "4.0.0" })
+	if got != nonexistentGemHome {
+		t.Errorf("expected GEM_HOME %q, got %q", nonexistentGemHome, got)
+	}
+}
+
 func TestNormalizeRubyVersion(t *testing.T) {
 	tests := []struct {
 		name     string
