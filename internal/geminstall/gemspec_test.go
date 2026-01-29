@@ -88,3 +88,24 @@ func TestNormalizePlatformForLockfile(t *testing.T) {
 		}
 	})
 }
+
+func TestGemspecIsValidChecksPlatform(t *testing.T) {
+	spec := lockfile.GemSpec{Name: "kettle-dev", Version: "1.2.4"}
+	content := []byte(`# -*- encoding: utf-8 -*-
+# stub: kettle-dev 1.2.4 x86_64-linux lib
+
+Gem::Specification.new do |s|
+  s.name = "kettle-dev"
+  s.version = "1.2.4"
+  s.installed_by_version = "4.0.5"
+end
+`)
+	if stubPlatformMatches(content, spec) {
+		t.Fatal("expected platform mismatch for ruby lockfile spec")
+	}
+
+	spec.Platform = "x86_64-linux"
+	if !stubPlatformMatches(content, spec) {
+		t.Fatal("expected platform to match lockfile spec")
+	}
+}

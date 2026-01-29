@@ -1,6 +1,7 @@
 package geminstall
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -184,13 +185,39 @@ func ParseExtensionsFromMetadata(metadataYAML []byte) ([]string, error) {
 }
 
 // GemspecIsValid checks if a gemspec file contains the installed_by_version field
-// which is required for Bundler to recognize the gem as properly installed.
-func GemspecIsValid(specPath string) bool {
+// and its stub platform matches the lockfile spec (Bundler materializes by platform).
+func GemspecIsValid(specPath string, spec lockfile.GemSpec) bool {
 	content, err := os.ReadFile(specPath)
 	if err != nil {
 		return false
 	}
-	return bytes.Contains(content, []byte("installed_by_version"))
+	if !bytes.Contains(content, []byte("installed_by_version")) {
+		return false
+	}
+	return stubPlatformMatches(content, spec)
+}
+
+func stubPlatformMatches(content []byte, spec lockfile.GemSpec) bool {
+	expected := spec.Platform
+	if expected == "" {
+		expected = "ruby"
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "# stub: ") {
+			continue
+		}
+		rest := strings.TrimPrefix(line, "# stub: ")
+		parts := strings.SplitN(rest, " ", 4)
+		if len(parts) < 3 {
+			return false
+		}
+		return parts[2] == expected
+	}
+
+	return false
 }
 
 // WriteGemSpecification writes a gemspec file for the given gem using a generic map approach
