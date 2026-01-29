@@ -69,6 +69,7 @@ func createBinstub(binstubPath, originalExec, gemName, vendorRoot string) error 
 	binstub.WriteString(fmt.Sprintf("vendor_root = \"%s\"\n", vendorRoot))
 	binstub.WriteString("ENV[\"GEM_HOME\"] = vendor_root\n")
 	binstub.WriteString("ENV[\"GEM_PATH\"] = vendor_root\n")
+	binstub.WriteString("ENV[\"BUNDLE_PATH\"] = \"\" if ENV[\"BUNDLE_PATH\"] == vendor_root\n")
 	binstub.WriteString("\n")
 	binstub.WriteString("# Add all gem lib directories to load path\n")
 	binstub.WriteString("gems_dir = File.join(vendor_root, \"gems\")\n")

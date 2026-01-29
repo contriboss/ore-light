@@ -502,6 +502,8 @@ func buildExecutionEnv(vendorDir string, specs []lockfile.GemSpec) ([]string, er
 		env = setEnv(env, "GEM_PATH", vendorDir)
 		// Disable Bundler's auto-setup to avoid conflicts
 		env = setEnv(env, "BUNDLE_GEMFILE", "")
+		// If BUNDLE_PATH points at a gem home, Bundler will mis-scope it.
+		env = clearBundlePathIfGemHome(env, vendorDir)
 	}
 
 	env = prependPath(env, filepath.Join(vendorDir, "bin"))
@@ -538,6 +540,31 @@ func setEnv(env []string, key, value string) []string {
 		}
 	}
 	return append(env, prefix+value)
+}
+
+func clearBundlePathIfGemHome(env []string, gemHome string) []string {
+	bundlePath, ok := getEnvValue(env, "BUNDLE_PATH")
+	if !ok || bundlePath == "" {
+		return env
+	}
+	if samePath(bundlePath, gemHome) || looksLikeGemHome(bundlePath) {
+		return setEnv(env, "BUNDLE_PATH", "")
+	}
+	return env
+}
+
+func samePath(a, b string) bool {
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+func looksLikeGemHome(path string) bool {
+	if _, err := os.Stat(filepath.Join(path, "specifications")); err == nil {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join(path, "gems")); err == nil {
+		return true
+	}
+	return false
 }
 
 func prependPath(env []string, path string) []string {
