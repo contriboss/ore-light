@@ -194,7 +194,13 @@ func GemspecIsValid(specPath string, spec lockfile.GemSpec) bool {
 	if !bytes.Contains(content, []byte("installed_by_version")) {
 		return false
 	}
-	return stubPlatformMatches(content, spec)
+	if stubPlatformMatches(content, spec) {
+		return true
+	}
+	if os.Getenv("ORE_DEBUG") != "" {
+		fmt.Printf("DEBUG: gemspec platform mismatch %s lock=%q stub=%q\n", spec.FullName(), spec.Platform, stubPlatform(content))
+	}
+	return false
 }
 
 func stubPlatformMatches(content []byte, spec lockfile.GemSpec) bool {
@@ -203,6 +209,10 @@ func stubPlatformMatches(content []byte, spec lockfile.GemSpec) bool {
 		expected = "ruby"
 	}
 
+	return stubPlatform(content) == expected
+}
+
+func stubPlatform(content []byte) string {
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -212,12 +222,12 @@ func stubPlatformMatches(content []byte, spec lockfile.GemSpec) bool {
 		rest := strings.TrimPrefix(line, "# stub: ")
 		parts := strings.SplitN(rest, " ", 4)
 		if len(parts) < 3 {
-			return false
+			return ""
 		}
-		return parts[2] == expected
+		return parts[2]
 	}
 
-	return false
+	return ""
 }
 
 // WriteGemSpecification writes a gemspec file for the given gem using a generic map approach
@@ -249,7 +259,12 @@ func WriteGemSpecification(vendorDir string, spec lockfile.GemSpec, metadataYAML
 	if _, ok := rawData["version"]; !ok {
 		rawData["version"] = spec.Version
 	}
+	originalPlatform, _ := rawData["platform"].(string)
 	normalizePlatformForLockfile(spec, rawData)
+	if os.Getenv("ORE_DEBUG") != "" {
+		normalizedPlatform, _ := rawData["platform"].(string)
+		fmt.Printf("DEBUG: gemspec platform %s lock=%q metadata=%q normalized=%q\n", spec.FullName(), spec.Platform, originalPlatform, normalizedPlatform)
+	}
 
 	// Generate Ruby code
 	rubyCode, err := generateGenericGemspec(rawData)
@@ -277,6 +292,9 @@ func writeBasicGemspec(vendorDir string, spec lockfile.GemSpec) error {
 	platformLine := ""
 	if platform != "" && platform != "ruby" {
 		platformLine = fmt.Sprintf("  s.platform = %q\n", platform)
+	}
+	if os.Getenv("ORE_DEBUG") != "" {
+		fmt.Printf("DEBUG: gemspec platform %s lock=%q metadata=%q normalized=%q\n", spec.FullName(), spec.Platform, "", platform)
 	}
 
 	rubyCode := fmt.Sprintf(`# -*- encoding: utf-8 -*-
