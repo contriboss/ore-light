@@ -150,14 +150,25 @@ func ResolveVendorDir(cfg *Config, detectRubyVersion func() string, getSystemGem
 }
 
 func looksLikeGemHome(path string) bool {
-	specsDir := filepath.Join(path, "specifications")
-	if _, err := os.Stat(specsDir); err == nil {
-		return true
+	expectedDirs := []string{
+		"specifications",
+		"gems",
+		"doc",
+		"extensions",
+		"build_info",
+		"cache",
 	}
-	gemsDir := filepath.Join(path, "gems")
-	if _, err := os.Stat(gemsDir); err == nil {
-		return true
+
+	matchCount := 0
+	for _, name := range expectedDirs {
+		if _, err := os.Stat(filepath.Join(path, name)); err == nil {
+			matchCount++
+			if matchCount >= 2 {
+				return true
+			}
+		}
 	}
+
 	return false
 }
 

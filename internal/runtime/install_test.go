@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -77,5 +79,27 @@ func TestPathGemInstallPath(t *testing.T) {
 
 	if actualDir != expectedDir {
 		t.Errorf("path gem path = %q, want %q", actualDir, expectedDir)
+	}
+}
+
+func TestInstallFromCacheCreatesVendorDirs(t *testing.T) {
+	cacheDir := t.TempDir()
+	vendorDir := filepath.Join(t.TempDir(), "vendor")
+
+	_, err := InstallFromCache(context.Background(), cacheDir, vendorDir, nil, false, false, nil)
+	if err != nil {
+		t.Fatalf("InstallFromCache() returned error: %v", err)
+	}
+
+	expectedDirs := []string{
+		filepath.Join(vendorDir, "gems"),
+		filepath.Join(vendorDir, "cache"),
+		filepath.Join(vendorDir, "bin"),
+		filepath.Join(vendorDir, "specifications", "cache"),
+	}
+	for _, dir := range expectedDirs {
+		if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
+			t.Fatalf("expected directory %q to exist", dir)
+		}
 	}
 }
