@@ -55,7 +55,9 @@ func createBinstub(binstubPath, originalExec, gemName, vendorRoot string) error 
 
 	// Create binstub content - manually construct to ensure proper Ruby syntax
 	var binstub strings.Builder
-	binstub.WriteString("#!/usr/bin/env ruby\n")
+	binstub.WriteString("#!/usr/bin/env sh\n")
+	binstub.WriteString("exec ruby -x \"$0\" \"$@\"\n")
+	binstub.WriteString("#!ruby\n")
 	binstub.WriteString("# frozen_string_literal: true\n")
 	binstub.WriteString("\n")
 	binstub.WriteString("#\n")
