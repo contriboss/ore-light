@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/contriboss/gemfile-go/lockfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -66,4 +67,24 @@ dependencies:
 			}
 		}
 	}
+}
+
+func TestNormalizePlatformForLockfile(t *testing.T) {
+	t.Run("coerces metadata platform to ruby when lockfile is ruby", func(t *testing.T) {
+		spec := lockfile.GemSpec{Name: "kettle-dev", Version: "1.2.4"}
+		data := map[string]interface{}{"platform": "x86_64-linux"}
+		normalizePlatformForLockfile(spec, data)
+		if got, _ := data["platform"].(string); got != "ruby" {
+			t.Fatalf("expected platform to be ruby, got %q", got)
+		}
+	})
+
+	t.Run("overrides metadata platform with lockfile platform", func(t *testing.T) {
+		spec := lockfile.GemSpec{Name: "nokogiri", Version: "1.16.0", Platform: "x86_64-linux"}
+		data := map[string]interface{}{"platform": "ruby"}
+		normalizePlatformForLockfile(spec, data)
+		if got, _ := data["platform"].(string); got != "x86_64-linux" {
+			t.Fatalf("expected platform to be x86_64-linux, got %q", got)
+		}
+	})
 }

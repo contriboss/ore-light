@@ -222,6 +222,7 @@ func WriteGemSpecification(vendorDir string, spec lockfile.GemSpec, metadataYAML
 	if _, ok := rawData["version"]; !ok {
 		rawData["version"] = spec.Version
 	}
+	normalizePlatformForLockfile(spec, rawData)
 
 	// Generate Ruby code
 	rubyCode, err := generateGenericGemspec(rawData)
@@ -241,15 +242,26 @@ func writeBasicGemspec(vendorDir string, spec lockfile.GemSpec) error {
 	specDir := filepath.Join(vendorDir, "specifications")
 	specPath := filepath.Join(specDir, fmt.Sprintf("%s.gemspec", spec.FullName()))
 
+	platform := spec.Platform
+	if platform == "" {
+		platform = "ruby"
+	}
+
+	platformLine := ""
+	if platform != "" && platform != "ruby" {
+		platformLine = fmt.Sprintf("  s.platform = %q\n", platform)
+	}
+
 	rubyCode := fmt.Sprintf(`# -*- encoding: utf-8 -*-
-# stub: %s %s ruby lib
+# stub: %s %s %s lib
 
 Gem::Specification.new do |s|
   s.name = %q
   s.version = %q
+%s
   s.installed_by_version = %q
 end
-`, spec.Name, spec.Version, spec.Name, spec.Version, ruby.DefaultRubyGemsVersion)
+`, spec.Name, spec.Version, platform, spec.Name, spec.Version, platformLine, ruby.DefaultRubyGemsVersion)
 
 	return os.WriteFile(specPath, []byte(rubyCode), 0o644)
 }
@@ -293,6 +305,17 @@ func filterAndNormalize(data map[string]interface{}) {
 	} else {
 		// Fallback if missing
 		data["date"] = "1980-01-02"
+	}
+}
+
+func normalizePlatformForLockfile(spec lockfile.GemSpec, data map[string]interface{}) {
+	if spec.Platform != "" && spec.Platform != "ruby" {
+		data["platform"] = spec.Platform
+		return
+	}
+
+	if platform, ok := data["platform"].(string); ok && platform != "" && platform != "ruby" {
+		data["platform"] = "ruby"
 	}
 }
 
