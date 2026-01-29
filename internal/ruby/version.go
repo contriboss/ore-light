@@ -321,10 +321,9 @@ func parseRubyVersion(path string) string {
 // 4) Version manager paths (mise/asdf/rbenv), 5) User gem dir, 6) gem command
 func GetSystemGemDir(detectRubyVersion func() string) string {
 	// 1. Check GEM_HOME environment variable
+	// Respect it even if the directory doesn't exist yet; installers will create it.
 	if gemHome := os.Getenv("GEM_HOME"); gemHome != "" {
-		if info, err := os.Stat(gemHome); err == nil && info.IsDir() {
-			return gemHome
-		}
+		return gemHome
 	}
 
 	// 2. Detect Ruby version for path construction
