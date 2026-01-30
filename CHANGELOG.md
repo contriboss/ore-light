@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.21.0](https://github.com/contriboss/ore-light/compare/v0.20.2...v0.21.0) (2026-01-29)
+
+
+### Features
+
+* Add tests & documentation ([5d9978f](https://github.com/contriboss/ore-light/commit/5d9978fe1f6f53256a168ae9fd4b332d91a4f578))
+
+
+### Bug Fixes
+
+* 🐛 debugging ([fcc7f43](https://github.com/contriboss/ore-light/commit/fcc7f43baef5a76b5254f366fd42025968d833cd))
+* 🐛 Keep platform aligned with lockfile during gemspec generation ([260d498](https://github.com/contriboss/ore-light/commit/260d498656965baef533a37a09e97804b9ee7936))
+* 🐛 make ore binstubs Ruby and bundle-aware ([bb93707](https://github.com/contriboss/ore-light/commit/bb937071134d6c72b6e79bbb7c789a0c9ebd963b))
+* 🐛 Treat BUNDLE_PATH gem homes as fully scoped ([d16d452](https://github.com/contriboss/ore-light/commit/d16d452e83299caa85c0d3a3bd67e42293f8a468))
+* 🐛 validate gemspec stub platform during install ([fe69fcd](https://github.com/contriboss/ore-light/commit/fe69fcd57b00769dc053b0b1aa96ecbf7d94d47a))
+* 🐛 wrap ore binstubs with sh exec ([9516df1](https://github.com/contriboss/ore-light/commit/9516df12511cb462ab2e9b16dbc21571f1b847af))
+
 ## [0.20.2](https://github.com/contriboss/ore-light/compare/v0.20.1...v0.20.2) (2026-01-28)
 
 
