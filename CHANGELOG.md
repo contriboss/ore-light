@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.0](https://github.com/contriboss/ore-light/compare/v0.24.0...v0.25.0) (2026-02-08)
+
+
+### Features
+
+* ⬆️ Support `gems.rb` =&gt; `gems.locked` ([14de047](https://github.com/contriboss/ore-light/commit/14de0479787a5a53671d8e7a4a52e1748bc1fd17))
+* ⬆️ Support `gems.rb` =&gt; `gems.locked` ([33b52ee](https://github.com/contriboss/ore-light/commit/33b52ee061663a3190b6293a8adb4236e215deb1))
+
 ## [Unreleased](https://github.com/contriboss/ore-light/compare/v0.24.0...HEAD)
 
 ### Features
