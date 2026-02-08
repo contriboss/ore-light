@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime/pprof"
 	"time"
 
@@ -74,10 +73,7 @@ func RunLock(args []string) error {
 	}
 
 	// Determine lockfile path for display
-	lockfilePath := effectiveGemfilePath + ".lock"
-	if filepath.Base(effectiveGemfilePath) == "gems.rb" {
-		lockfilePath = filepath.Join(filepath.Dir(effectiveGemfilePath), "gems.locked")
-	}
+	lockfilePath := deriveLockfilePathFromGemfile(effectiveGemfilePath)
 
 	if *verbose {
 		fmt.Printf("Updated %s\n", lockfilePath)

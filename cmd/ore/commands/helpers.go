@@ -117,6 +117,66 @@ func defaultLockfilePath() string {
 	return config.DefaultLockfilePath()
 }
 
+// deriveLockfilePathFromGemfile derives the lockfile path from a Gemfile path
+// without checking if it exists.
+func deriveLockfilePathFromGemfile(gemfilePath string) string {
+	dir := filepath.Dir(gemfilePath)
+	base := filepath.Base(gemfilePath)
+
+	if base == "gems.rb" {
+		return filepath.Join(dir, "gems.locked")
+	}
+	return gemfilePath + ".lock"
+}
+
+// resolveLockfilePath determines the lockfile path based on flags and defaults.
+// It prioritizes the explicit lockfile flag, then derives it from the gemfile flag,
+// and finally falls back to the default lockfile path.
+// If the lockfile does not exist, it returns an error.
+func resolveLockfilePath(gemfileFlag, lockfileFlag string) (string, error) {
+	if lockfileFlag != "" {
+		if _, err := os.Stat(lockfileFlag); err != nil {
+			return "", fmt.Errorf("lockfile not found: %s", lockfileFlag)
+		}
+		return lockfileFlag, nil
+	}
+
+	var path string
+	if gemfileFlag != "" {
+		var err error
+		path, err = findLockfilePath(gemfileFlag)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		path = defaultLockfilePath()
+		if _, err := os.Stat(path); err != nil {
+			return "", fmt.Errorf("default lockfile not found (tried %s)", path)
+		}
+	}
+
+	return path, nil
+}
+
+// resolveLockfilePathWithDerivedFallback is like resolveLockfilePath but if the
+// lockfile doesn't exist, it returns the derived path instead of an error.
+// This is useful for commands like 'install' or 'update' that can generate the lockfile.
+func resolveLockfilePathWithDerivedFallback(gemfileFlag, lockfileFlag string) string {
+	if lockfileFlag != "" {
+		return lockfileFlag
+	}
+
+	if gemfileFlag != "" {
+		path, err := findLockfilePath(gemfileFlag)
+		if err == nil {
+			return path
+		}
+		return deriveLockfilePathFromGemfile(gemfileFlag)
+	}
+
+	return defaultLockfilePath()
+}
+
 // loadLockfile loads and parses a lockfile
 func loadLockfile(lockfilePath string) (*lockfile.Lockfile, error) {
 	file, err := os.Open(lockfilePath)

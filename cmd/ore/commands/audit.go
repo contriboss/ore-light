@@ -26,14 +26,9 @@ func RunAudit(args []string) error {
 	}
 
 	// Resolve effective lockfile path
-	effectiveLockfilePath := *lockfilePath
-	if effectiveLockfilePath == "" {
-		if *gemfilePath != "" {
-			// If -gemfile is provided, use it to derive lockfile path
-			effectiveLockfilePath = *gemfilePath + ".lock"
-		} else {
-			effectiveLockfilePath = defaultLockfilePath()
-		}
+	effectiveLockfilePath, err := resolveLockfilePath(*gemfilePath, *lockfilePath)
+	if err != nil {
+		return err
 	}
 
 	// Load lockfile
