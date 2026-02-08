@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.0](https://github.com/contriboss/ore-light/compare/v0.21.0...v0.22.0) (2026-02-08)
+
+
+### Features
+
+* ⬆️ Upgrade to gemfile-go v0.9.0 w/ hash rocket support ([bfaf3f5](https://github.com/contriboss/ore-light/commit/bfaf3f51e0afd598d1e15cc30905cced77f000e3))
+* ⬆️ Upgrade to gemfile-go v0.9.0 w/ hash rocket support ([86ce552](https://github.com/contriboss/ore-light/commit/86ce5520fe587387a226e730c0515c015ea87355))
+
 ## [0.21.0](https://github.com/contriboss/ore-light/compare/v0.20.2...v0.21.0) (2026-01-29)
 
 
