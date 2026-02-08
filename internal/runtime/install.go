@@ -287,7 +287,7 @@ func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs [
 
 // InstallPathGems installs gems from local paths.
 // rubyScope is the Bundler-compatible path segment (e.g., "ruby/3.4.0").
-func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
+func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig, lockfileDir string) (InstallReport, error) {
 	report := InstallReport{Total: len(pathSpecs)}
 
 	engine := ruby.DetectEngine()
@@ -326,7 +326,13 @@ func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs
 			return InstallReport{}, fmt.Errorf("failed to clean install dir for %s: %w", gemName, err)
 		}
 
-		if err := copyPathGem(spec, destDir); err != nil {
+		// Resolve path relative to lockfile if it's relative
+		remotePath := spec.Remote
+		if !filepath.IsAbs(remotePath) && lockfileDir != "" {
+			remotePath = filepath.Join(lockfileDir, remotePath)
+		}
+
+		if err := copyPathGem(remotePath, destDir); err != nil {
 			return InstallReport{}, fmt.Errorf("failed to copy path gem %s: %w", spec.Name, err)
 		}
 
@@ -575,8 +581,8 @@ func shortRevision(rev string) string {
 	return rev
 }
 
-func copyPathGem(spec lockfile.PathGemSpec, destDir string) error {
-	pathSource, err := resolver.NewPathSource(spec.Remote)
+func copyPathGem(path string, destDir string) error {
+	pathSource, err := resolver.NewPathSource(path)
 	if err != nil {
 		return fmt.Errorf("failed to create path source: %w", err)
 	}

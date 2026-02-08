@@ -41,7 +41,7 @@ func TestGemfileFlag(t *testing.T) {
 			InstallGitGems: func(ctx context.Context, vendorDir, rubyScope string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
 				return InstallReport{}, nil
 			},
-			InstallPathGems: func(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
+			InstallPathGems: func(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig, lockfileDir string) (InstallReport, error) {
 				return InstallReport{}, nil
 			},
 		}

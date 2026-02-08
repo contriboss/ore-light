@@ -86,11 +86,16 @@ func RunCheck(args []string) error {
 	}
 
 	// Check path gems (these should always be available at their source)
+	lockfileDir := filepath.Dir(finalLockfilePath)
 	for _, spec := range lock.PathSpecs {
-		if _, err := os.Stat(spec.Remote); err != nil {
+		remotePath := spec.Remote
+		if !filepath.IsAbs(remotePath) && lockfileDir != "" {
+			remotePath = filepath.Join(lockfileDir, remotePath)
+		}
+		if _, err := os.Stat(remotePath); err != nil {
 			missing = append(missing, fmt.Sprintf("%s (%s) [path: %s]", spec.Name, spec.Version, spec.Remote))
 			if *verbose {
-				fmt.Printf("  ✗ %s (%s) [path] - source not found at %s\n", spec.Name, spec.Version, spec.Remote)
+				fmt.Printf("  ✗ %s (%s) [path] - source not found at %s\n", spec.Name, spec.Version, remotePath)
 			}
 		} else {
 			installed++
