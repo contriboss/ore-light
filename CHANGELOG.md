@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.0](https://github.com/contriboss/ore-light/compare/v0.22.0...v0.23.0) (2026-02-08)
+
+
+### Features
+
+* ⬆️ Upgrade to gemfile-go v0.10.0 w/ single group/platform support ([77f7c9f](https://github.com/contriboss/ore-light/commit/77f7c9f29ce5c9a790edf6e1d338116be6d53081))
+* ⬆️ Upgrade to gemfile-go v0.10.0 w/ single group/platform support ([3bbdd6e](https://github.com/contriboss/ore-light/commit/3bbdd6ea62fbce0a30edd446198f7699c4405916))
+
 ## [0.22.0](https://github.com/contriboss/ore-light/compare/v0.21.0...v0.22.0) (2026-02-08)
 
 
