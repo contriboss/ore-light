@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.0](https://github.com/contriboss/ore-light/compare/v0.23.0...v0.24.0) (2026-02-08)
+
+
+### Features
+
+* ⬆️ Consistent support for `-gemfile` (and `-lockfile`) ([b080b01](https://github.com/contriboss/ore-light/commit/b080b01818c63f4de78f9f4b0fbf835153613d09))
+* ⬆️ Support `-gemfile` (and `-lockfile` where applicable) flag across all relevant commands ([db6a56f](https://github.com/contriboss/ore-light/commit/db6a56f607ec05d3b9c20b68599d16ebce1d0f18))
+
 ## [0.23.0](https://github.com/contriboss/ore-light/compare/v0.22.0...v0.23.0) (2026-02-08)
 
 
