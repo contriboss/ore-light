@@ -19,13 +19,25 @@ func RunAudit(args []string) error {
 	}
 
 	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
-	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
+	gemfilePath := fs.String("gemfile", "", "Path to Gemfile (used to derive lockfile path)")
+	lockfilePath := fs.String("lockfile", "", "Path to Gemfile.lock")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
+	// Resolve effective lockfile path
+	effectiveLockfilePath := *lockfilePath
+	if effectiveLockfilePath == "" {
+		if *gemfilePath != "" {
+			// If -gemfile is provided, use it to derive lockfile path
+			effectiveLockfilePath = *gemfilePath + ".lock"
+		} else {
+			effectiveLockfilePath = defaultLockfilePath()
+		}
+	}
+
 	// Load lockfile
-	parsed, err := loadLockfile(*lockfilePath)
+	parsed, err := loadLockfile(effectiveLockfilePath)
 	if err != nil {
 		return err
 	}

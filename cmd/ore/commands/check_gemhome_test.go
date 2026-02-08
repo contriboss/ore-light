@@ -30,12 +30,12 @@ gem 'rake'
 	oldBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
 	defer func() {
 		if oldBundleGemfile == "" {
-			os.Unsetenv("BUNDLE_GEMFILE")
+			_ = os.Unsetenv("BUNDLE_GEMFILE")
 		} else {
-			os.Setenv("BUNDLE_GEMFILE", oldBundleGemfile)
+			_ = os.Setenv("BUNDLE_GEMFILE", oldBundleGemfile)
 		}
 	}()
-	os.Setenv("BUNDLE_GEMFILE", testGemfilePath)
+	_ = os.Setenv("BUNDLE_GEMFILE", testGemfilePath)
 
 	// Generate lockfile
 	lockfilePath := testGemfilePath + ".lock"
@@ -58,12 +58,12 @@ gem 'rake'
 	oldGemHome := os.Getenv("GEM_HOME")
 	defer func() {
 		if oldGemHome == "" {
-			os.Unsetenv("GEM_HOME")
+			_ = os.Unsetenv("GEM_HOME")
 		} else {
-			os.Setenv("GEM_HOME", oldGemHome)
+			_ = os.Setenv("GEM_HOME", oldGemHome)
 		}
 	}()
-	os.Setenv("GEM_HOME", gemHomeDir)
+	_ = os.Setenv("GEM_HOME", gemHomeDir)
 
 	// Create fake gem directories to simulate installed gems
 	for _, spec := range parsed.GemSpecs {

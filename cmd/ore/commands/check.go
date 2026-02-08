@@ -12,21 +12,38 @@ import (
 // RunCheck implements the ore check command
 func RunCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
-	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
+	gemfilePath := fs.String("gemfile", "", "Path to Gemfile (used to derive lockfile path)")
+	lockfilePath := fs.String("lockfile", "", "Path to Gemfile.lock")
 	vendorDir := fs.String("vendor", defaultVendorDir(), "Vendor directory to check")
 	verbose := fs.Bool("v", false, "Enable verbose output")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
+	// Resolve effective lockfile path
+	effectiveLockfilePath := *lockfilePath
+	if effectiveLockfilePath == "" {
+		if *gemfilePath != "" {
+			// If -gemfile is provided, use it to derive lockfile path
+			effectiveLockfilePath = *gemfilePath + ".lock"
+		} else {
+			effectiveLockfilePath = defaultLockfilePath()
+		}
+	}
+
 	// Find the lockfile - supports both Gemfile.lock and gems.locked
-	lockfilePath, err := findLockfilePath(*gemfilePath)
+	finalLockfilePath, err := findLockfilePath(effectiveLockfilePath)
 	if err != nil {
-		return fmt.Errorf("failed to find lockfile: %w - run 'ore lock' first", err)
+		// If findLockfilePath fails, try to use effectiveLockfilePath directly if it exists
+		if _, serr := os.Stat(effectiveLockfilePath); serr == nil {
+			finalLockfilePath = effectiveLockfilePath
+		} else {
+			return fmt.Errorf("failed to find lockfile: %w - run 'ore lock' first", err)
+		}
 	}
 
 	// Parse lockfile
-	lock, err := lockfile.ParseFile(lockfilePath)
+	lock, err := lockfile.ParseFile(finalLockfilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse lockfile: %w", err)
 	}
@@ -108,8 +125,7 @@ func RunCheck(args []string) error {
 
 		// Enhanced debugging for CI failures
 		fmt.Printf("\nDebug Information:\n")
-		fmt.Printf("  Gemfile: %s\n", *gemfilePath)
-		fmt.Printf("  Lockfile: %s\n", lockfilePath)
+		fmt.Printf("  Lockfile: %s\n", finalLockfilePath)
 		fmt.Printf("  Vendor directory: %s\n", *vendorDir)
 		fmt.Printf("  Gems directory: %s\n", gemsDir)
 

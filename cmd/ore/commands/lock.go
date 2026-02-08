@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 // RunLock implements the ore lock command
 func RunLock(args []string) error {
 	fs := flag.NewFlagSet("lock", flag.ContinueOnError)
-	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
+	gemfilePath := fs.String("gemfile", "", "Path to Gemfile")
 	verbose := fs.Bool("v", false, "Enable verbose output")
 	cpuProfile := fs.String("cpuprofile", "", "Write CPU profile to file")
 	allowPrerelease := fs.Bool("prerelease", false, "Allow prerelease versions")
@@ -27,6 +28,12 @@ func RunLock(args []string) error {
 
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	// Resolve effective Gemfile path
+	effectiveGemfilePath := *gemfilePath
+	if effectiveGemfilePath == "" {
+		effectiveGemfilePath = defaultGemfilePath()
 	}
 
 	// Enable CPU profiling if requested
@@ -46,18 +53,18 @@ func RunLock(args []string) error {
 		defer pprof.StopCPUProfile()
 	}
 
-	if _, err := os.Stat(*gemfilePath); err != nil {
-		return fmt.Errorf("gemfile not found at %s", *gemfilePath)
+	if _, err := os.Stat(effectiveGemfilePath); err != nil {
+		return fmt.Errorf("gemfile not found at %s", effectiveGemfilePath)
 	}
 
 	if *verbose {
-		fmt.Printf("Resolving dependencies from %s...\n", *gemfilePath)
+		fmt.Printf("Resolving dependencies from %s...\n", effectiveGemfilePath)
 	}
 
 	resolver.SetAllowPrereleases(*allowPrerelease)
 
 	startTime := time.Now()
-	if err := resolver.GenerateLockfileWithPlatforms(*gemfilePath, nil, platforms); err != nil {
+	if err := resolver.GenerateLockfileWithPlatforms(effectiveGemfilePath, nil, platforms); err != nil {
 		return fmt.Errorf("failed to generate lockfile: %w", err)
 	}
 	elapsed := time.Since(startTime)
@@ -66,7 +73,12 @@ func RunLock(args []string) error {
 		fmt.Printf("Resolution took: %v\n", elapsed)
 	}
 
-	lockfilePath := *gemfilePath + ".lock"
+	// Determine lockfile path for display
+	lockfilePath := effectiveGemfilePath + ".lock"
+	if filepath.Base(effectiveGemfilePath) == "gems.rb" {
+		lockfilePath = filepath.Join(filepath.Dir(effectiveGemfilePath), "gems.locked")
+	}
+
 	if *verbose {
 		fmt.Printf("Updated %s\n", lockfilePath)
 	} else {

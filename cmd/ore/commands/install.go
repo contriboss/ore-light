@@ -50,7 +50,8 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 	startTime := time.Now()
 
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
-	lockfilePath := fs.String("lockfile", defaultLockfilePath(), "Path to Gemfile.lock")
+	gemfilePath := fs.String("gemfile", "", "Path to Gemfile (used to derive lockfile path)")
+	lockfilePath := fs.String("lockfile", "", "Path to Gemfile.lock")
 	workers := fs.Int("workers", defaultDownloadWorkers(), "Number of concurrent downloads")
 	force := fs.Bool("force", false, "Re-download or reinstall even if artifacts exist")
 	vendorDir := fs.String("vendor", callbacks.GetDefaultVendorDir(), "Destination directory for installed gems")
@@ -62,12 +63,23 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		return err
 	}
 
+	// Resolve effective lockfile path
+	effectiveLockfilePath := *lockfilePath
+	if effectiveLockfilePath == "" {
+		if *gemfilePath != "" {
+			// If -gemfile is provided, use it to derive lockfile path
+			effectiveLockfilePath = *gemfilePath + ".lock"
+		} else {
+			effectiveLockfilePath = defaultLockfilePath()
+		}
+	}
+
 	quiet := quietOutput()
 
 	// Debug: show which lockfile we're using
 	if !quiet || os.Getenv("ORE_DEBUG") != "" {
 		fmt.Printf("DEBUG: BUNDLE_GEMFILE=%s\n", os.Getenv("BUNDLE_GEMFILE"))
-		fmt.Printf("DEBUG: Using lockfile: %s\n", *lockfilePath)
+		fmt.Printf("DEBUG: Using lockfile: %s\n", effectiveLockfilePath)
 	}
 
 	dm, err := callbacks.GetDownloadManager(*workers)
@@ -82,7 +94,7 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 	dm.CheckSourceHealth(ctx)
 
 	// Load both regular gems and git gems from lockfile
-	parsed, err := loadOrGenerateLockfile(*lockfilePath, quiet)
+	parsed, err := loadOrGenerateLockfile(effectiveLockfilePath, quiet)
 	if err != nil {
 		return err
 	}
@@ -117,12 +129,15 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		}
 
 		// If filtering by groups, we need to load the Gemfile to get group information
-		gemfilePath := detectGemfileFromLock(*lockfilePath)
-		if gemfilePath == "" {
-			gemfilePath = "Gemfile"
+		effectiveGemfilePath := *gemfilePath
+		if effectiveGemfilePath == "" {
+			effectiveGemfilePath = detectGemfileFromLock(effectiveLockfilePath)
+		}
+		if effectiveGemfilePath == "" {
+			effectiveGemfilePath = "Gemfile"
 		}
 
-		if err := enrichGemsWithGroups(gemfilePath, parsed); err != nil {
+		if err := enrichGemsWithGroups(effectiveGemfilePath, parsed); err != nil {
 			if *verbose {
 				fmt.Fprintf(os.Stderr, "Warning: could not load Gemfile for group filtering: %v\n", err)
 				fmt.Fprintf(os.Stderr, "Proceeding without group filtering.\n")
@@ -249,11 +264,11 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 
 	// Only include --lockfile if non-default
 	defaultLock := defaultLockfilePath()
-	if *lockfilePath != defaultLock {
+	if effectiveLockfilePath != defaultLock {
 		// Simplify lockfile path
-		lockDisplay := *lockfilePath
+		lockDisplay := effectiveLockfilePath
 		if cwd, err := os.Getwd(); err == nil {
-			if rel, err := filepath.Rel(cwd, *lockfilePath); err == nil && !strings.HasPrefix(rel, "..") {
+			if rel, err := filepath.Rel(cwd, effectiveLockfilePath); err == nil && !strings.HasPrefix(rel, "..") {
 				lockDisplay = rel
 			}
 		}

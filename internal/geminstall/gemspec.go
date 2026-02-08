@@ -637,9 +637,7 @@ func formatMap(v interface{}) string {
 			// Let's remove it for map values to match observed Bundler behavior.
 			// This might be risky if there are maps where values MUST be frozen,
 			// but gemspecs rarely use maps other than metadata.
-			if strings.HasSuffix(valStr, ".freeze") {
-				valStr = strings.TrimSuffix(valStr, ".freeze")
-			}
+			valStr = strings.TrimSuffix(valStr, ".freeze")
 			parts = append(parts, fmt.Sprintf("%s => %s", keyStr, valStr))
 		}
 	}
@@ -747,8 +745,6 @@ func writeDependencies(buf *bytes.Buffer, v interface{}) {
 		method := "add_runtime_dependency"
 		if strings.Contains(typeStr, "development") {
 			method = "add_development_dependency"
-		} else {
-			method = "add_runtime_dependency" // Bundler default output explicit? NO, it uses add_runtime_dependency
 		}
 		// Actually Bundler uses add_dependency for runtime?
 		// Diff showed:

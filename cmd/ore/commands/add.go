@@ -12,6 +12,7 @@ import (
 // RunAdd implements the ore add command
 func RunAdd(args []string) error {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
+	gemfilePath := fs.String("gemfile", "", "Path to Gemfile")
 	version := fs.String("version", "", "Version constraint (e.g., ~> 8.0)")
 	group := fs.String("group", "", "Group to add gem to")
 	github := fs.String("github", "", "GitHub repository (user/repo)")
@@ -34,13 +35,19 @@ func RunAdd(args []string) error {
 	}
 
 	// Find Gemfile
-	paths, err := lockfile.FindGemfiles()
-	if err != nil {
-		return fmt.Errorf("failed to find Gemfile: %w", err)
+	var gemfileToUse string
+	if *gemfilePath != "" {
+		gemfileToUse = *gemfilePath
+	} else {
+		paths, err := lockfile.FindGemfiles()
+		if err != nil {
+			return fmt.Errorf("failed to find Gemfile: %w", err)
+		}
+		gemfileToUse = paths.Gemfile
 	}
 
 	if *verbose {
-		fmt.Printf("📝 Adding gems to %s...\n", paths.GetGemfileName())
+		fmt.Printf("📝 Adding gems to %s...\n", gemfileToUse)
 	}
 
 	// Process each gem
@@ -93,7 +100,7 @@ func RunAdd(args []string) error {
 		}
 
 		// Add gem to Gemfile using gemfile-go writer
-		if err := gemfile.AddGemToFile(paths.Gemfile, &dep); err != nil {
+		if err := gemfile.AddGemToFile(gemfileToUse, &dep); err != nil {
 			return fmt.Errorf("failed to add gem %s: %w", gemName, err)
 		}
 
@@ -109,7 +116,7 @@ func RunAdd(args []string) error {
 		if *verbose {
 			fmt.Println("🔒 Resolving dependencies and updating lockfile...")
 		}
-		if err := resolver.GenerateLockfile(paths.Gemfile); err != nil {
+		if err := resolver.GenerateLockfile(gemfileToUse); err != nil {
 			return fmt.Errorf("failed to generate lockfile: %w", err)
 		}
 		fmt.Println("💡 Run 'ore install' to fetch the new gems")

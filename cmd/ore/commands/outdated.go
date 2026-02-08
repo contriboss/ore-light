@@ -14,11 +14,17 @@ import (
 // Auto-detects TTY: shows TUI if interactive terminal, plain text if piped
 func RunOutdated(args []string) error {
 	fs := flag.NewFlagSet("outdated", flag.ContinueOnError)
-	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
+	gemfilePath := fs.String("gemfile", "", "Path to Gemfile")
 	plainText := fs.Bool("plain", false, "Force plain text output (no TUI)")
 	cpuProfile := fs.String("cpuprofile", "", "Write CPU profile to file")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	// Resolve effective Gemfile path
+	effectiveGemfilePath := *gemfilePath
+	if effectiveGemfilePath == "" {
+		effectiveGemfilePath = defaultGemfilePath()
 	}
 
 	// CPU profiling support
@@ -39,7 +45,7 @@ func RunOutdated(args []string) error {
 	stdinTTY := isatty.IsTerminal(os.Stdin.Fd())
 
 	if !*plainText && stdoutTTY && stdinTTY {
-		if err := RunOutdatedTUI(*gemfilePath); err == nil {
+		if err := RunOutdatedTUI(effectiveGemfilePath); err == nil {
 			return nil
 		} else {
 			logger.Warn("could not start interactive TUI, falling back to plain text output", "error", err)
@@ -51,7 +57,7 @@ func RunOutdated(args []string) error {
 	// Plain text output (for pipes, scripts, or --plain flag)
 	logger.Debug("checking for outdated gems...")
 
-	gems, err := LoadOutdatedGems(*gemfilePath)
+	gems, err := LoadOutdatedGems(effectiveGemfilePath)
 	if err != nil {
 		return err
 	}
