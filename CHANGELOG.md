@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased](https://github.com/contriboss/ore-light/compare/v0.24.0...HEAD)
+
+### Features
+
+* Centralized and hardened lockfile resolution logic into reusable helpers (`resolveLockfilePath`, `resolveLockfilePathWithDerivedFallback`).
+* Read-only commands now fail fast with a clear error if the required lockfile is missing.
+* Expanded and strengthened the regression test suite to cover `gems.rb` and `gems.locked` interactions with more robust assertions.
+
+### Bug Fixes
+
+* Fixed lockfile derivation logic to correctly support Bundler's `gems.rb` -> `gems.locked` convention across all commands.
+* Resolved issues where commands would incorrectly search for `gems.rb.lock` or `Gemfile.lock.lock`.
+* Tightened flag parsing and error handling in `outdated` command tests to prevent silent regression skips.
+
 ## [0.24.0](https://github.com/contriboss/ore-light/compare/v0.23.0...v0.24.0) (2026-02-08)
 
 

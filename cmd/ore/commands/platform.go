@@ -27,8 +27,8 @@ func RunPlatform(args []string) error {
 		effectiveGemfilePath = defaultGemfilePath()
 	}
 
-	// Find the lockfile - supports both Gemfile.lock and gems.locked
-	lockfilePath, _ := findLockfilePath(effectiveGemfilePath)
+	// Resolve effective lockfile path
+	lockfilePath, _ := resolveLockfilePath(effectiveGemfilePath, "")
 
 	// Get current platform
 	currentPlatform := detectCurrentPlatform()

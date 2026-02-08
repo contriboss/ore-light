@@ -25,11 +25,8 @@ func RunUpdate(args []string) error {
 
 	gems := fs.Args()
 
-	// Find the lockfile - supports both Gemfile.lock and gems.locked
-	lockfilePath, err := findLockfilePath(effectiveGemfilePath)
-	if err != nil {
-		return fmt.Errorf("failed to find lockfile: %w", err)
-	}
+	// Resolve effective lockfile path
+	lockfilePath := resolveLockfilePathWithDerivedFallback(effectiveGemfilePath, "")
 
 	// Parse Gemfile to ensure it exists and is valid
 	parser := gemfile.NewGemfileParser(effectiveGemfilePath)

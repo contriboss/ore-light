@@ -21,25 +21,9 @@ func RunShow(args []string) error {
 	}
 
 	// Resolve effective lockfile path
-	effectiveLockfilePath := *lockfilePath
-	if effectiveLockfilePath == "" {
-		if *gemfilePath != "" {
-			// If -gemfile is provided, use it to derive lockfile path
-			effectiveLockfilePath = *gemfilePath + ".lock"
-		} else {
-			effectiveLockfilePath = defaultLockfilePath()
-		}
-	}
-
-	// Find the lockfile - supports both Gemfile.lock and gems.locked
-	finalLockfilePath, err := findLockfilePath(effectiveLockfilePath)
+	finalLockfilePath, err := resolveLockfilePath(*gemfilePath, *lockfilePath)
 	if err != nil {
-		// If findLockfilePath fails, try to use effectiveLockfilePath directly if it exists
-		if _, serr := os.Stat(effectiveLockfilePath); serr == nil {
-			finalLockfilePath = effectiveLockfilePath
-		} else {
-			return fmt.Errorf("failed to find lockfile: %w", err)
-		}
+		return err
 	}
 
 	// Parse lockfile

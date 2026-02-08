@@ -200,9 +200,11 @@ func TestGemfileFlag(t *testing.T) {
 		// Note: LoadOutdatedGems might fail without actual network or registry mock,
 		// but we want to check flag parsing and lockfile derivation.
 		err := RunOutdated(args)
-		if err != nil && !strings.Contains(err.Error(), "failed to check") {
-			// If it fails because of something other than registry check, it might be a flag issue
-			t.Logf("RunOutdated failed (possibly expected): %v", err)
+		if err != nil {
+			// Require either success or an error that clearly comes from the version-check network path
+			if !strings.Contains(err.Error(), "failed to check") {
+				t.Fatalf("RunOutdated failed with unexpected error (likely lockfile/flag issue): %v", err)
+			}
 		}
 	})
 
