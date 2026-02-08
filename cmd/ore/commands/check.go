@@ -93,7 +93,8 @@ func RunCheck(args []string) error {
 			remotePath = filepath.Join(lockfileDir, remotePath)
 		}
 		if _, err := os.Stat(remotePath); err != nil {
-			missing = append(missing, fmt.Sprintf("%s (%s) [path: %s]", spec.Name, spec.Version, spec.Remote))
+			// Show resolved path in summary for clarity
+			missing = append(missing, fmt.Sprintf("%s (%s) [path: %s (resolved to: %s)]", spec.Name, spec.Version, spec.Remote, remotePath))
 			if *verbose {
 				fmt.Printf("  ✗ %s (%s) [path] - source not found at %s\n", spec.Name, spec.Version, remotePath)
 			}
