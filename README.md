@@ -554,6 +554,7 @@ See [.github/workflows/ore-demo.yml](.github/workflows/ore-demo.yml) for a compl
 ```bash
 mise install
 mage build
+mage test
 
 # Install to ~/.local/bin (default if HOME is set)
 mage install
