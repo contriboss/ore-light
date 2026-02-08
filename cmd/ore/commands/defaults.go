@@ -73,8 +73,8 @@ func RunInstallDefault(args []string) error {
 				ExtensionsFailed: report.ExtensionsFailed,
 			}, nil
 		},
-		InstallPathGems: func(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
-			report, err := runtime.InstallPathGems(ctx, vendorDir, rubyScope, pathSpecs, force, buildExtensions, extConfig)
+		InstallPathGems: func(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig, lockfileDir string) (InstallReport, error) {
+			report, err := runtime.InstallPathGems(ctx, vendorDir, rubyScope, pathSpecs, force, buildExtensions, extConfig, lockfileDir)
 			if err != nil {
 				return InstallReport{}, err
 			}

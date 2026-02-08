@@ -42,7 +42,7 @@ type InstallCallbacks struct {
 	GetDefaultVendorDir func() string
 	InstallFromCache    func(ctx context.Context, cacheDir, vendorDir string, gems []lockfile.GemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error)
 	InstallGitGems      func(ctx context.Context, vendorDir, rubyScope string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error)
-	InstallPathGems     func(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error)
+	InstallPathGems     func(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig, lockfileDir string) (InstallReport, error)
 }
 
 // RunInstall implements the ore install command
@@ -211,7 +211,8 @@ func RunInstall(args []string, callbacks InstallCallbacks) error {
 		if !quiet {
 			fmt.Printf("Installing %d path gem(s)...\n", len(pathSpecs))
 		}
-		pathReport, err := callbacks.InstallPathGems(ctx, *vendorDir, rubyScope, pathSpecs, *force, *buildExts, extConfig)
+		lockfileDir := filepath.Dir(effectiveLockfilePath)
+		pathReport, err := callbacks.InstallPathGems(ctx, *vendorDir, rubyScope, pathSpecs, *force, *buildExts, extConfig, lockfileDir)
 		if err != nil {
 			return err
 		}

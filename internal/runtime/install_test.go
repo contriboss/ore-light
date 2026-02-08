@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/contriboss/gemfile-go/lockfile"
 )
 
 func TestShortRevision(t *testing.T) {
@@ -101,5 +103,52 @@ func TestInstallFromCacheCreatesVendorDirs(t *testing.T) {
 		if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
 			t.Fatalf("expected directory %q to exist", dir)
 		}
+	}
+}
+
+func TestInstallPathGems_RelativePath(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	// Create a dummy gem directory
+	gemDir := filepath.Join(tmpDir, "libs", "my_gem")
+	if err := os.MkdirAll(gemDir, 0755); err != nil {
+		t.Fatalf("failed to create gem dir: %v", err)
+	}
+	gemspecPath := filepath.Join(gemDir, "my_gem.gemspec")
+	gemspecContent := `Gem::Specification.new do |s|
+  s.name    = "my_gem"
+  s.version = "0.1.0"
+end`
+	if err := os.WriteFile(gemspecPath, []byte(gemspecContent), 0644); err != nil {
+		t.Fatalf("failed to write gemspec: %v", err)
+	}
+
+	// Setup vendor and lockfile dirs
+	vendorDir := filepath.Join(tmpDir, "vendor")
+	rubyScope := "ruby/3.4.0"
+	lockfileDir := filepath.Join(tmpDir, "subdir")
+	if err := os.MkdirAll(lockfileDir, 0755); err != nil {
+		t.Fatalf("failed to create lockfile dir: %v", err)
+	}
+
+	pathSpecs := []lockfile.PathGemSpec{
+		{
+			Name:    "my_gem",
+			Version: "0.1.0",
+			Remote:  "../libs/my_gem", // Relative to lockfileDir
+		},
+	}
+
+	// Call InstallPathGems
+	_, err := InstallPathGems(ctx, vendorDir, rubyScope, pathSpecs, false, false, nil, lockfileDir)
+	if err != nil {
+		t.Fatalf("InstallPathGems failed: %v", err)
+	}
+
+	// Verify gem was "installed" (copied) to vendor directory
+	expectedGemDir := filepath.Join(vendorDir, rubyScope, "gems", "my_gem-0.1.0")
+	if _, err := os.Stat(expectedGemDir); os.IsNotExist(err) {
+		t.Errorf("expected gem directory %s to exist", expectedGemDir)
 	}
 }
