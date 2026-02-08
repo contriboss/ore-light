@@ -12,7 +12,8 @@ import (
 // RunClean implements the ore clean command
 func RunClean(args []string) error {
 	fs := flag.NewFlagSet("clean", flag.ContinueOnError)
-	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
+	gemfilePath := fs.String("gemfile", "", "Path to Gemfile (used to derive lockfile path)")
+	lockfilePath := fs.String("lockfile", "", "Path to Gemfile.lock")
 	vendorDir := fs.String("vendor", defaultVendorDir(), "Vendor directory")
 	dryRun := fs.Bool("dry-run", false, "Print what would be removed without actually removing")
 	verbose := fs.Bool("v", false, "Enable verbose output")
@@ -20,14 +21,30 @@ func RunClean(args []string) error {
 		return err
 	}
 
+	// Resolve effective lockfile path
+	effectiveLockfilePath := *lockfilePath
+	if effectiveLockfilePath == "" {
+		if *gemfilePath != "" {
+			// If -gemfile is provided, use it to derive lockfile path
+			effectiveLockfilePath = *gemfilePath + ".lock"
+		} else {
+			effectiveLockfilePath = defaultLockfilePath()
+		}
+	}
+
 	// Find the lockfile - supports both Gemfile.lock and gems.locked
-	lockfilePath, err := findLockfilePath(*gemfilePath)
+	finalLockfilePath, err := findLockfilePath(effectiveLockfilePath)
 	if err != nil {
-		return fmt.Errorf("failed to find lockfile: %w", err)
+		// If findLockfilePath fails, we might just use the path as is if it exists
+		if _, serr := os.Stat(effectiveLockfilePath); serr == nil {
+			finalLockfilePath = effectiveLockfilePath
+		} else {
+			return fmt.Errorf("failed to find lockfile: %w", err)
+		}
 	}
 
 	// Parse lockfile to get gems that should be kept
-	lock, err := lockfile.ParseFile(lockfilePath)
+	lock, err := lockfile.ParseFile(finalLockfilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse lockfile: %w", err)
 	}

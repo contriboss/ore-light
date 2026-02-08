@@ -13,22 +13,35 @@ import (
 // RunWhy implements the ore why command
 func RunWhy(args []string) error {
 	fs := flag.NewFlagSet("why", flag.ContinueOnError)
+	gemfilePath := fs.String("gemfile", "", "Path to Gemfile (used to derive lockfile path)")
+	lockfilePath := fs.String("lockfile", "", "Path to Gemfile.lock")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
+	// Resolve effective lockfile path
+	effectiveLockfilePath := *lockfilePath
+	if effectiveLockfilePath == "" {
+		if *gemfilePath != "" {
+			// If -gemfile is provided, use it to derive lockfile path
+			effectiveLockfilePath = *gemfilePath + ".lock"
+		} else {
+			effectiveLockfilePath = defaultLockfilePath()
+		}
+	}
+
 	if len(fs.Args()) == 0 {
-		return fmt.Errorf("usage: ore why <gem>")
+		return fmt.Errorf("usage: ore why [options] <gem>")
 	}
 
 	gemName := fs.Args()[0]
-	return why(gemName)
+	return why(gemName, effectiveLockfilePath)
 }
 
 // why shows why a gem is in the bundle by displaying dependency chains
-func why(gemName string) error {
+func why(gemName string, lockfilePath string) error {
 	// Parse lockfile
-	lock, err := lockfile.ParseFile("Gemfile.lock")
+	lock, err := lockfile.ParseFile(lockfilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse Gemfile.lock: %w", err)
 	}

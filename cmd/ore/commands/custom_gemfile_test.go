@@ -28,12 +28,12 @@ gem 'rake'
 	oldEnv := os.Getenv("BUNDLE_GEMFILE")
 	defer func() {
 		if oldEnv == "" {
-			os.Unsetenv("BUNDLE_GEMFILE")
+			_ = os.Unsetenv("BUNDLE_GEMFILE")
 		} else {
-			os.Setenv("BUNDLE_GEMFILE", oldEnv)
+			_ = os.Setenv("BUNDLE_GEMFILE", oldEnv)
 		}
 	}()
-	os.Setenv("BUNDLE_GEMFILE", testGemfilePath)
+	_ = os.Setenv("BUNDLE_GEMFILE", testGemfilePath)
 
 	// Generate lockfile
 	lockfilePath := testGemfilePath + ".lock"

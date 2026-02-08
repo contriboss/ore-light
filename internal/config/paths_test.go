@@ -36,9 +36,9 @@ func TestResolveGemfilePath_BundleGemfile(t *testing.T) {
 	originalBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
 	defer func() {
 		if originalBundleGemfile != "" {
-			os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
+			_ = os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
 		} else {
-			os.Unsetenv("BUNDLE_GEMFILE")
+			_ = os.Unsetenv("BUNDLE_GEMFILE")
 		}
 	}()
 
@@ -87,11 +87,11 @@ func TestResolveGemfilePath_BundleGemfile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear env var first
-			os.Unsetenv("BUNDLE_GEMFILE")
+			_ = os.Unsetenv("BUNDLE_GEMFILE")
 
 			// Set test env var
 			if tt.bundleGemfile != "" {
-				os.Setenv("BUNDLE_GEMFILE", tt.bundleGemfile)
+				_ = os.Setenv("BUNDLE_GEMFILE", tt.bundleGemfile)
 			}
 
 			// Create config
@@ -132,15 +132,15 @@ func TestResolveGemfilePath_BundleGemfile_Regression(t *testing.T) {
 	originalBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
 	defer func() {
 		if originalBundleGemfile != "" {
-			os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
+			_ = os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
 		} else {
-			os.Unsetenv("BUNDLE_GEMFILE")
+			_ = os.Unsetenv("BUNDLE_GEMFILE")
 		}
 	}()
 
 	// Simulate CI environment with Appraisal
 	// This is the exact scenario that was failing in tree_haver CI
-	os.Setenv("BUNDLE_GEMFILE", "Appraisal.root.gemfile")
+	_ = os.Setenv("BUNDLE_GEMFILE", "Appraisal.root.gemfile")
 
 	path, source, err := ResolveGemfilePath(nil)
 
@@ -176,9 +176,9 @@ func TestDefaultLockfilePath_BundleGemfile(t *testing.T) {
 	originalBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
 	defer func() {
 		if originalBundleGemfile != "" {
-			os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
+			_ = os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
 		} else {
-			os.Unsetenv("BUNDLE_GEMFILE")
+			_ = os.Unsetenv("BUNDLE_GEMFILE")
 		}
 	}()
 
@@ -223,7 +223,7 @@ func TestDefaultLockfilePath_BundleGemfile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set BUNDLE_GEMFILE
-			os.Setenv("BUNDLE_GEMFILE", tt.bundleGemfile)
+			_ = os.Setenv("BUNDLE_GEMFILE", tt.bundleGemfile)
 
 			// Call DefaultLockfilePath
 			lockfilePath := DefaultLockfilePath()
@@ -243,9 +243,9 @@ func TestResolveVendorDir_BundlePathGemHome(t *testing.T) {
 	originalBundlePath := os.Getenv("BUNDLE_PATH")
 	defer func() {
 		if originalBundlePath != "" {
-			os.Setenv("BUNDLE_PATH", originalBundlePath)
+			_ = os.Setenv("BUNDLE_PATH", originalBundlePath)
 		} else {
-			os.Unsetenv("BUNDLE_PATH")
+			_ = os.Unsetenv("BUNDLE_PATH")
 		}
 	}()
 
@@ -277,9 +277,9 @@ func TestResolveVendorDir_BundlePathGemsDir(t *testing.T) {
 	originalBundlePath := os.Getenv("BUNDLE_PATH")
 	defer func() {
 		if originalBundlePath != "" {
-			os.Setenv("BUNDLE_PATH", originalBundlePath)
+			_ = os.Setenv("BUNDLE_PATH", originalBundlePath)
 		} else {
-			os.Unsetenv("BUNDLE_PATH")
+			_ = os.Unsetenv("BUNDLE_PATH")
 		}
 	}()
 
@@ -311,9 +311,9 @@ func TestResolveVendorDir_BundlePathBaseDir(t *testing.T) {
 	originalBundlePath := os.Getenv("BUNDLE_PATH")
 	defer func() {
 		if originalBundlePath != "" {
-			os.Setenv("BUNDLE_PATH", originalBundlePath)
+			_ = os.Setenv("BUNDLE_PATH", originalBundlePath)
 		} else {
-			os.Unsetenv("BUNDLE_PATH")
+			_ = os.Unsetenv("BUNDLE_PATH")
 		}
 	}()
 
@@ -339,9 +339,9 @@ func TestResolveVendorDir_BundlePathBaseDir_NoRubyVersion(t *testing.T) {
 	originalBundlePath := os.Getenv("BUNDLE_PATH")
 	defer func() {
 		if originalBundlePath != "" {
-			os.Setenv("BUNDLE_PATH", originalBundlePath)
+			_ = os.Setenv("BUNDLE_PATH", originalBundlePath)
 		} else {
-			os.Unsetenv("BUNDLE_PATH")
+			_ = os.Unsetenv("BUNDLE_PATH")
 		}
 	}()
 
@@ -376,15 +376,15 @@ func TestDefaultLockfilePath_NoFallback_Regression(t *testing.T) {
 	originalBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
 	defer func() {
 		if originalBundleGemfile != "" {
-			os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
+			_ = os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
 		} else {
-			os.Unsetenv("BUNDLE_GEMFILE")
+			_ = os.Unsetenv("BUNDLE_GEMFILE")
 		}
 	}()
 
 	// Simulate the EXACT scenario from tree_haver CI failure
 	// where BUNDLE_GEMFILE=Appraisal.root.gemfile but that lockfile doesn't exist
-	os.Setenv("BUNDLE_GEMFILE", "Appraisal.root.gemfile")
+	_ = os.Setenv("BUNDLE_GEMFILE", "Appraisal.root.gemfile")
 
 	lockfilePath := DefaultLockfilePath()
 
@@ -419,14 +419,14 @@ func TestDefaultLockfilePath_UnsetBundleGemfile(t *testing.T) {
 	originalBundleGemfile := os.Getenv("BUNDLE_GEMFILE")
 	defer func() {
 		if originalBundleGemfile != "" {
-			os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
+			_ = os.Setenv("BUNDLE_GEMFILE", originalBundleGemfile)
 		} else {
-			os.Unsetenv("BUNDLE_GEMFILE")
+			_ = os.Unsetenv("BUNDLE_GEMFILE")
 		}
 	}()
 
 	// Unset BUNDLE_GEMFILE to test default behavior
-	os.Unsetenv("BUNDLE_GEMFILE")
+	_ = os.Unsetenv("BUNDLE_GEMFILE")
 
 	lockfilePath := DefaultLockfilePath()
 

@@ -5,6 +5,7 @@
 
 ### Features
 
+* Support `-gemfile` (and `-lockfile` where applicable) flag across all relevant commands: `install`, `add`, `remove`, `update`, `lock`, `check`, `outdated`, `exec`, `audit`, `tree`, `clean`, `show`, and `platform`.
 * ⬆️ Upgrade to gemfile-go v0.10.0 w/ single group/platform support ([77f7c9f](https://github.com/contriboss/ore-light/commit/77f7c9f29ce5c9a790edf6e1d338116be6d53081))
 * ⬆️ Upgrade to gemfile-go v0.10.0 w/ single group/platform support ([3bbdd6e](https://github.com/contriboss/ore-light/commit/3bbdd6ea62fbce0a30edd446198f7699c4405916))
 

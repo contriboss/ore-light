@@ -15,24 +15,27 @@ import (
 // RunPlatform implements the ore platform command
 func RunPlatform(args []string) error {
 	fs := flag.NewFlagSet("platform", flag.ContinueOnError)
-	gemfilePath := fs.String("gemfile", defaultGemfilePath(), "Path to Gemfile")
+	gemfilePath := fs.String("gemfile", "", "Path to Gemfile")
 	rubyOnly := fs.Bool("ruby", false, "Display only Ruby version requirement")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	// Find the lockfile - supports both Gemfile.lock and gems.locked
-	lockfilePath, err := findLockfilePath(*gemfilePath)
-	if err != nil {
-		return fmt.Errorf("failed to find lockfile: %w", err)
+	// Resolve effective Gemfile path
+	effectiveGemfilePath := *gemfilePath
+	if effectiveGemfilePath == "" {
+		effectiveGemfilePath = defaultGemfilePath()
 	}
+
+	// Find the lockfile - supports both Gemfile.lock and gems.locked
+	lockfilePath, _ := findLockfilePath(effectiveGemfilePath)
 
 	// Get current platform
 	currentPlatform := detectCurrentPlatform()
 
 	if *rubyOnly {
 		// Just show Ruby requirement from Gemfile
-		parser := gemfile.NewGemfileParser(*gemfilePath)
+		parser := gemfile.NewGemfileParser(effectiveGemfilePath)
 		parsed, err := parser.Parse()
 		if err != nil {
 			return fmt.Errorf("failed to parse Gemfile: %w", err)
@@ -46,7 +49,7 @@ func RunPlatform(args []string) error {
 
 	// Parse Gemfile for Ruby requirement
 	var rubyRequirement string
-	parser := gemfile.NewGemfileParser(*gemfilePath)
+	parser := gemfile.NewGemfileParser(effectiveGemfilePath)
 	parsed, err := parser.Parse()
 	if err == nil && parsed.RubyVersion != "" {
 		rubyRequirement = parsed.RubyVersion
