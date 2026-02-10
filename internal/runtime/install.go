@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/internal/config"
@@ -250,7 +251,9 @@ func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs [
 		gemName := fmt.Sprintf("%s-%s", spec.Name, shortRevision(spec.Revision))
 		destDir := filepath.Join(bundlerGemsDir, gemName)
 
-		if _, err := os.Stat(destDir); err == nil && !force {
+		// Check if git gem is properly installed: directory exists, .git present, and at correct revision.
+		// Bundler requires .git to verify the checkout (see Bundler::Source::Git::GitProxy#allowed_with_path).
+		if isGitGemInstalled(destDir, spec.Revision) && !force {
 			if buildExtensions {
 				// Git gems don't have gemspec metadata available yet, pass nil to trigger filesystem check
 				needsBuild, err := extensions.NeedsBuild(destDir, nil, engine)
@@ -605,6 +608,58 @@ func shortRevision(rev string) string {
 		return rev[:12]
 	}
 	return rev
+}
+
+// isGitGemInstalled checks if a git gem is properly installed for Bundler compatibility.
+// Bundler requires:
+// 1. The gem directory exists
+// 2. A .git directory is present (Bundler checks this in GitProxy#allowed_with_path)
+// 3. HEAD is at the expected revision
+//
+// Without this validation, ore might skip installing a git gem because the directory
+// exists from a partial/failed install, but Bundler will fail with:
+// "The git source <url> is not yet checked out. Please run `bundle install`"
+func isGitGemInstalled(destDir, expectedRevision string) bool {
+	// Check if directory exists
+	if _, err := os.Stat(destDir); err != nil {
+		return false
+	}
+
+	// Check if .git directory exists (required by Bundler)
+	gitDir := filepath.Join(destDir, ".git")
+	if _, err := os.Stat(gitDir); err != nil {
+		return false
+	}
+
+	// Verify HEAD is at the expected revision
+	// Read HEAD to get current commit
+	headPath := filepath.Join(gitDir, "HEAD")
+	headContent, err := os.ReadFile(headPath)
+	if err != nil {
+		return false
+	}
+
+	headStr := string(headContent)
+	// HEAD can be a ref ("ref: refs/heads/main") or a detached SHA
+	// For our purposes, we check if it's detached (starts with the revision)
+	headStr = strings.TrimSpace(headStr)
+
+	if strings.HasPrefix(headStr, "ref:") {
+		// HEAD points to a ref, need to resolve it
+		refPath := strings.TrimPrefix(headStr, "ref: ")
+		refPath = strings.TrimSpace(refPath)
+		refFilePath := filepath.Join(gitDir, refPath)
+		refContent, err := os.ReadFile(refFilePath)
+		if err != nil {
+			// Try packed-refs as fallback
+			return false
+		}
+		headStr = strings.TrimSpace(string(refContent))
+	}
+
+	// Compare with expected revision (both full and short forms)
+	shortExpected := shortRevision(expectedRevision)
+	return strings.HasPrefix(headStr, shortExpected) || strings.HasPrefix(expectedRevision, headStr)
 }
 
 func copyPathGem(path string, destDir string) error {

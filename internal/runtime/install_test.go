@@ -84,6 +84,117 @@ func TestGitGemInstallPathSystemGemDir(t *testing.T) {
 	}
 }
 
+func TestIsGitGemInstalled(t *testing.T) {
+	// Test isGitGemInstalled validates git gems properly for Bundler compatibility.
+	// This test ensures ore doesn't skip git gem installation when the directory
+	// exists but isn't a valid git checkout (which would cause Bundler to fail with
+	// "The git source <url> is not yet checked out").
+
+	tests := []struct {
+		name             string
+		setupDir         func(t *testing.T, dir string)
+		expectedRevision string
+		want             bool
+	}{
+		{
+			name:             "directory does not exist",
+			setupDir:         func(t *testing.T, dir string) {}, // don't create anything
+			expectedRevision: "abc123def456",
+			want:             false,
+		},
+		{
+			name: "directory exists but no .git",
+			setupDir: func(t *testing.T, dir string) {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				// Create some files but no .git
+				if err := os.WriteFile(filepath.Join(dir, "lib", "gem.rb"), []byte("# gem"), 0644); err != nil {
+					os.MkdirAll(filepath.Join(dir, "lib"), 0755)
+					os.WriteFile(filepath.Join(dir, "lib", "gem.rb"), []byte("# gem"), 0644)
+				}
+			},
+			expectedRevision: "abc123def456",
+			want:             false,
+		},
+		{
+			name: "directory exists with .git but wrong revision",
+			setupDir: func(t *testing.T, dir string) {
+				if err := os.MkdirAll(filepath.Join(dir, ".git"), 0755); err != nil {
+					t.Fatal(err)
+				}
+				// Write HEAD with different revision
+				if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("deadbeef1234567890\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			expectedRevision: "abc123def456",
+			want:             false,
+		},
+		{
+			name: "directory exists with .git at correct revision (detached HEAD)",
+			setupDir: func(t *testing.T, dir string) {
+				if err := os.MkdirAll(filepath.Join(dir, ".git"), 0755); err != nil {
+					t.Fatal(err)
+				}
+				// Write HEAD with matching revision (detached)
+				if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("abc123def456789012345678901234567890abcd\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			expectedRevision: "abc123def456789012345678901234567890abcd",
+			want:             true,
+		},
+		{
+			name: "directory exists with .git at correct revision (short match)",
+			setupDir: func(t *testing.T, dir string) {
+				if err := os.MkdirAll(filepath.Join(dir, ".git"), 0755); err != nil {
+					t.Fatal(err)
+				}
+				// Write HEAD with full SHA, expect match with short revision
+				if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("abc123def456full789sha\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			expectedRevision: "abc123def456full789sha",
+			want:             true,
+		},
+		{
+			name: "directory exists with .git pointing to ref",
+			setupDir: func(t *testing.T, dir string) {
+				gitDir := filepath.Join(dir, ".git")
+				if err := os.MkdirAll(filepath.Join(gitDir, "refs", "heads"), 0755); err != nil {
+					t.Fatal(err)
+				}
+				// Write HEAD as a ref
+				if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+				// Write the ref file with the actual SHA
+				if err := os.WriteFile(filepath.Join(gitDir, "refs", "heads", "main"), []byte("abc123def456789\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			expectedRevision: "abc123def456789012345678901234567890",
+			want:             true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			gemDir := filepath.Join(tmpDir, "gem-abc123def456")
+
+			tt.setupDir(t, gemDir)
+
+			got := isGitGemInstalled(gemDir, tt.expectedRevision)
+			if got != tt.want {
+				t.Errorf("isGitGemInstalled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPathGemInstallPath(t *testing.T) {
 	// Test that path gem paths follow Bundler convention.
 	// vendorDir is the complete gem home (already includes ruby scope if needed).

@@ -1,7 +1,6 @@
 package resolver
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -337,10 +336,10 @@ func getGitCacheDir() (string, error) {
 	return filepath.Join(cacheHome, "ore", "git"), nil
 }
 
-// CloneAtRevision clones the repository at a specific revision to a destination directory
-// This is used during gem installation
-// Note: Uses exec.Command for git archive as go-git doesn't support archive
-// TODO: Contribute archive support to go-git upstream
+// CloneAtRevision clones the repository at a specific revision to a destination directory.
+// This is used during gem installation.
+// The .git directory is preserved because Bundler requires it to verify the gem
+// is checked out at the correct revision (see Bundler::Source::Git::GitProxy).
 func (g *GitSource) CloneAtRevision(revision, destDir string) error {
 	// First ensure the repo is in our cache
 	repoDir := g.getRepoDir()
@@ -348,24 +347,23 @@ func (g *GitSource) CloneAtRevision(revision, destDir string) error {
 		return err
 	}
 
-	// Create destination directory
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return err
+	// Clone from our cache to the destination directory
+	// We use --shared to save disk space (objects are hard-linked from cache)
+	// Note: --shared works because destDir is typically on the same filesystem as cache
+	cloneCmd := exec.Command("git", "clone", "--shared", repoDir, destDir)
+	if output, err := cloneCmd.CombinedOutput(); err != nil {
+		// Fallback to regular clone if --shared fails (e.g., cross-filesystem)
+		cloneCmd = exec.Command("git", "clone", repoDir, destDir)
+		if output, err := cloneCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git clone failed: %w\n%s", err, string(output))
+		}
+		_ = output // discard unused
 	}
 
-	// Use git archive to export the specific revision
-	// This is cleaner than clone + checkout as it doesn't include .git
-	cmd := exec.Command("git", "-C", repoDir, "archive", revision)
-	archiveData, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("git archive failed: %w", err)
-	}
-
-	// Extract the archive to destDir using tar
-	tarCmd := exec.Command("tar", "-x", "-C", destDir)
-	tarCmd.Stdin = bytes.NewReader(archiveData)
-	if output, err := tarCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("tar extraction failed: %w\n%s", err, string(output))
+	// Checkout the specific revision
+	checkoutCmd := exec.Command("git", "-C", destDir, "checkout", "--detach", revision)
+	if output, err := checkoutCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git checkout failed: %w\n%s", err, string(output))
 	}
 
 	return nil
