@@ -53,16 +53,15 @@ func TestShortRevision(t *testing.T) {
 }
 
 func TestGitGemInstallPath(t *testing.T) {
-	// Test that git gem paths follow Bundler convention:
-	// For vendor paths: <vendor>/<rubyScope>/bundler/gems/<name>-<revision[:12]>
-	// For system gem paths: <system-gem-dir>/bundler/gems/<name>-<revision[:12]> (no rubyScope)
-	vendorDir := "/usr/local/bundle"
-	rubyScope := "ruby/4.0.0"
+	// Test that git gem paths follow Bundler convention.
+	// vendorDir is the complete gem home (already includes ruby scope if needed).
+	// Git gems go in: <gem-home>/bundler/gems/<name>-<revision[:12]>
+	vendorDir := "/usr/local/bundle/ruby/4.0.0" // complete gem home path
 	revision := "b27518c5745b123456789abcdef"
 	gemName := "rgeo"
 
 	expectedDir := "/usr/local/bundle/ruby/4.0.0/bundler/gems/rgeo-b27518c5745b"
-	actualDir := filepath.Join(vendorDir, rubyScope, "bundler", "gems", gemName+"-"+shortRevision(revision))
+	actualDir := filepath.Join(vendorDir, "bundler", "gems", gemName+"-"+shortRevision(revision))
 
 	if actualDir != expectedDir {
 		t.Errorf("git gem path = %q, want %q", actualDir, expectedDir)
@@ -70,15 +69,13 @@ func TestGitGemInstallPath(t *testing.T) {
 }
 
 func TestGitGemInstallPathSystemGemDir(t *testing.T) {
-	// Test that git gems in system gem directory don't duplicate the ruby version path
-	// System gem dir already includes version: /path/to/ruby/gems/4.0.0
-	// Git gems should go in: /path/to/ruby/gems/4.0.0/bundler/gems/<name>-<revision>
-	// NOT: /path/to/ruby/gems/4.0.0/ruby/4.0.0/bundler/gems/<name>-<revision>
-	systemGemDir := "/usr/local/lib/ruby/gems/4.0.0"
+	// Test that git gems in system gem directory work correctly.
+	// System gem dir is the complete gem home: /path/to/ruby/gems/4.0.0
+	// Git gems go in: /path/to/ruby/gems/4.0.0/bundler/gems/<name>-<revision>
+	systemGemDir := "/usr/local/lib/ruby/gems/4.0.0" // complete gem home path
 	revision := "b27518c5745b"
 	gemName := "rgeo"
 
-	// Expected: no ruby scope duplication when using system gem dir
 	expectedDir := "/usr/local/lib/ruby/gems/4.0.0/bundler/gems/rgeo-b27518c5745b"
 	actualDir := filepath.Join(systemGemDir, "bundler", "gems", gemName+"-"+revision)
 
@@ -88,16 +85,15 @@ func TestGitGemInstallPathSystemGemDir(t *testing.T) {
 }
 
 func TestPathGemInstallPath(t *testing.T) {
-	// Test that path gem paths follow Bundler convention:
-	// For vendor paths: <vendor>/<rubyScope>/gems/<name>-<version>
-	// For system gem paths: <system-gem-dir>/gems/<name>-<version> (no rubyScope)
-	vendorDir := "/usr/local/bundle"
-	rubyScope := "ruby/4.0.0"
+	// Test that path gem paths follow Bundler convention.
+	// vendorDir is the complete gem home (already includes ruby scope if needed).
+	// Path gems go in: <gem-home>/gems/<name>-<version>
+	vendorDir := "/usr/local/bundle/ruby/4.0.0" // complete gem home path
 	gemName := "my_gem"
 	version := "1.0.0"
 
 	expectedDir := "/usr/local/bundle/ruby/4.0.0/gems/my_gem-1.0.0"
-	actualDir := filepath.Join(vendorDir, rubyScope, "gems", gemName+"-"+version)
+	actualDir := filepath.Join(vendorDir, "gems", gemName+"-"+version)
 
 	if actualDir != expectedDir {
 		t.Errorf("path gem path = %q, want %q", actualDir, expectedDir)
@@ -105,12 +101,13 @@ func TestPathGemInstallPath(t *testing.T) {
 }
 
 func TestPathGemInstallPathSystemGemDir(t *testing.T) {
-	// Test that path gems in system gem directory don't duplicate the ruby version path
-	systemGemDir := "/usr/local/lib/ruby/gems/4.0.0"
+	// Test that path gems in system gem directory work correctly.
+	// System gem dir is the complete gem home: /path/to/ruby/gems/4.0.0
+	// Path gems go in: /path/to/ruby/gems/4.0.0/gems/<name>-<version>
+	systemGemDir := "/usr/local/lib/ruby/gems/4.0.0" // complete gem home path
 	gemName := "my_gem"
 	version := "1.0.0"
 
-	// Expected: no ruby scope duplication when using system gem dir
 	expectedDir := "/usr/local/lib/ruby/gems/4.0.0/gems/my_gem-1.0.0"
 	actualDir := filepath.Join(systemGemDir, "gems", gemName+"-"+version)
 
@@ -159,9 +156,9 @@ end`
 		t.Fatalf("failed to write gemspec: %v", err)
 	}
 
-	// Setup vendor and lockfile dirs
-	vendorDir := filepath.Join(tmpDir, "vendor")
-	rubyScope := "ruby/3.4.0"
+	// Setup vendor dir as complete gem home (already includes ruby scope)
+	vendorDir := filepath.Join(tmpDir, "vendor", "ruby", "3.4.0")
+	rubyScope := "ruby/3.4.0" // Kept for API compatibility but not used in path construction
 	lockfileDir := filepath.Join(tmpDir, "subdir")
 	if err := os.MkdirAll(lockfileDir, 0755); err != nil {
 		t.Fatalf("failed to create lockfile dir: %v", err)
@@ -182,7 +179,8 @@ end`
 	}
 
 	// Verify gem was "installed" (copied) to vendor directory
-	expectedGemDir := filepath.Join(vendorDir, rubyScope, "gems", "my_gem-0.1.0")
+	// vendorDir is already the complete gem home, so gems go directly under <vendorDir>/gems/
+	expectedGemDir := filepath.Join(vendorDir, "gems", "my_gem-0.1.0")
 	if _, err := os.Stat(expectedGemDir); os.IsNotExist(err) {
 		t.Errorf("expected gem directory %s to exist", expectedGemDir)
 	}
