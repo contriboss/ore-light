@@ -237,7 +237,8 @@ func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs [
 	// we should NOT add rubyScope. When using a custom vendor path like vendor/bundle,
 	// we SHOULD add rubyScope for Bundler compatibility.
 	systemGemDir := getSystemGemDir(nil)
-	useRubyScope := vendorDir != systemGemDir
+	// Use filepath.Clean to normalize paths for comparison (handles trailing slashes, relative paths, etc.)
+	useRubyScope := filepath.Clean(vendorDir) != filepath.Clean(systemGemDir)
 
 	var bundlerGemsDir string
 	if useRubyScope {
@@ -325,7 +326,8 @@ func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs
 	// we should NOT add rubyScope. When using a custom vendor path like vendor/bundle,
 	// we SHOULD add rubyScope for Bundler compatibility.
 	systemGemDir := getSystemGemDir(nil)
-	useRubyScope := vendorDir != systemGemDir
+	// Use filepath.Clean to normalize paths for comparison (handles trailing slashes, relative paths, etc.)
+	useRubyScope := filepath.Clean(vendorDir) != filepath.Clean(systemGemDir)
 
 	var pathGemsDir string
 	if useRubyScope {
