@@ -219,13 +219,26 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 }
 
 // InstallGitGems installs gems from git sources.
-// rubyScope is the Bundler-compatible path segment (e.g., "ruby/3.4.0").
+// vendorDir is the complete gem home path (already includes ruby version if needed).
+// rubyScope parameter is kept for API compatibility but not used in path construction.
+//
+// Installation path: <vendorDir>/bundler/gems/<name>-<revision>
+//
+// Examples:
+// - vendorDir=/usr/local/bundle/ruby/4.0.0 → /usr/local/bundle/ruby/4.0.0/bundler/gems/gem-abc123
+// - vendorDir=/usr/local/lib/ruby/gems/4.0.0 → /usr/local/lib/ruby/gems/4.0.0/bundler/gems/gem-abc123
 func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
 	report := InstallReport{Total: len(gitSpecs)}
 
 	engine := ruby.DetectEngine()
 
-	if err := geminstall.EnsureDir(filepath.Join(vendorDir, rubyScope, "bundler", "gems")); err != nil {
+	// Determine the correct path for git gems.
+	// vendorDir is already the complete gem home path (e.g., /path/gems/4.0.0 or /vendor/ruby/4.0.0).
+	// We should NOT add rubyScope again as it would duplicate the version path.
+	// Git gems always go in <gem-home>/bundler/gems/ per Bundler convention.
+	bundlerGemsDir := filepath.Join(vendorDir, "bundler", "gems")
+
+	if err := geminstall.EnsureDir(bundlerGemsDir); err != nil {
 		return InstallReport{}, err
 	}
 
@@ -235,7 +248,7 @@ func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs [
 
 	for _, spec := range gitSpecs {
 		gemName := fmt.Sprintf("%s-%s", spec.Name, shortRevision(spec.Revision))
-		destDir := filepath.Join(vendorDir, rubyScope, "bundler", "gems", gemName)
+		destDir := filepath.Join(bundlerGemsDir, gemName)
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {
@@ -286,13 +299,26 @@ func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs [
 }
 
 // InstallPathGems installs gems from local paths.
-// rubyScope is the Bundler-compatible path segment (e.g., "ruby/3.4.0").
+// vendorDir is the complete gem home path (already includes ruby version if needed).
+// rubyScope parameter is kept for API compatibility but not used in path construction.
+//
+// Installation path: <vendorDir>/gems/<name>-<version>
+//
+// Examples:
+// - vendorDir=/usr/local/bundle/ruby/4.0.0 → /usr/local/bundle/ruby/4.0.0/gems/my_gem-1.0.0
+// - vendorDir=/usr/local/lib/ruby/gems/4.0.0 → /usr/local/lib/ruby/gems/4.0.0/gems/my_gem-1.0.0
 func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig, lockfileDir string) (InstallReport, error) {
 	report := InstallReport{Total: len(pathSpecs)}
 
 	engine := ruby.DetectEngine()
 
-	if err := geminstall.EnsureDir(filepath.Join(vendorDir, rubyScope, "gems")); err != nil {
+	// Determine the correct path for path gems.
+	// vendorDir is already the complete gem home path (e.g., /path/gems/4.0.0 or /vendor/ruby/4.0.0).
+	// We should NOT add rubyScope again as it would duplicate the version path.
+	// Path gems always go in <gem-home>/gems/ per Bundler convention.
+	pathGemsDir := filepath.Join(vendorDir, "gems")
+
+	if err := geminstall.EnsureDir(pathGemsDir); err != nil {
 		return InstallReport{}, err
 	}
 
@@ -302,7 +328,7 @@ func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs
 
 	for _, spec := range pathSpecs {
 		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
-		destDir := filepath.Join(vendorDir, rubyScope, "gems", gemName)
+		destDir := filepath.Join(pathGemsDir, gemName)
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {
