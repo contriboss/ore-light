@@ -9,6 +9,13 @@
 * 🐛 relative path resolution for "path" gems in lockfile ([d8f5cc2](https://github.com/contriboss/ore-light/commit/d8f5cc2a30ab70e4d52655abdcdb11f66bf03625))
 
 
+## [0.25.2](https://github.com/contriboss/ore-light/compare/v0.25.1...v0.25.2) (2026-02-10)
+
+
+### Bug Fixes
+
+* remove incorrect rubyScope path duplication in git/path gem installation ([e91846b](https://github.com/contriboss/ore-light/commit/e91846b4bc5cee2a9796826c941cd96a22a048cb))
+
 ## [0.25.1](https://github.com/contriboss/ore-light/compare/v0.25.1...v0.25.1) (2026-02-10)
 
 
