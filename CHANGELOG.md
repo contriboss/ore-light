@@ -9,6 +9,13 @@
 * 🐛 relative path resolution for "path" gems in lockfile ([d8f5cc2](https://github.com/contriboss/ore-light/commit/d8f5cc2a30ab70e4d52655abdcdb11f66bf03625))
 
 
+## [0.25.3](https://github.com/contriboss/ore-light/compare/v0.25.2...v0.25.3) (2026-02-10)
+
+
+### Bug Fixes
+
+* **install:** preserve .git and validate checkout for git gems ([3399829](https://github.com/contriboss/ore-light/commit/339982982ab4c2cb9de8115a27e778f6861c3fc9)), closes [#87](https://github.com/contriboss/ore-light/issues/87)
+
 ## [0.25.2](https://github.com/contriboss/ore-light/compare/v0.25.1...v0.25.2) (2026-02-10)
 
 
