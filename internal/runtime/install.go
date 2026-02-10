@@ -225,7 +225,21 @@ func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs [
 
 	engine := ruby.DetectEngine()
 
-	if err := geminstall.EnsureDir(filepath.Join(vendorDir, rubyScope, "bundler", "gems")); err != nil {
+	// Determine if we should use rubyScope in the path.
+	// When using system gem directory (which already includes version in path),
+	// we should NOT add rubyScope. When using a custom vendor path like vendor/bundle,
+	// we SHOULD add rubyScope for Bundler compatibility.
+	systemGemDir := getSystemGemDir(nil)
+	useRubyScope := vendorDir != systemGemDir
+
+	var bundlerGemsDir string
+	if useRubyScope {
+		bundlerGemsDir = filepath.Join(vendorDir, rubyScope, "bundler", "gems")
+	} else {
+		bundlerGemsDir = filepath.Join(vendorDir, "bundler", "gems")
+	}
+
+	if err := geminstall.EnsureDir(bundlerGemsDir); err != nil {
 		return InstallReport{}, err
 	}
 
@@ -235,7 +249,7 @@ func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs [
 
 	for _, spec := range gitSpecs {
 		gemName := fmt.Sprintf("%s-%s", spec.Name, shortRevision(spec.Revision))
-		destDir := filepath.Join(vendorDir, rubyScope, "bundler", "gems", gemName)
+		destDir := filepath.Join(bundlerGemsDir, gemName)
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {
@@ -292,7 +306,21 @@ func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs
 
 	engine := ruby.DetectEngine()
 
-	if err := geminstall.EnsureDir(filepath.Join(vendorDir, rubyScope, "gems")); err != nil {
+	// Determine if we should use rubyScope in the path.
+	// When using system gem directory (which already includes version in path),
+	// we should NOT add rubyScope. When using a custom vendor path like vendor/bundle,
+	// we SHOULD add rubyScope for Bundler compatibility.
+	systemGemDir := getSystemGemDir(nil)
+	useRubyScope := vendorDir != systemGemDir
+
+	var pathGemsDir string
+	if useRubyScope {
+		pathGemsDir = filepath.Join(vendorDir, rubyScope, "gems")
+	} else {
+		pathGemsDir = filepath.Join(vendorDir, "gems")
+	}
+
+	if err := geminstall.EnsureDir(pathGemsDir); err != nil {
 		return InstallReport{}, err
 	}
 
@@ -302,7 +330,7 @@ func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs
 
 	for _, spec := range pathSpecs {
 		gemName := fmt.Sprintf("%s-%s", spec.Name, spec.Version)
-		destDir := filepath.Join(vendorDir, rubyScope, "gems", gemName)
+		destDir := filepath.Join(pathGemsDir, gemName)
 
 		if _, err := os.Stat(destDir); err == nil && !force {
 			if buildExtensions {

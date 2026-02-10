@@ -54,7 +54,8 @@ func TestShortRevision(t *testing.T) {
 
 func TestGitGemInstallPath(t *testing.T) {
 	// Test that git gem paths follow Bundler convention:
-	// <vendor>/<rubyScope>/bundler/gems/<name>-<revision[:12]>
+	// For vendor paths: <vendor>/<rubyScope>/bundler/gems/<name>-<revision[:12]>
+	// For system gem paths: <system-gem-dir>/bundler/gems/<name>-<revision[:12]> (no rubyScope)
 	vendorDir := "/usr/local/bundle"
 	rubyScope := "ruby/4.0.0"
 	revision := "b27518c5745b123456789abcdef"
@@ -68,9 +69,28 @@ func TestGitGemInstallPath(t *testing.T) {
 	}
 }
 
+func TestGitGemInstallPathSystemGemDir(t *testing.T) {
+	// Test that git gems in system gem directory don't duplicate the ruby version path
+	// System gem dir already includes version: /path/to/ruby/gems/4.0.0
+	// Git gems should go in: /path/to/ruby/gems/4.0.0/bundler/gems/<name>-<revision>
+	// NOT: /path/to/ruby/gems/4.0.0/ruby/4.0.0/bundler/gems/<name>-<revision>
+	systemGemDir := "/usr/local/lib/ruby/gems/4.0.0"
+	revision := "b27518c5745b"
+	gemName := "rgeo"
+
+	// Expected: no ruby scope duplication when using system gem dir
+	expectedDir := "/usr/local/lib/ruby/gems/4.0.0/bundler/gems/rgeo-b27518c5745b"
+	actualDir := filepath.Join(systemGemDir, "bundler", "gems", gemName+"-"+revision)
+
+	if actualDir != expectedDir {
+		t.Errorf("git gem path in system dir = %q, want %q", actualDir, expectedDir)
+	}
+}
+
 func TestPathGemInstallPath(t *testing.T) {
 	// Test that path gem paths follow Bundler convention:
-	// <vendor>/<rubyScope>/gems/<name>-<version>
+	// For vendor paths: <vendor>/<rubyScope>/gems/<name>-<version>
+	// For system gem paths: <system-gem-dir>/gems/<name>-<version> (no rubyScope)
 	vendorDir := "/usr/local/bundle"
 	rubyScope := "ruby/4.0.0"
 	gemName := "my_gem"
@@ -81,6 +101,21 @@ func TestPathGemInstallPath(t *testing.T) {
 
 	if actualDir != expectedDir {
 		t.Errorf("path gem path = %q, want %q", actualDir, expectedDir)
+	}
+}
+
+func TestPathGemInstallPathSystemGemDir(t *testing.T) {
+	// Test that path gems in system gem directory don't duplicate the ruby version path
+	systemGemDir := "/usr/local/lib/ruby/gems/4.0.0"
+	gemName := "my_gem"
+	version := "1.0.0"
+
+	// Expected: no ruby scope duplication when using system gem dir
+	expectedDir := "/usr/local/lib/ruby/gems/4.0.0/gems/my_gem-1.0.0"
+	actualDir := filepath.Join(systemGemDir, "gems", gemName+"-"+version)
+
+	if actualDir != expectedDir {
+		t.Errorf("path gem path in system dir = %q, want %q", actualDir, expectedDir)
 	}
 }
 
