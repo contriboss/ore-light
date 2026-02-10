@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased](https://github.com/contriboss/ore-light/compare/v0.25.0...HEAD)
+## Unreleased
 
 ### Bug Fixes
 
