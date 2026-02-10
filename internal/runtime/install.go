@@ -220,6 +220,13 @@ func InstallFromCache(ctx context.Context, cacheDir, vendorDir string, gems []lo
 
 // InstallGitGems installs gems from git sources.
 // rubyScope is the Bundler-compatible path segment (e.g., "ruby/3.4.0").
+//
+// Installation paths differ based on vendorDir:
+// - Vendor path (e.g., vendor/bundle): <vendorDir>/<rubyScope>/bundler/gems/<name>-<revision>
+// - System gem dir: <vendorDir>/bundler/gems/<name>-<revision> (no rubyScope)
+//
+// This ensures Bundler can find git gems regardless of whether they're installed
+// to a custom vendor path or the system gem directory.
 func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs []lockfile.GitGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig) (InstallReport, error) {
 	report := InstallReport{Total: len(gitSpecs)}
 
@@ -301,6 +308,13 @@ func InstallGitGems(ctx context.Context, vendorDir, rubyScope string, gitSpecs [
 
 // InstallPathGems installs gems from local paths.
 // rubyScope is the Bundler-compatible path segment (e.g., "ruby/3.4.0").
+//
+// Installation paths differ based on vendorDir:
+// - Vendor path (e.g., vendor/bundle): <vendorDir>/<rubyScope>/gems/<name>-<version>
+// - System gem dir: <vendorDir>/gems/<name>-<version> (no rubyScope)
+//
+// This ensures Bundler can find path gems regardless of whether they're installed
+// to a custom vendor path or the system gem directory.
 func InstallPathGems(ctx context.Context, vendorDir, rubyScope string, pathSpecs []lockfile.PathGemSpec, force bool, buildExtensions bool, extConfig *extensions.BuildConfig, lockfileDir string) (InstallReport, error) {
 	report := InstallReport{Total: len(pathSpecs)}
 
