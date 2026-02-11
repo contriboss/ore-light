@@ -43,8 +43,8 @@ github.com/clipperhouse/uax29/v2 v2.3.1 h1:RjM8gnVbFbgI67SBekIC7ihFpyXwRPYWXn9BZ
 github.com/clipperhouse/uax29/v2 v2.3.1/go.mod h1:Wn1g7MK6OoeDT0vL+Q0SQLDz/KpfsVRgg6W7ihQeh4g=
 github.com/cloudflare/circl v1.6.2 h1:hL7VBpHHKzrV5WTfHCaBsgx/HGbBYlgrwvNXEVDYYsQ=
 github.com/cloudflare/circl v1.6.2/go.mod h1:2eXP6Qfat4O/Yhh8BznvKnJ+uzEoTQ6jVKJRn81BiS4=
-github.com/contriboss/gemfile-go v0.10.0 h1:esAP9AOPX/3SjKfscXLymj0urDDDttScXaR9UPdpado=
-github.com/contriboss/gemfile-go v0.10.0/go.mod h1:RJtv64md2JoJnCeEdC4qNxa/Q5ZKMXlpARXME8xo58k=
+github.com/contriboss/gemfile-go v0.11.0 h1:ibUlb7CJo5/BZz7JUt+VcQs6KOleGY8afrA9U2ajW5o=
+github.com/contriboss/gemfile-go v0.11.0/go.mod h1:RJtv64md2JoJnCeEdC4qNxa/Q5ZKMXlpARXME8xo58k=
 github.com/contriboss/go-update v1.0.1 h1:3a38DH/OXf60WvvlPi3w0uXEusn3aWjiYVd1bGN68Uk=
 github.com/contriboss/go-update v1.0.1/go.mod h1:0Ep8coxQH7eO5zwLNEPW/nzDCCw+KDMVOqTYgt00wy0=
 github.com/contriboss/pubgrub-go v0.3.4 h1:9Ro9Mv9YKrN/ZX/e2TGThfx8VL1+gijv0JjngsqvJMI=
