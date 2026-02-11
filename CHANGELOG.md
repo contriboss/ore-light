@@ -10,6 +10,13 @@
 
 * 🐛 relative path resolution for "path" gems in lockfile ([84ebdc1](https://github.com/contriboss/ore-light/commit/84ebdc192bad7e2699981fd5ed4381ed42b8c568))
 
+## [0.26.0](https://github.com/contriboss/ore-light/compare/v0.25.3...v0.26.0) (2026-02-11)
+
+
+### Miscellaneous Chores
+
+* release 0.26.0 ([edbdd89](https://github.com/contriboss/ore-light/commit/edbdd89d63e9635e7c4cad17b28518d8175946f0))
+
 ## [0.25.3](https://github.com/contriboss/ore-light/compare/v0.25.2...v0.25.3) (2026-02-10)
 
 ### Bug Fixes
