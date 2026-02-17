@@ -28,7 +28,7 @@ func RunPlatform(args []string) error {
 	}
 
 	// Resolve effective lockfile path
-	lockfilePath, _ := resolveLockfilePath(effectiveGemfilePath, "")
+	lockfilePath := resolveLockfilePathWithDerivedFallback(effectiveGemfilePath, "")
 
 	// Get current platform
 	currentPlatform := detectCurrentPlatform()
@@ -55,13 +55,11 @@ func RunPlatform(args []string) error {
 		rubyRequirement = parsed.RubyVersion
 	}
 
-	// Parse lockfile for platforms
+	// Parse lockfile for platforms using the gemfile-go soft API. If the lockfile
+	// is missing or cannot be read, we simply leave platforms empty.
 	var platforms []string
-	if _, err := os.Stat(lockfilePath); err == nil {
-		lock, err := lockfile.ParseFile(lockfilePath)
-		if err == nil {
-			platforms = lock.Platforms
-		}
+	if lf, err := lockfile.ParseLockfileIfPresent(lockfilePath); err == nil && lf != nil {
+		platforms = lf.Platforms
 	}
 
 	// Display information

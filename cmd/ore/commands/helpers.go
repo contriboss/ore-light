@@ -3,13 +3,13 @@ package commands
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/contriboss/gemfile-go/gemfile"
 	"github.com/contriboss/gemfile-go/lockfile"
 	"github.com/contriboss/ore-light/internal/config"
-	"github.com/contriboss/ore-light/internal/resolver"
 	"github.com/contriboss/ore-light/internal/ruby"
 )
 
@@ -179,37 +179,38 @@ func resolveLockfilePathWithDerivedFallback(gemfileFlag, lockfileFlag string) st
 
 // loadLockfile loads and parses a lockfile
 func loadLockfile(lockfilePath string) (*lockfile.Lockfile, error) {
-	file, err := os.Open(lockfilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open lockfile: %w", err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	parsed, err := lockfile.Parse(file)
+	// Use the new hard API: ParseLockfile returns an error when the lockfile
+	// is missing or invalid. Let the library handle existence checks and
+	// parsing details.
+	parsed, err := lockfile.ParseLockfile(lockfilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse lockfile: %w", err)
 	}
-
 	return parsed, nil
 }
 
 // loadOrGenerateLockfile loads an existing lockfile or generates one if missing.
 // This mirrors Bundler's behavior where `bundle install` automatically generates
 // a lockfile when one doesn't exist.
-func loadOrGenerateLockfile(lockfilePath string, quiet bool) (*lockfile.Lockfile, error) {
-	// Check if lockfile exists
-	if _, err := os.Stat(lockfilePath); err == nil {
-		return loadLockfile(lockfilePath)
+func loadOrGenerateLockfile(lockfilePath string, quiet bool, bundlePath string) (*lockfile.Lockfile, error) {
+	// Use the soft API to check for an existing lockfile without performing
+	// our own filesystem checks. If ParseLockfileIfPresent returns an error,
+	// treat it as a parse/read error. If it returns [nil, nil], the lockfile is
+	// missing, and we must fall back to `bundle install` per the new policy.
+	existing, err := lockfile.ParseLockfileIfPresent(lockfilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse lockfile: %w", err)
+	}
+	if existing != nil {
+		return existing, nil
 	}
 
-	// Generate missing lockfile
+	// Lockfile is missing: always fall back to running `bundle install`.
 	if !quiet {
-		fmt.Printf("Lockfile not found. Generating %s...\n", filepath.Base(lockfilePath))
+		fmt.Printf("Lockfile not found. Running `bundle install` to generate %s...\n", filepath.Base(lockfilePath))
 	}
 
-	// Detect Gemfile path from lockfile path
+	// Determine Gemfile to use (respect existing detection helper)
 	gemfilePath := detectGemfileFromLock(lockfilePath)
 	if gemfilePath == "" {
 		// Fallback: try gems.rb first (newer convention), then Gemfile
@@ -225,16 +226,69 @@ func loadOrGenerateLockfile(lockfilePath string, quiet bool) (*lockfile.Lockfile
 		return nil, fmt.Errorf("cannot generate lockfile: Gemfile not found at %s (also checked gems.rb)", gemfilePath)
 	}
 
-	// Generate lockfile (nil platforms = auto-detect current platform)
-	if err := resolver.GenerateLockfileWithPlatforms(gemfilePath, nil, nil); err != nil {
-		return nil, fmt.Errorf("failed to generate lockfile: %w", err)
+	// Run `bundle install` in the project directory. Set BUNDLE_GEMFILE so
+	// Bundler uses the detected Gemfile when it's not the default. Bundler
+	// v4.0.6+ dropped --path support, so prefer BUNDLE_PATH when needed.
+	cmd := exec.Command("bundle", "install")
+	env := os.Environ()
+	env = append(env, "BUNDLE_GEMFILE="+gemfilePath)
+	if bundlePath != "" && os.Getenv("BUNDLE_PATH") == "" {
+		env = append(env, "BUNDLE_PATH="+bundlePath)
+	}
+	cmd.Env = env
+	cmd.Dir = filepath.Dir(gemfilePath)
+
+	// Capture stderr for error reporting, even in quiet mode
+	var stderrBuf strings.Builder
+	if quiet {
+		cmd.Stdout = nil
+		cmd.Stderr = &stderrBuf
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 	}
 
-	if !quiet {
-		fmt.Printf("Generated %s\n", filepath.Base(lockfilePath))
+	if err := cmd.Run(); err != nil {
+		// Include stderr output in error message if available
+		if stderrOutput := stderrBuf.String(); stderrOutput != "" {
+			return nil, fmt.Errorf("bundle install failed: %w\nOutput:\n%s", err, stderrOutput)
+		}
+		return nil, fmt.Errorf("bundle install failed: %w", err)
 	}
 
-	return loadLockfile(lockfilePath)
+	// After bundle install, parse lockfile with the hard API which returns an
+	// error for missing/invalid lockfiles.
+	parsed, err := lockfile.ParseLockfile(lockfilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse lockfile after bundle install: %w", err)
+	}
+	return parsed, nil
+}
+
+// detectGemfileFromLock infers the Gemfile path from a lockfile path
+func detectGemfileFromLock(lockfilePath string) string {
+	if lockfilePath == "" {
+		lockfilePath = "Gemfile.lock"
+	}
+
+	// Handle gems.locked -> gems.rb
+	if strings.HasSuffix(lockfilePath, "gems.locked") {
+		candidate := strings.TrimSuffix(lockfilePath, ".locked") + ".rb"
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		return ""
+	}
+
+	// Handle Gemfile.lock -> Gemfile (and other .lock files)
+	if !strings.HasSuffix(lockfilePath, ".lock") {
+		return ""
+	}
+	candidate := strings.TrimSuffix(lockfilePath, ".lock")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return ""
 }
 
 // loadGemSpecs loads gem specs from a lockfile
@@ -265,32 +319,6 @@ func deduplicateGemSpecs(specs []lockfile.GemSpec) []lockfile.GemSpec {
 	}
 
 	return result
-}
-
-// detectGemfileFromLock infers the Gemfile path from a lockfile path
-func detectGemfileFromLock(lockfilePath string) string {
-	if lockfilePath == "" {
-		lockfilePath = "Gemfile.lock"
-	}
-
-	// Handle gems.locked -> gems.rb
-	if strings.HasSuffix(lockfilePath, "gems.locked") {
-		candidate := strings.TrimSuffix(lockfilePath, ".locked") + ".rb"
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-		return ""
-	}
-
-	// Handle Gemfile.lock -> Gemfile (and other .lock files)
-	if !strings.HasSuffix(lockfilePath, ".lock") {
-		return ""
-	}
-	candidate := strings.TrimSuffix(lockfilePath, ".lock")
-	if _, err := os.Stat(candidate); err == nil {
-		return candidate
-	}
-	return ""
 }
 
 // enrichGemsWithGroups reads the Gemfile and enriches lockfile gems with group information

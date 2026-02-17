@@ -38,7 +38,7 @@ func pristine(gemNames []string, lockfilePath, cacheDir, vendorDir string) error
 	}
 
 	// Parse lockfile to get gem info
-	lock, err := lockfile.ParseFile(lockfilePath)
+	lock, err := lockfile.ParseLockfile(lockfilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse Gemfile.lock: %w", err)
 	}

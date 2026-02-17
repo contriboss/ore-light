@@ -39,7 +39,7 @@ gem 'rake'
 
 	// Generate lockfile
 	lockfilePath := testGemfilePath + ".lock"
-	parsed, err := loadOrGenerateLockfile(lockfilePath, false)
+	parsed, err := loadOrGenerateLockfile(lockfilePath, false, "")
 	if err != nil {
 		t.Fatalf("loadOrGenerateLockfile() failed: %v", err)
 	}

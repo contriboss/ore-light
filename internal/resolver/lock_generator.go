@@ -548,11 +548,9 @@ func detectPlatforms(lockfilePath string, additionalPlatforms []string) []string
 // 3. Fallback to a reasonable default
 func detectBundlerVersion(lockfilePath string) string {
 	// Try to read existing lockfile
-	if _, err := os.Stat(lockfilePath); err == nil {
-		if existingLock, err := lockfile.ParseFile(lockfilePath); err == nil {
-			if existingLock.BundledWith != "" {
-				return existingLock.BundledWith
-			}
+	if lf, err := lockfile.ParseLockfileIfPresent(lockfilePath); err == nil && lf != nil {
+		if lf.BundledWith != "" {
+			return lf.BundledWith
 		}
 	}
 
@@ -572,7 +570,7 @@ func detectBundlerVersion(lockfilePath string) string {
 }
 
 func loadVersionPinsFromLockfile(lockfilePath string) map[string]string {
-	lf, err := lockfile.ParseFile(lockfilePath)
+	lf, err := lockfile.ParseLockfileIfPresent(lockfilePath)
 	if err != nil || lf == nil {
 		return nil
 	}

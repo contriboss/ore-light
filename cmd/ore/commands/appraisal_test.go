@@ -63,7 +63,7 @@ gemspec :path => "../", :development_group => :test
 	// Actually, loadOrGenerateLockfile uses detectGemfileFromLock which checks for file existence
 
 	t.Run("GenerateLockfile", func(t *testing.T) {
-		parsed, err := loadOrGenerateLockfile(lockfilePath, false)
+		parsed, err := loadOrGenerateLockfile(lockfilePath, false, "")
 		if err != nil {
 			t.Fatalf("loadOrGenerateLockfile failed: %v", err)
 		}

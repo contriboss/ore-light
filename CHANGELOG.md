@@ -4,7 +4,11 @@
 
 ### Features
 
-* ⬆️ Upgrade to gemfile-go v0.11.0
+* ⬆️ Upgrade to gemfile-go v0.15.0
+
+### Compatibility / Behavior Change
+
+* Use gemfile-go's new soft/hard lockfile API. Commands that require a lockfile now call the hard API (`lockfile.ParseLockfile`) which returns an error for missing/invalid lockfiles. Commands that can generate or tolerate a missing lockfile use the soft API (`lockfile.ParseLockfileIfPresent`) and will fall back to running `bundle install` when the lockfile is missing. Lockfile presence should no longer be detected via direct filesystem checks — gemfile-go is authoritative.
 
 ### Bug Fixes
 
