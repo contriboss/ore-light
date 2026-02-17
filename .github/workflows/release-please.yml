@@ -36,6 +36,13 @@ jobs:
         with:
           go-version-file: "go.mod"
 
+      - name: Setup Ruby
+        if: ${{ steps.release.outputs.release_created }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.1"
+          bundler-cache: false
+
       - name: Install Mage
         if: ${{ steps.release.outputs.release_created }}
         run: go install github.com/magefile/mage@latest
