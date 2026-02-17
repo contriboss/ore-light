@@ -14,6 +14,14 @@
 
 * 🐛 relative path resolution for "path" gems in lockfile ([84ebdc1](https://github.com/contriboss/ore-light/commit/84ebdc192bad7e2699981fd5ed4381ed42b8c568))
 
+## [0.27.0](https://github.com/contriboss/ore-light/compare/v0.26.0...v0.27.0) (2026-02-17)
+
+
+### Features
+
+* upgrade to gemfile-go v0.15.0 ([85d5ecb](https://github.com/contriboss/ore-light/commit/85d5ecb731bbdee123768a7c1d8ed4321e1d17eb))
+* upgrade to gemfile-go v0.15.0 ([0042e7b](https://github.com/contriboss/ore-light/commit/0042e7bd02fb38afee1a50754fd080f901c1ebf2))
+
 ## [0.26.0](https://github.com/contriboss/ore-light/compare/v0.25.3...v0.26.0) (2026-02-11)
 
 
