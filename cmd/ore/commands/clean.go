@@ -28,7 +28,7 @@ func RunClean(args []string) error {
 	}
 
 	// Parse lockfile to get gems that should be kept
-	lock, err := lockfile.ParseFile(finalLockfilePath)
+	lock, err := lockfile.ParseLockfile(finalLockfilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse lockfile: %w", err)
 	}

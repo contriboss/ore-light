@@ -34,7 +34,7 @@ func RunList(args []string) error {
 	}
 
 	// Parse lockfile
-	lock, err := lockfile.ParseFile(lockfilePath)
+	lock, err := lockfile.ParseLockfile(lockfilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse lockfile: %w", err)
 	}

@@ -8,10 +8,10 @@ Ore Light is the streamlined distribution of Ore – focused on fast gem install
 
 - **Complete Bundler parity**: 21 commands covering all essential Bundler workflows
 - **Multi-source support**: Install gems from rubygems.org, gem.coop, private servers, git repos, and local paths
-- **Bundler-aware, not Bundler-bound**: Understands the Bundler ecosystem but performs downloads, caching, and installs without invoking `bundle install`
-- **Fast by default**: Go's concurrency gives parallel downloads, connection pooling, and intelligent caching with zero Ruby requirement
+- **Bundler-aware, not Bundler-bound**: Understands the Bundler ecosystem via the lockfile, and performs downloads, caching and even installs; only invoking `bundle install` if the lockfile is missing
+- **Fast by default**: Go's concurrency gives parallel downloads, connection pooling, and intelligent caching with zero Ruby requirement when a lockfile is present
 - **Native extension support**: Automatically builds C/C++/Rust extensions supporting gems like nokogiri, pg, sqlite3
-- **Security auditing**: Scan for vulnerabilities using bundler-audit's database (no Ruby required)
+- **Security auditing**: Scan for vulnerabilities using bundler-audit's database (no Ruby required if a lockfile is present)
 - **Dependency visualization**: Beautiful colored tree view of gem dependencies
 - **Platform filtering**: Only downloads gems for your current platform (arm64-darwin, x86_64-linux, etc.)
 - **Proper binstubs**: Generates Ruby wrapper scripts (not symlinks) that work without `bundle exec`

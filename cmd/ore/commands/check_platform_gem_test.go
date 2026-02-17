@@ -45,7 +45,7 @@ BUNDLED WITH
 	}
 
 	// Parse lockfile
-	lock, err := lockfile.ParseFile(lockfilePath)
+	lock, err := lockfile.ParseLockfile(lockfilePath)
 	if err != nil {
 		t.Fatalf("Failed to parse lockfile: %v", err)
 	}

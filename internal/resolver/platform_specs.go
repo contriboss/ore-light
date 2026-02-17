@@ -75,7 +75,7 @@ func buildPlatformSpecs(compactSource *CompactIndexSource, baseSpecs []lockfile.
 func loadExistingPlatformVersions(lockfilePath string) map[string]map[string]string {
 	existing := make(map[string]map[string]string)
 
-	lf, err := lockfile.ParseFile(lockfilePath)
+	lf, err := lockfile.ParseLockfileIfPresent(lockfilePath)
 	if err != nil || lf == nil {
 		return existing
 	}
@@ -96,7 +96,7 @@ func loadExistingPlatformVersions(lockfilePath string) map[string]map[string]str
 func loadExistingRubySpecs(lockfilePath string) map[string]bool {
 	existing := make(map[string]bool)
 
-	lf, err := lockfile.ParseFile(lockfilePath)
+	lf, err := lockfile.ParseLockfileIfPresent(lockfilePath)
 	if err != nil || lf == nil {
 		return existing
 	}

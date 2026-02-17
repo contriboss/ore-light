@@ -53,7 +53,7 @@ BUNDLED WITH
 	}
 
 	// Parse lockfile
-	lock, err := lockfile.ParseFile(lockfilePath)
+	lock, err := lockfile.ParseLockfile(lockfilePath)
 	if err != nil {
 		t.Fatalf("Failed to parse lockfile: %v", err)
 	}
@@ -294,7 +294,7 @@ BUNDLED WITH
 	cacheDir := filepath.Join(tmpDir, "cache")
 
 	// Create a minimal fake gem for testing
-	lock, _ := lockfile.ParseFile(lockfilePath)
+	lock, _ := lockfile.ParseLockfile(lockfilePath)
 	if err := os.MkdirAll(filepath.Join(cacheDir, "gems"), 0755); err != nil {
 		t.Fatalf("Failed to create cache dir: %v", err)
 	}

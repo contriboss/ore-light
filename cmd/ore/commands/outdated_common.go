@@ -149,7 +149,7 @@ func LoadOutdatedGems(gemfilePath string) ([]OutdatedGem, error) {
 	}
 
 	// Parse lockfile to get current versions
-	lock, err := lockfile.ParseFile(lockfilePath)
+	lock, err := lockfile.ParseLockfile(lockfilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse lockfile: %w", err)
 	}

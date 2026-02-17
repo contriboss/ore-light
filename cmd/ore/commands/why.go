@@ -36,7 +36,7 @@ func RunWhy(args []string) error {
 // why shows why a gem is in the bundle by displaying dependency chains
 func why(gemName string, lockfilePath string) error {
 	// Parse lockfile
-	lock, err := lockfile.ParseFile(lockfilePath)
+	lock, err := lockfile.ParseLockfile(lockfilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse Gemfile.lock: %w", err)
 	}
