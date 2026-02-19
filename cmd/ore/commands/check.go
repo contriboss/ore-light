@@ -80,20 +80,11 @@ func RunCheck(args []string) error {
 			primaryName = fmt.Sprintf("%s-%s", spec.Name, shortGitRevision(spec.Revision))
 		}
 		primaryPath := filepath.Join(gitGemsDir, primaryName)
-		legacyPath := filepath.Join(gitGemsDir, spec.FullName())
 
 		if _, err := os.Stat(primaryPath); err != nil {
-			// Backward compatibility: older layouts/tests may still use FullName()
-			if _, legacyErr := os.Stat(legacyPath); legacyErr != nil {
-				missing = append(missing, fmt.Sprintf("%s (%s) [git]", spec.Name, spec.Version))
-				if *verbose {
-					fmt.Printf("  ✗ %s (%s) [git] - not found at: %s (or %s)\n", spec.Name, spec.Version, primaryPath, legacyPath)
-				}
-			} else {
-				installed++
-				if *verbose {
-					fmt.Printf("  ✓ %s (%s) [git]\n", spec.Name, spec.Version)
-				}
+			missing = append(missing, fmt.Sprintf("%s (%s) [git]", spec.Name, spec.Version))
+			if *verbose {
+				fmt.Printf("  ✗ %s (%s) [git] - not found at: %s\n", spec.Name, spec.Version, primaryPath)
 			}
 		} else {
 			installed++
