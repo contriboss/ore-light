@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/contriboss/gemfile-go/lockfile"
 )
@@ -70,12 +71,29 @@ func RunCheck(args []string) error {
 	}
 
 	// Check git gems
+	// Bundler stores git gems under <gem_home>/bundler/gems/<name>-<revision[:12]>
+	// (not under the regular <gem_home>/gems directory).
+	gitGemsDir := filepath.Join(*vendorDir, "bundler", "gems")
 	for _, spec := range lock.GitSpecs {
-		gemPath := filepath.Join(gemsDir, spec.FullName())
-		if _, err := os.Stat(gemPath); err != nil {
-			missing = append(missing, fmt.Sprintf("%s (%s) [git]", spec.Name, spec.Version))
-			if *verbose {
-				fmt.Printf("  ✗ %s (%s) [git] - not found\n", spec.Name, spec.Version)
+		primaryName := spec.FullName()
+		if spec.Revision != "" {
+			primaryName = fmt.Sprintf("%s-%s", spec.Name, shortGitRevision(spec.Revision))
+		}
+		primaryPath := filepath.Join(gitGemsDir, primaryName)
+		legacyPath := filepath.Join(gitGemsDir, spec.FullName())
+
+		if _, err := os.Stat(primaryPath); err != nil {
+			// Backward compatibility: older layouts/tests may still use FullName()
+			if _, legacyErr := os.Stat(legacyPath); legacyErr != nil {
+				missing = append(missing, fmt.Sprintf("%s (%s) [git]", spec.Name, spec.Version))
+				if *verbose {
+					fmt.Printf("  ✗ %s (%s) [git] - not found at: %s (or %s)\n", spec.Name, spec.Version, primaryPath, legacyPath)
+				}
+			} else {
+				installed++
+				if *verbose {
+					fmt.Printf("  ✓ %s (%s) [git]\n", spec.Name, spec.Version)
+				}
 			}
 		} else {
 			installed++
@@ -143,4 +161,12 @@ func RunCheck(args []string) error {
 
 	fmt.Printf("✅ All gems are installed (%d total)\n", installed)
 	return nil
+}
+
+func shortGitRevision(rev string) string {
+	rev = strings.TrimSpace(rev)
+	if len(rev) > 12 {
+		return rev[:12]
+	}
+	return rev
 }
