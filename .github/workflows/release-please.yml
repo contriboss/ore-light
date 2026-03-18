@@ -88,7 +88,7 @@ jobs:
         fi
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: ore-linux-${{ matrix.goarch }}
         path: ore-linux-${{ matrix.goarch }}
@@ -123,7 +123,7 @@ jobs:
           ./cmd/ore
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: ore-darwin-${{ matrix.goarch }}
         path: ore-darwin-${{ matrix.goarch }}
