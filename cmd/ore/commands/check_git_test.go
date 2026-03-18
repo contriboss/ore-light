@@ -66,3 +66,75 @@ BUNDLED WITH
 		t.Fatalf("expected check to pass with git gem in bundler/gems, got error: %v", err)
 	}
 }
+
+func TestCheckPassesWithOnlyGitGems(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	lockfileContent := `GIT
+  remote: https://github.com/rgeo/rgeo.git
+  revision: b27518c5745b58f4f8f0f91578f7f9981f0fd5f4
+  specs:
+    rgeo (3.0.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  rgeo!
+
+BUNDLED WITH
+  4.0.3
+`
+
+	lockfilePath := filepath.Join(tmpDir, "Gemfile.lock")
+	if err := os.WriteFile(lockfilePath, []byte(lockfileContent), 0644); err != nil {
+		t.Fatalf("failed to write lockfile: %v", err)
+	}
+
+	gemfilePath := filepath.Join(tmpDir, "Gemfile")
+	if err := os.WriteFile(gemfilePath, []byte("source 'https://rubygems.org'\n"), 0644); err != nil {
+		t.Fatalf("failed to write Gemfile: %v", err)
+	}
+
+	vendorDir := filepath.Join(tmpDir, "vendor", "bundle")
+	gitGemDir := filepath.Join(vendorDir, "bundler", "gems", "rgeo-b27518c5745b")
+	if err := os.MkdirAll(gitGemDir, 0755); err != nil {
+		t.Fatalf("failed to create git gem dir: %v", err)
+	}
+
+	checkArgs := []string{
+		"-gemfile", gemfilePath,
+		"-vendor", vendorDir,
+	}
+
+	if err := RunCheck(checkArgs); err != nil {
+		t.Fatalf("expected check to pass with only git gems installed, got error: %v", err)
+	}
+}
+
+func TestGitGemDirNameMatchesInstallerConvention(t *testing.T) {
+	tests := []struct {
+		name     string
+		revision string
+		want     string
+	}{
+		{
+			name:     "shortens long revisions",
+			revision: "b27518c5745b58f4f8f0f91578f7f9981f0fd5f4",
+			want:     "rgeo-b27518c5745b",
+		},
+		{
+			name:     "preserves empty revision format",
+			revision: "",
+			want:     "rgeo-",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := gitGemDirName("rgeo", tt.revision); got != tt.want {
+				t.Fatalf("gitGemDirName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
