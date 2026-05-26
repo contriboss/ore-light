@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/contriboss/gemfile-go/lockfile"
 )
@@ -33,16 +34,23 @@ func RunCheck(args []string) error {
 	}
 
 	gemsDir := filepath.Join(*vendorDir, "gems")
+	gitGemsDir := filepath.Join(*vendorDir, "bundler", "gems")
 
 	if *verbose {
 		fmt.Println("🔍 Checking installed gems...")
 		fmt.Printf("Vendor directory: %s\n", *vendorDir)
 		fmt.Printf("Gems directory: %s\n", gemsDir)
+		fmt.Printf("Git gems directory: %s\n", gitGemsDir)
 	}
 
-	// Verify gems directory exists
-	if _, err := os.Stat(gemsDir); os.IsNotExist(err) {
-		return fmt.Errorf("gems directory does not exist: %s", gemsDir)
+	// Only require the regular gems directory when the lockfile has regular gems.
+	if len(lock.GemSpecs) > 0 {
+		if _, err := os.Stat(gemsDir); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("gems directory does not exist: %s", gemsDir)
+			}
+			return fmt.Errorf("failed to access gems directory %s: %w", gemsDir, err)
+		}
 	}
 
 	missing := []string{}
@@ -70,12 +78,15 @@ func RunCheck(args []string) error {
 	}
 
 	// Check git gems
+	// Bundler stores git gems under <gem_home>/bundler/gems/<name>-<revision[:12]>
+	// (not under the regular <gem_home>/gems directory).
 	for _, spec := range lock.GitSpecs {
-		gemPath := filepath.Join(gemsDir, spec.FullName())
-		if _, err := os.Stat(gemPath); err != nil {
+		primaryPath := filepath.Join(gitGemsDir, gitGemDirName(spec.Name, spec.Revision))
+
+		if _, err := os.Stat(primaryPath); err != nil {
 			missing = append(missing, fmt.Sprintf("%s (%s) [git]", spec.Name, spec.Version))
 			if *verbose {
-				fmt.Printf("  ✗ %s (%s) [git] - not found\n", spec.Name, spec.Version)
+				fmt.Printf("  ✗ %s (%s) [git] - not found at: %s\n", spec.Name, spec.Version, primaryPath)
 			}
 		} else {
 			installed++
@@ -118,23 +129,13 @@ func RunCheck(args []string) error {
 		fmt.Printf("  Lockfile: %s\n", finalLockfilePath)
 		fmt.Printf("  Vendor directory: %s\n", *vendorDir)
 		fmt.Printf("  Gems directory: %s\n", gemsDir)
+		fmt.Printf("  Git gems directory: %s\n", gitGemsDir)
 
-		// Check if gems directory exists
-		if stat, err := os.Stat(gemsDir); err != nil {
-			fmt.Printf("  ⚠️  Gems directory doesn't exist or is inaccessible\n")
-		} else if stat.IsDir() {
-			// List what IS in the gems directory
-			if entries, err := os.ReadDir(gemsDir); err == nil {
-				fmt.Printf("  Contents of gems directory (%d items):\n", len(entries))
-				for i, entry := range entries {
-					if i < 10 { // Show first 10
-						fmt.Printf("    - %s\n", entry.Name())
-					}
-				}
-				if len(entries) > 10 {
-					fmt.Printf("    ... and %d more\n", len(entries)-10)
-				}
-			}
+		if len(lock.GemSpecs) > 0 {
+			printDirDebug("gems directory", gemsDir)
+		}
+		if len(lock.GitSpecs) > 0 {
+			printDirDebug("git gems directory", gitGemsDir)
 		}
 
 		fmt.Printf("\nRun `ore install` to install missing gems.\n")
@@ -143,4 +144,44 @@ func RunCheck(args []string) error {
 
 	fmt.Printf("✅ All gems are installed (%d total)\n", installed)
 	return nil
+}
+
+func shortGitRevision(rev string) string {
+	rev = strings.TrimSpace(rev)
+	if len(rev) > 12 {
+		return rev[:12]
+	}
+	return rev
+}
+
+func gitGemDirName(name, revision string) string {
+	return fmt.Sprintf("%s-%s", name, shortGitRevision(revision))
+}
+
+func printDirDebug(label, dir string) {
+	stat, err := os.Stat(dir)
+	if err != nil {
+		fmt.Printf("  ⚠️  %s doesn't exist or is inaccessible: %s\n", label, dir)
+		return
+	}
+	if !stat.IsDir() {
+		fmt.Printf("  ⚠️  %s is not a directory: %s\n", label, dir)
+		return
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Printf("  ⚠️  Failed to read %s: %v\n", label, err)
+		return
+	}
+
+	fmt.Printf("  Contents of %s (%d items):\n", label, len(entries))
+	for i, entry := range entries {
+		if i < 10 {
+			fmt.Printf("    - %s\n", entry.Name())
+		}
+	}
+	if len(entries) > 10 {
+		fmt.Printf("    ... and %d more\n", len(entries)-10)
+	}
 }
