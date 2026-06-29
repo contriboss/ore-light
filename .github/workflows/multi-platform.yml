@@ -79,13 +79,13 @@ jobs:
           echo "✅ Gems vendored to vendor/bundle"
 
       - name: Cache ore gem cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ore/gems
           key: ore-cache-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
 
       - name: Cache vendored gems
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: test-multiplatform/vendor/bundle
           key: gems-prepare-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
@@ -140,13 +140,13 @@ jobs:
           path: test-multiplatform
 
       - name: Restore ore gem cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ore/gems
           key: ore-cache-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
 
       - name: Restore vendored gems
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: test-multiplatform/vendor/bundle
           key: gems-prepare-${{ hashFiles('test-multiplatform/Gemfile.lock') }}
